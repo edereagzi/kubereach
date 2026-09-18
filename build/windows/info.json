@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Eray Dereagzi",
+			"FileDescription": "Access Kubernetes clusters behind SSH bastions",
+			"LegalCopyright": "© 2026 Eray Dereagzi",
+			"ProductName": "Kubereach",
+			"Comments": "(c) 2026 Eray Dereagzi"
+		}
+	}
+}

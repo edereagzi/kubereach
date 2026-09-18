@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="kubereach"
+        Arguments=""
+        InstallLocation="C:\Program Files\Eray Dereagzi\Kubereach">
+    </Installer>
+    <PackageInformation
+        PackageName="Kubereach"
+        PackageDisplayName="Kubereach"
+        PublisherName="CN=Eray Dereagzi"
+        PublisherDisplayName="Eray Dereagzi"
+        Version="0.1.0.0"
+        PackageDescription="Access Kubernetes clusters behind SSH bastions">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="com.edereagzi.kubereach"
+                Description="Access Kubernetes clusters behind SSH bastions"
+                DisplayName="Kubereach"
+                ExecutableName="kubereach"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>Kubereach</DisplayName>
+            <PublisherDisplayName>Eray Dereagzi</PublisherDisplayName>
+            <Description>Access Kubernetes clusters behind SSH bastions</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="kubereach.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

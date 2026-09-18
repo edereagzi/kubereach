@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Kubereach
+Comment=Access Kubernetes clusters behind SSH bastions
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/kubereach %u
+Terminal=false
+Type=Application
+Icon=kubereach
+Categories=Utility;
+StartupWMClass=kubereach
+
+ 
