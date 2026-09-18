@@ -18,6 +18,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.103.1",
     "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-virtual": "^3.14.13",
     "@wailsio/runtime": "3.0.0-beta.23",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",

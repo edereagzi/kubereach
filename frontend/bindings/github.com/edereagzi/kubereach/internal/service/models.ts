@@ -69,6 +69,66 @@ export interface KubeService {
 }
 
 /**
+ * KubeWorkload is a Deployment, StatefulSet or DaemonSet whose pods can be followed together.
+ */
+export interface KubeWorkload {
+    "namespace": string;
+    "name": string;
+    "kind": LogSourceKind;
+}
+
+export interface LogBatch {
+    "streamId": string;
+    "lines": LogLine[] | null;
+}
+
+/**
+ * LogLine carries the raw text; a line that is a JSON object also carries its top-level fields as strings.
+ */
+export interface LogLine {
+    "pod": string;
+    "container": string;
+    "time": string;
+    "text": string;
+    "fields"?: { [_ in string]?: string } | null;
+}
+
+/**
+ * LogSource is one pod, or a workload whose pods are followed together as they come and go.
+ */
+export interface LogSource {
+    "clusterId": string;
+    "namespace": string;
+    "kind": LogSourceKind;
+    "name": string;
+}
+
+export enum LogSourceKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    LogSourcePod = "pod",
+    LogSourceDeployment = "deployment",
+    LogSourceStatefulSet = "statefulset",
+    LogSourceDaemonSet = "daemonset",
+};
+
+export interface LogStatus {
+    "id": string;
+    "source": LogSource;
+
+    /**
+     * Pods are the pods currently followed; Containers is the union of their containers.
+     */
+    "pods": string[] | null;
+    "containers": string[] | null;
+    "state": State;
+    "error"?: string;
+}
+
+/**
  * NamedPort is a service port or a container port.
  */
 export interface NamedPort {

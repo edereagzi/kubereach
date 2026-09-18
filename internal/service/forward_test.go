@@ -28,22 +28,31 @@ import (
 	"k8s.io/streaming/pkg/httpstream/spdy"
 )
 
-// testAPI serves any pod as running and speaks the API server's SPDY port-forward protocol:
-// every data stream first receives "<pod>:<port>\n" and is then echoed, so a test can tell where bytes went.
+// testAPI serves the pod subresources: any pod is running, the log subresource streams seeded and live lines,
+// and port-forward speaks SPDY where every data stream first receives "<pod>:<port>\n" and is then echoed.
 type testAPI struct {
 	mu    sync.Mutex
 	conns map[string][]httpstream.Connection
+	// logs and feeds are keyed by logKey: seeded backlog and live lines for the log subresource.
+	logs   map[string][]string
+	feeds  map[string]chan string
+	gone   map[string]bool
+	seeded int
 }
 
 func newTestAPI() *testAPI {
-	return &testAPI{conns: map[string][]httpstream.Connection{}}
+	return &testAPI{conns: map[string][]httpstream.Connection{}, logs: map[string][]string{}, feeds: map[string]chan string{}, gone: map[string]bool{}}
 }
 
-func (a *testAPI) portForwardHandler(w http.ResponseWriter, r *http.Request) {
+func (a *testAPI) podHandler(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) == 7 && parts[5] == "pods" && r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"apiVersion":"v1","kind":"Pod","metadata":{"namespace":%q,"name":%q},"status":{"phase":"Running"}}`, parts[4], parts[6])
+		_, _ = fmt.Fprintf(w, `{"apiVersion":"v1","kind":"Pod","metadata":{"namespace":%q,"name":%q},"spec":{"containers":[{"name":"app"}]},"status":{"phase":"Running"}}`, parts[4], parts[6])
+		return
+	}
+	if len(parts) == 8 && parts[5] == "pods" && parts[7] == "log" {
+		a.logHandler(w, r, parts[6])
 		return
 	}
 	if len(parts) != 8 || parts[5] != "pods" || parts[7] != "portforward" {
@@ -112,6 +121,9 @@ func pod(ns, name, app string, phase corev1.PodPhase, ready bool, created time.T
 	}
 }
 
+// fixtureTimeout mirrors the request timeout the real client factory sets, short enough for a test to outlive it.
+const fixtureTimeout = 300 * time.Millisecond
+
 type forwardFixture struct {
 	svc     *service.Service
 	cs      *fake.Clientset
@@ -124,10 +136,10 @@ type forwardFixture struct {
 func newForwardFixture(t *testing.T, objects ...runtime.Object) *forwardFixture {
 	t.Helper()
 	f := &forwardFixture{cs: fake.NewClientset(objects...), api: newTestAPI(), events: make(chan service.ForwardStatus, 100)}
-	api := httptest.NewServer(http.HandlerFunc(f.api.portForwardHandler))
+	api := httptest.NewServer(http.HandlerFunc(f.api.podHandler))
 	t.Cleanup(api.Close)
 	f.svc = service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
-		return f.cs, &rest.Config{Host: api.URL}, nil
+		return f.cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout}, nil
 	})
 	f.svc.Emit = func(_ string, data any) {
 		if status, ok := data.(service.ForwardStatus); ok {

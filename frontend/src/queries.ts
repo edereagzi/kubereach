@@ -35,6 +35,13 @@ export const podsQuery = (clusterId: string) =>
     retry: false,
   });
 
+export const workloadsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "workloads"],
+    queryFn: async () => (await ClusterService.ListWorkloads(clusterId)) ?? [],
+    retry: false,
+  });
+
 // main.go marshals typed errors as {code, ...} on the error's cause.
 type ErrorCause = { code?: string; target?: string; port?: number; suggested?: number };
 const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;

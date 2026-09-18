@@ -3,6 +3,7 @@
 
 export {
     AuthMethod,
+    LogSourceKind,
     State,
     TargetKind
 } from "./models.js";
@@ -15,6 +16,11 @@ export type {
     HostKeyPrompt,
     KubePod,
     KubeService,
+    KubeWorkload,
+    LogBatch,
+    LogLine,
+    LogSource,
+    LogStatus,
     NamedPort,
     PortForward,
     Route,

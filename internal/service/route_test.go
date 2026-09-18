@@ -184,13 +184,13 @@ func startAgent(t *testing.T, priv ed25519.PrivateKey) {
 }
 
 // startAPIServer serves the version endpoint the reachability check calls and the port-forward subresource.
-func startAPIServer(t *testing.T) *httptest.Server {
+func startAPIServer(t *testing.T, pods *testAPI) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"gitVersion":"v1.30.0-test"}`))
 	})
-	mux.HandleFunc("/api/v1/namespaces/", newTestAPI().portForwardHandler)
+	mux.HandleFunc("/api/v1/namespaces/", pods.podHandler)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -202,6 +202,7 @@ type routeFixture struct {
 	hostKeys   chan service.HostKeyPrompt
 	ssh        *testSSH
 	api        *httptest.Server
+	podAPI     *testAPI
 	cluster    string
 	route      service.Route
 	configPath string
@@ -213,10 +214,11 @@ func newRouteFixture(t *testing.T, keyFile string, pub ssh.PublicKey) *routeFixt
 	t.Helper()
 	f := &routeFixture{
 		ssh:      startSSHServer(t, pub),
-		api:      startAPIServer(t),
+		podAPI:   newTestAPI(),
 		events:   make(chan service.RouteStatus, 100),
 		hostKeys: make(chan service.HostKeyPrompt, 10),
 	}
+	f.api = startAPIServer(t, f.podAPI)
 	dir := t.TempDir()
 	f.configPath = filepath.Join(dir, "kubereach.yaml")
 	f.svc = service.New(f.configPath, nil)

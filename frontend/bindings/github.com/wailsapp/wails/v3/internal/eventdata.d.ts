@@ -13,6 +13,8 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "forward:state": service$0.ForwardStatus;
+            "logs:lines": service$0.LogBatch;
+            "logs:state": service$0.LogStatus;
             "route:hostkey": service$0.HostKeyPrompt;
             "route:state": service$0.RouteStatus;
         }

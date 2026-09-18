@@ -19,6 +19,7 @@ type Service struct {
 	mu         sync.Mutex
 	routes     map[string]*routeConn
 	forwards   map[string]*forwardConn
+	logs       map[string]*logConn
 	// secrets holds session-only key passphrases (by key file) and passwords (by user@host:port).
 	secrets map[string]string
 }
@@ -36,6 +37,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		clients:        clients,
 		routes:         map[string]*routeConn{},
 		forwards:       map[string]*forwardConn{},
+		logs:           map[string]*logConn{},
 		secrets:        map[string]string{},
 	}
 }

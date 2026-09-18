@@ -4,6 +4,7 @@ import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
 import { PortForwards } from "@/components/forwards";
+import { Logs } from "@/components/logs";
 import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -159,6 +160,9 @@ function ClusterTabs() {
         </TabsContent>
         <TabsContent value="forwards" className="overflow-auto">
           <PortForwards key={cluster.id} cluster={cluster} />
+        </TabsContent>
+        <TabsContent value="logs" className="flex min-h-0 flex-col">
+          <Logs key={cluster.id} cluster={cluster} />
         </TabsContent>
       </Tabs>
     </>

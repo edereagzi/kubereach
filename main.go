@@ -49,6 +49,7 @@ func main() {
 			application.NewService(bindings.NewClusterService(svc)),
 			application.NewService(bindings.NewRouteService(svc)),
 			application.NewService(bindings.NewForwardService(svc)),
+			application.NewService(bindings.NewLogService(svc)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -32,6 +32,10 @@ export function ListServices(clusterID: string): $CancellablePromise<service$0.K
     return $Call.ByID(2705149113, clusterID);
 }
 
+export function ListWorkloads(clusterID: string): $CancellablePromise<service$0.KubeWorkload[] | null> {
+    return $Call.ByID(2603481193, clusterID);
+}
+
 export function SetNamespaces(clusterID: string, namespaces: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(2112128423, clusterID, namespaces);
 }
