@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon, CubeIcon, FolderOpenIcon, WarningIcon } from "@phosphor-icons/react";
-import { ClusterService } from "@bindings/internal/bindings";
+import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
+import { RouteList, routeStatusLabel, StateDot } from "@/components/routes";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { useUIStore } from "@/store";
@@ -43,7 +45,10 @@ export function Shell() {
         {importKubeconfig.error && (
           <p className="border-b px-4 py-2 text-xs text-destructive">{String(importKubeconfig.error)}</p>
         )}
-        <ClusterList />
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ClusterList />
+        </div>
+        <RouteList />
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <ClusterTabs />
@@ -157,12 +162,33 @@ function ClusterTabs() {
 }
 
 function ClusterHeader({ cluster }: { cluster: Cluster }) {
+  const queryClient = useQueryClient();
   const { data: version, status, error } = useQuery(reachabilityQuery(cluster.id));
+  const { data } = useQuery(configQuery);
+  const routeStatus = useUIStore((s) => s.routeStatuses[cluster.route]);
+  const options = [{ value: "", label: "Direct" }, ...(data?.routes ?? []).map((r) => ({ value: r.id, label: r.name }))];
+  const setRoute = useMutation({
+    mutationFn: (routeId: string) => RouteService.SetClusterRoute(cluster.id, routeId),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
   return (
     <div className="flex h-12 items-center gap-3 border-b px-4">
       <span className="text-sm font-medium">{cluster.name}</span>
       <span className="truncate text-xs text-muted-foreground">{cluster.kubeconfig}</span>
-      <span className={cn("ml-auto text-xs", status === "error" ? "text-destructive" : "text-muted-foreground")}>
+      <Select value={cluster.route} items={options} onValueChange={(id) => setRoute.mutate(id ?? "")}>
+        <SelectTrigger size="sm" className="ml-auto" title={routeStatusLabel(routeStatus)}>
+          {cluster.route && <StateDot status={routeStatus} />}
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <span className={cn("text-xs", status === "error" ? "text-destructive" : "text-muted-foreground")}>
         {reachabilityLabel(status, error, version)}
       </span>
     </div>

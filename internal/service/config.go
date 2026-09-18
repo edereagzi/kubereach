@@ -15,7 +15,32 @@ var ErrUnsupportedVersion = errors.New("unsupported configuration version")
 
 type Config struct {
 	Version  int       `yaml:"version" json:"version"`
+	Routes   []Route   `yaml:"routes,omitempty" json:"routes"`
 	Clusters []Cluster `yaml:"clusters,omitempty" json:"clusters"`
+}
+
+// Route is the ordered list of SSH Servers through which a Cluster is reached.
+type Route struct {
+	ID      string      `yaml:"id" json:"id"`
+	Name    string      `yaml:"name" json:"name"`
+	Servers []SSHServer `yaml:"servers" json:"servers"`
+}
+
+type AuthMethod string
+
+const (
+	AuthAgent    AuthMethod = "agent"
+	AuthKeyFile  AuthMethod = "key"
+	AuthPassword AuthMethod = "password"
+)
+
+// SSHServer holds no secrets: key passphrases and passwords live in memory for the session only.
+type SSHServer struct {
+	Host    string     `yaml:"host" json:"host"`
+	Port    int        `yaml:"port" json:"port"`
+	User    string     `yaml:"user" json:"user"`
+	Auth    AuthMethod `yaml:"auth" json:"auth"`
+	KeyFile string     `yaml:"keyFile,omitempty" json:"keyFile"`
 }
 
 type Cluster struct {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"errors"
 	"log"
 
@@ -23,16 +24,22 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "Kubereach",
 		Description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
-		// Sentinel errors cross to the frontend as err.cause.code so the UI never parses messages.
+		// Typed errors cross to the frontend as err.cause.code so the UI never parses messages.
 		MarshalError: func(err error) []byte {
 			if errors.Is(err, service.ErrForbidden) {
 				return []byte(`{"code":"forbidden"}`)
+			}
+			var need *service.CredentialError
+			if errors.As(err, &need) {
+				data, _ := json.Marshal(need)
+				return data
 			}
 			return nil
 		},
 		Services: []application.Service{
 			application.NewService(bindings.NewConfigService(svc)),
 			application.NewService(bindings.NewClusterService(svc)),
+			application.NewService(bindings.NewRouteService(svc)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -41,6 +48,8 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+
+	svc.Emit = func(name string, data any) { app.Event.Emit(name, data) }
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Kubereach",

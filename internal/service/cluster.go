@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
 	"time"
 
@@ -19,8 +20,10 @@ import (
 
 var ErrForbidden = errors.New("cluster-wide listing is forbidden")
 
-// ClientFactory builds a clientset for a Cluster. Tests substitute the fake clientset here.
-type ClientFactory func(Cluster) (kubernetes.Interface, error)
+// ClientFactory builds a clientset for a Cluster; dial is nil for direct access. Tests substitute the fake clientset here.
+type ClientFactory func(c Cluster, dial DialFunc) (kubernetes.Interface, error)
+
+type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
 type KubeService struct {
 	Namespace string        `json:"namespace"`
@@ -34,7 +37,7 @@ type ServicePort struct {
 }
 
 // newKubeconfigClient uses client-go's standard loader, so exec plugins and OIDC behave as in kubectl.
-func newKubeconfigClient(c Cluster) (kubernetes.Interface, error) {
+func newKubeconfigClient(c Cluster, dial DialFunc) (kubernetes.Interface, error) {
 	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: c.Kubeconfig},
 		&clientcmd.ConfigOverrides{CurrentContext: c.Context},
@@ -43,6 +46,7 @@ func newKubeconfigClient(c Cluster) (kubernetes.Interface, error) {
 		return nil, err
 	}
 	cfg.Timeout = 15 * time.Second
+	cfg.Dial = dial
 	return kubernetes.NewForConfig(cfg)
 }
 
@@ -157,7 +161,7 @@ func (s *Service) SetNamespaces(clusterID string, namespaces []string) error {
 	return saveConfig(s.configPath, cfg)
 }
 
-// ponytail: builds a fresh clientset per call; cache per Cluster once Routes (ticket 03) own the connection.
+// ponytail: builds a fresh clientset per call; the dial function always reaches the Route's live SSH connection.
 func (s *Service) clusterClient(clusterID string) (kubernetes.Interface, Cluster, error) {
 	s.mu.Lock()
 	cfg, err := loadConfig(s.configPath)
@@ -169,11 +173,19 @@ func (s *Service) clusterClient(clusterID string) (kubernetes.Interface, Cluster
 	if err != nil {
 		return nil, Cluster{}, err
 	}
-	client, err := s.clients(cfg.Clusters[i])
+	cluster := cfg.Clusters[i]
+	var dial DialFunc
+	if cluster.RouteID != "" {
+		dial, err = s.routeDialer(cluster.RouteID)
+		if err != nil {
+			return nil, Cluster{}, err
+		}
+	}
+	client, err := s.clients(cluster, dial)
 	if err != nil {
 		return nil, Cluster{}, err
 	}
-	return client, cfg.Clusters[i], nil
+	return client, cluster, nil
 }
 
 func findCluster(cfg Config, clusterID string) (int, error) {

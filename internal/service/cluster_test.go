@@ -50,7 +50,7 @@ func writeKubeconfig(t *testing.T) string {
 func newFakeService(t *testing.T, objects ...runtime.Object) (*service.Service, *fake.Clientset, string) {
 	t.Helper()
 	cs := fake.NewClientset(objects...)
-	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster) (kubernetes.Interface, error) {
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, error) {
 		return cs, nil
 	})
 	clusters, err := svc.ImportKubeconfigs([]string{writeKubeconfig(t)})

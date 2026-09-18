@@ -28,9 +28,17 @@ export const servicesQuery = (clusterId: string) =>
     retry: false,
   });
 
-// main.go marshals service.ErrForbidden as {code: "forbidden"} on the error's cause.
-export const isForbidden = (error: unknown) =>
-  (error as { cause?: { code?: string } } | null)?.cause?.code === "forbidden";
+// main.go marshals typed errors as {code, ...} on the error's cause.
+type ErrorCause = { code?: string; target?: string };
+const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;
+export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
+
+// credentialRequired returns which session secret a Connect call is missing, if any.
+export function credentialRequired(error: unknown): { code: "passphrase" | "password"; target: string } | null {
+  const cause = errorCause(error);
+  if (cause?.code === "passphrase" || cause?.code === "password") return { code: cause.code, target: cause.target ?? "" };
+  return null;
+}
 
 export function reachabilityLabel(status: "pending" | "error" | "success", error: unknown, version?: string) {
   if (status === "pending") return "Checking…";

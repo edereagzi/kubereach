@@ -3,7 +3,9 @@
 
 import * as ClusterService from "./clusterservice.js";
 import * as ConfigService from "./configservice.js";
+import * as RouteService from "./routeservice.js";
 export {
     ClusterService,
-    ConfigService
+    ConfigService,
+    RouteService
 };
