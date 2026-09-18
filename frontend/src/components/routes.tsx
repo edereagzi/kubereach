@@ -50,15 +50,17 @@ const isUp = (s?: RouteStatus) =>
   s?.state === State.StateConnected ||
   s?.state === State.StateReconnecting;
 
-export function routeStatusLabel(status?: RouteStatus) {
+type Status = { state: State; error?: string };
+
+export function statusLabel(status?: Status) {
   if (!status) return "not connected";
   return status.error ? `${status.state}: ${status.error}` : status.state;
 }
 
-export function StateDot({ status }: { status?: RouteStatus }) {
+export function StateDot({ status }: { status?: Status }) {
   return (
     <span
-      title={routeStatusLabel(status)}
+      title={statusLabel(status)}
       className={cn("size-2 shrink-0 rounded-full", stateColor[status?.state ?? State.StateIdle])}
     />
   );
@@ -115,7 +117,7 @@ export function RouteList() {
           return (
             <li key={r.id} className="group flex items-center gap-2 rounded-md px-3 py-1 text-sm hover:bg-accent">
               <StateDot status={status} />
-              <span className="flex-1 truncate" title={routeStatusLabel(status)}>
+              <span className="flex-1 truncate" title={statusLabel(status)}>
                 {r.name}
               </span>
               <Button

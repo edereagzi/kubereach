@@ -28,8 +28,15 @@ export const servicesQuery = (clusterId: string) =>
     retry: false,
   });
 
+export const podsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "pods"],
+    queryFn: async () => (await ClusterService.ListPods(clusterId)) ?? [],
+    retry: false,
+  });
+
 // main.go marshals typed errors as {code, ...} on the error's cause.
-type ErrorCause = { code?: string; target?: string };
+type ErrorCause = { code?: string; target?: string; port?: number; suggested?: number };
 const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;
 export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
 
@@ -37,6 +44,13 @@ export const isForbidden = (error: unknown) => errorCause(error)?.code === "forb
 export function credentialRequired(error: unknown): { code: "passphrase" | "password"; target: string } | null {
   const cause = errorCause(error);
   if (cause?.code === "passphrase" || cause?.code === "password") return { code: cause.code, target: cause.target ?? "" };
+  return null;
+}
+
+// portInUse returns the free port suggested when a forward's local port was busy, if that is why it failed.
+export function portInUse(error: unknown): { port: number; suggested: number } | null {
+  const cause = errorCause(error);
+  if (cause?.code === "port-in-use" && cause.port && cause.suggested) return { port: cause.port, suggested: cause.suggested };
   return null;
 }
 

@@ -3,16 +3,21 @@
 
 export {
     AuthMethod,
-    State
+    State,
+    TargetKind
 } from "./models.js";
 
 export type {
     Cluster,
     Config,
+    ForwardStatus,
+    ForwardTarget,
     HostKeyPrompt,
+    KubePod,
     KubeService,
+    NamedPort,
+    PortForward,
     Route,
     RouteStatus,
-    SSHServer,
-    ServicePort
+    SSHServer
 } from "./models.js";

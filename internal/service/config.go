@@ -17,6 +17,8 @@ type Config struct {
 	Version  int       `yaml:"version" json:"version"`
 	Routes   []Route   `yaml:"routes,omitempty" json:"routes"`
 	Clusters []Cluster `yaml:"clusters,omitempty" json:"clusters"`
+	// Forwards are the Saved Forwards: Port Forward definitions kept across sessions.
+	Forwards []PortForward `yaml:"forwards,omitempty" json:"forwards"`
 }
 
 // Route is the ordered list of SSH Servers through which a Cluster is reached.

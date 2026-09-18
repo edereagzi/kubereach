@@ -24,6 +24,10 @@ export function ListNamespaces(clusterID: string): $CancellablePromise<string[] 
     return $Call.ByID(1043487461, clusterID);
 }
 
+export function ListPods(clusterID: string): $CancellablePromise<service$0.KubePod[] | null> {
+    return $Call.ByID(4065161353, clusterID);
+}
+
 export function ListServices(clusterID: string): $CancellablePromise<service$0.KubeService[] | null> {
     return $Call.ByID(2705149113, clusterID);
 }

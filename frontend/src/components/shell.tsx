@@ -3,7 +3,8 @@ import { ArrowsClockwiseIcon, CubeIcon, FolderOpenIcon, WarningIcon } from "@pho
 import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
-import { RouteList, routeStatusLabel, StateDot } from "@/components/routes";
+import { PortForwards } from "@/components/forwards";
+import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -156,6 +157,9 @@ function ClusterTabs() {
         <TabsContent value="overview" className="overflow-auto">
           <ClusterOverview key={cluster.id} cluster={cluster} />
         </TabsContent>
+        <TabsContent value="forwards" className="overflow-auto">
+          <PortForwards key={cluster.id} cluster={cluster} />
+        </TabsContent>
       </Tabs>
     </>
   );
@@ -176,7 +180,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       <span className="text-sm font-medium">{cluster.name}</span>
       <span className="truncate text-xs text-muted-foreground">{cluster.kubeconfig}</span>
       <Select value={cluster.route} items={options} onValueChange={(id) => setRoute.mutate(id ?? "")}>
-        <SelectTrigger size="sm" className="ml-auto" title={routeStatusLabel(routeStatus)}>
+        <SelectTrigger size="sm" className="ml-auto" title={statusLabel(routeStatus)}>
           {cluster.route && <StateDot status={routeStatus} />}
           <SelectValue />
         </SelectTrigger>

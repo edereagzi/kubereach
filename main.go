@@ -34,12 +34,21 @@ func main() {
 				data, _ := json.Marshal(need)
 				return data
 			}
+			var inUse *service.PortInUseError
+			if errors.As(err, &inUse) {
+				data, _ := json.Marshal(struct {
+					Code string `json:"code"`
+					*service.PortInUseError
+				}{"port-in-use", inUse})
+				return data
+			}
 			return nil
 		},
 		Services: []application.Service{
 			application.NewService(bindings.NewConfigService(svc)),
 			application.NewService(bindings.NewClusterService(svc)),
 			application.NewService(bindings.NewRouteService(svc)),
+			application.NewService(bindings.NewForwardService(svc)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

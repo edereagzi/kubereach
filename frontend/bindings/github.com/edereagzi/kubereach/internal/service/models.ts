@@ -25,6 +25,28 @@ export interface Config {
     "version": number;
     "routes": Route[] | null;
     "clusters": Cluster[] | null;
+
+    /**
+     * Forwards are the Saved Forwards: Port Forward definitions kept across sessions.
+     */
+    "forwards": PortForward[] | null;
+}
+
+export interface ForwardStatus {
+    "forward": PortForward;
+
+    /**
+     * Pod is the backing pod the forward resolved to.
+     */
+    "pod": string;
+    "state": State;
+    "error"?: string;
+}
+
+export interface ForwardTarget {
+    "kind": TargetKind;
+    "namespace": string;
+    "name": string;
 }
 
 export interface HostKeyPrompt {
@@ -34,10 +56,35 @@ export interface HostKeyPrompt {
     "fingerprint": string;
 }
 
+export interface KubePod {
+    "namespace": string;
+    "name": string;
+    "ports": NamedPort[] | null;
+}
+
 export interface KubeService {
     "namespace": string;
     "name": string;
-    "ports": ServicePort[] | null;
+    "ports": NamedPort[] | null;
+}
+
+/**
+ * NamedPort is a service port or a container port.
+ */
+export interface NamedPort {
+    "name": string;
+    "port": number;
+}
+
+/**
+ * PortForward binds a loopback port to one service or pod port; RemotePort is the service port for services.
+ */
+export interface PortForward {
+    "id": string;
+    "clusterId": string;
+    "target": ForwardTarget;
+    "remotePort": number;
+    "localPort": number;
 }
 
 /**
@@ -66,11 +113,6 @@ export interface SSHServer {
     "keyFile": string;
 }
 
-export interface ServicePort {
-    "name": string;
-    "port": number;
-}
-
 /**
  * State is the connection state machine shared by every connection-bearing entity.
  */
@@ -86,4 +128,14 @@ export enum State {
     StateReconnecting = "reconnecting",
     StateStopped = "stopped",
     StateError = "error",
+};
+
+export enum TargetKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    TargetService = "service",
+    TargetPod = "pod",
 };

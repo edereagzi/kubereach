@@ -12,6 +12,7 @@ import type * as service$0 from "../../../../edereagzi/kubereach/internal/servic
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "forward:state": service$0.ForwardStatus;
             "route:hostkey": service$0.HostKeyPrompt;
             "route:state": service$0.RouteStatus;
         }

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -50,8 +51,8 @@ func writeKubeconfig(t *testing.T) string {
 func newFakeService(t *testing.T, objects ...runtime.Object) (*service.Service, *fake.Clientset, string) {
 	t.Helper()
 	cs := fake.NewClientset(objects...)
-	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, error) {
-		return cs, nil
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+		return cs, nil, nil
 	})
 	clusters, err := svc.ImportKubeconfigs([]string{writeKubeconfig(t)})
 	if err != nil {
@@ -190,8 +191,8 @@ func TestListing_AllNamespacesByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []service.KubeService{
-		{Namespace: "default", Name: "api", Ports: []service.ServicePort{{Name: "http", Port: 80}}},
-		{Namespace: "payments", Name: "db", Ports: []service.ServicePort{{Name: "http", Port: 5432}}},
+		{Namespace: "default", Name: "api", Ports: []service.NamedPort{{Name: "http", Port: 80}}},
+		{Namespace: "payments", Name: "db", Ports: []service.NamedPort{{Name: "http", Port: 5432}}},
 	}
 	if diff := cmp.Diff(want, services); diff != "" {
 		t.Errorf("services mismatch (-want +got):\n%s", diff)
@@ -230,7 +231,7 @@ func TestListing_ForbiddenThenExplicitNamespaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []service.KubeService{
-		{Namespace: "payments", Name: "db", Ports: []service.ServicePort{{Name: "http", Port: 5432}}},
+		{Namespace: "payments", Name: "db", Ports: []service.NamedPort{{Name: "http", Port: 5432}}},
 	}
 	if diff := cmp.Diff(want, services); diff != "" {
 		t.Errorf("services mismatch (-want +got):\n%s", diff)

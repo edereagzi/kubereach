@@ -183,16 +183,15 @@ func startAgent(t *testing.T, priv ed25519.PrivateKey) {
 	t.Setenv("SSH_AUTH_SOCK", sock)
 }
 
-// startAPIServer serves the version endpoint the reachability check calls.
+// startAPIServer serves the version endpoint the reachability check calls and the port-forward subresource.
 func startAPIServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/version" {
-			http.NotFound(w, r)
-			return
-		}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"gitVersion":"v1.30.0-test"}`))
-	}))
+	})
+	mux.HandleFunc("/api/v1/namespaces/", newTestAPI().portForwardHandler)
+	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
 }

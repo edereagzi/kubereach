@@ -43,6 +43,10 @@ func (c *ClusterService) ListServices(ctx context.Context, clusterID string) ([]
 	return c.svc.ListServices(ctx, clusterID)
 }
 
+func (c *ClusterService) ListPods(ctx context.Context, clusterID string) ([]service.KubePod, error) {
+	return c.svc.ListPods(ctx, clusterID)
+}
+
 func (c *ClusterService) SetNamespaces(clusterID string, namespaces []string) error {
 	return c.svc.SetNamespaces(clusterID, namespaces)
 }
