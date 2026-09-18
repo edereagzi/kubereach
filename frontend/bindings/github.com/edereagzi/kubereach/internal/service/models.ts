@@ -14,3 +14,14 @@ export interface Config {
     "version": number;
     "clusters": Cluster[] | null;
 }
+
+export interface KubeService {
+    "namespace": string;
+    "name": string;
+    "ports": ServicePort[] | null;
+}
+
+export interface ServicePort {
+    "name": string;
+    "port": number;
+}

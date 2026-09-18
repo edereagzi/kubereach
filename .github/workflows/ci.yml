@@ -20,6 +20,17 @@ jobs:
           version: v2.13
       - run: go test ./...
 
+  kind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: helm/kind-action@v1
+      # Only the service package is compiled here, so no GTK/WebKit is needed.
+      - run: go test -tags e2e -run E2E ./internal/service/
+
   build:
     strategy:
       fail-fast: false

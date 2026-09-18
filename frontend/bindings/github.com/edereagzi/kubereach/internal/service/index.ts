@@ -3,5 +3,7 @@
 
 export type {
     Cluster,
-    Config
+    Config,
+    KubeService,
+    ServicePort
 } from "./models.js";

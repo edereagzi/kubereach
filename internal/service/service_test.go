@@ -13,7 +13,7 @@ import (
 func newService(t *testing.T) (*service.Service, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "kubereach.yaml")
-	return service.New(path), path
+	return service.New(path, nil), path
 }
 
 func TestLoadConfig_MissingFileIsEmpty(t *testing.T) {
@@ -45,7 +45,7 @@ func TestLoadConfig_EmptyFileIsEmpty(t *testing.T) {
 }
 
 func TestSaveConfig_RoundTrip(t *testing.T) {
-	svc := service.New(filepath.Join(t.TempDir(), "nested", "kubereach.yaml"))
+	svc := service.New(filepath.Join(t.TempDir(), "nested", "kubereach.yaml"), nil)
 	want := service.Config{
 		Version: 1,
 		Clusters: []service.Cluster{{

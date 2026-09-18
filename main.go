@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"log"
 
 	"github.com/edereagzi/kubereach/internal/bindings"
@@ -17,13 +18,21 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	svc := service.New(configPath)
+	svc := service.New(configPath, nil)
 
 	app := application.New(application.Options{
 		Name:        "Kubereach",
 		Description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
+		// Sentinel errors cross to the frontend as err.cause.code so the UI never parses messages.
+		MarshalError: func(err error) []byte {
+			if errors.Is(err, service.ErrForbidden) {
+				return []byte(`{"code":"forbidden"}`)
+			}
+			return nil
+		},
 		Services: []application.Service{
 			application.NewService(bindings.NewConfigService(svc)),
+			application.NewService(bindings.NewClusterService(svc)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
