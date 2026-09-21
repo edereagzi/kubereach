@@ -41,7 +41,7 @@ export type Target = {
 // error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
 export type TargetGroup = { label: string; items: Target[]; error?: unknown };
 
-const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron" };
+export const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron" };
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {
   deploy: LogSourceKind.LogSourceDeployment,
   sts: LogSourceKind.LogSourceStatefulSet,

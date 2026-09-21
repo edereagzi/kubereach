@@ -7,6 +7,7 @@ import type { Target } from "@/components/targets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DetailTabs } from "@/components/yaml-view";
 import { podQuery } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
@@ -74,36 +75,38 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
           </DialogDescription>
         </DialogHeader>
         {pod.error && <p className="text-xs text-destructive">{String(pod.error)}</p>}
-        {d && (
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-            <Section title="Containers">
-              {d.containers?.map((c) => (
-                <Container
-                  key={c.name}
-                  container={c}
-                  onPrevious={() => startLogs.mutate({ ...target, container: c.name, previous: true }, { onSuccess: onClose })}
-                  pending={startLogs.isPending}
-                />
-              ))}
-            </Section>
-            <Section title="Conditions">
-              <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
-                {d.conditions?.map((c) => (
-                  <div key={c.type} className="contents">
-                    <dt className="font-medium">{c.type}</dt>
-                    <dd className={cn("font-mono", c.status !== "True" && "text-destructive")}>{c.status}</dd>
-                    <dd className="truncate text-muted-foreground" title={c.message}>
-                      {[c.reason, c.message].filter(Boolean).join(": ")}
-                    </dd>
-                  </div>
+        <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>
+          {d && (
+            <>
+              <Section title="Containers">
+                {d.containers?.map((c) => (
+                  <Container
+                    key={c.name}
+                    container={c}
+                    onPrevious={() => startLogs.mutate({ ...target, container: c.name, previous: true }, { onSuccess: onClose })}
+                    pending={startLogs.isPending}
+                  />
                 ))}
-              </dl>
-            </Section>
-            <Section title="Events">
-              {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
-            </Section>
-          </div>
-        )}
+              </Section>
+              <Section title="Conditions">
+                <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+                  {d.conditions?.map((c) => (
+                    <div key={c.type} className="contents">
+                      <dt className="font-medium">{c.type}</dt>
+                      <dd className={cn("font-mono", c.status !== "True" && "text-destructive")}>{c.status}</dd>
+                      <dd className="truncate text-muted-foreground" title={c.message}>
+                        {[c.reason, c.message].filter(Boolean).join(": ")}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </Section>
+              <Section title="Events">
+                {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
+              </Section>
+            </>
+          )}
+        </DetailTabs>
       </DialogContent>
     </Dialog>
   );

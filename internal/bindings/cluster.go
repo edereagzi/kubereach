@@ -86,3 +86,7 @@ func (c *ClusterService) GetConfigMap(ctx context.Context, clusterID, namespace,
 func (c *ClusterService) GetSecret(ctx context.Context, clusterID, namespace, name string) (service.KubeConfigObject, error) {
 	return c.svc.GetSecret(ctx, clusterID, namespace, name)
 }
+
+func (c *ClusterService) GetYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string, reveal bool) (string, error) {
+	return c.svc.GetYAML(ctx, clusterID, kind, namespace, name, reveal)
+}

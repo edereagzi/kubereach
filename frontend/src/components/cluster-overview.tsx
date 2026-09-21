@@ -8,6 +8,7 @@ import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
+import { YamlDialog } from "@/components/yaml-view";
 import { KindBadge, logKind, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.workload && <WorkloadDetail cluster={cluster} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "svc" && <YamlDialog cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
           <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />
@@ -208,20 +210,14 @@ function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster
       <button type="button" className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Show only ${target.kind}`} onClick={onKind}>
         <KindBadge kind={target.kind} className="hover:bg-muted-foreground/20" />
       </button>
-      {target.kind === "pod" || target.workload || target.config ? (
-        <button
-          type="button"
-          className="truncate text-left hover:underline"
-          title={target.config ? `What is in ${target.name}?` : `Why is ${target.name} in this state?`}
-          onClick={onInspect}
-        >
-          {target.name}
-        </button>
-      ) : (
-        <span className="truncate" title={target.name}>
-          {target.name}
-        </span>
-      )}
+      <button
+        type="button"
+        className="truncate text-left hover:underline"
+        title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : `Why is ${target.name} in this state?`}
+        onClick={onInspect}
+      >
+        {target.name}
+      </button>
       <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
         {target.kind === "pod" && (
           <>

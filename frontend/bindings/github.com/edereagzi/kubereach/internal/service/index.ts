@@ -4,6 +4,7 @@
 export {
     AuthMethod,
     LogSourceKind,
+    ObjectKind,
     RolloutState,
     State,
     TargetKind,

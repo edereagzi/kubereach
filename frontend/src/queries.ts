@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import type { WorkloadKind } from "@bindings/internal/service";
+import type { ObjectKind, WorkloadKind } from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
@@ -104,3 +104,12 @@ export function reachabilityLabel(status: "pending" | "error" | "success", error
   if (status === "error") return String(error);
   return version ? `API reachable, ${version}` : "API reachable";
 }
+
+// A revealed Secret's YAML is held only while shown; masked YAML caches like any other detail.
+export const yamlQuery = (clusterId: string, kind: ObjectKind, namespace: string, name: string, reveal: boolean) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "yaml", kind, namespace, name, reveal],
+    queryFn: () => ClusterService.GetYAML(clusterId, kind, namespace, name, reveal),
+    retry: false,
+    gcTime: reveal ? 0 : undefined,
+  });

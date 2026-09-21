@@ -33,6 +33,10 @@ export function GetSecret(clusterID: string, $namespace: string, name: string): 
     return $Call.ByID(4277133519, clusterID, $namespace, name);
 }
 
+export function GetYAML(clusterID: string, kind: service$0.ObjectKind, $namespace: string, name: string, reveal: boolean): $CancellablePromise<string> {
+    return $Call.ByID(2971271592, clusterID, kind, $namespace, name, reveal);
+}
+
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */

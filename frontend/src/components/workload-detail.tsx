@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, Section } from "@/components/pod-detail";
+import { workloadKind } from "@/components/targets";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DetailTabs } from "@/components/yaml-view";
 import { workloadQuery } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
@@ -42,7 +44,7 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
           <DialogDescription>{[w.kind, workloadLabel(w), d?.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ")}</DialogDescription>
         </DialogHeader>
         {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
+        <DetailTabs cluster={cluster} kind={workloadKind[w.kind] ?? "deploy"} namespace={w.namespace} name={w.name}>
           {r && (
             <Section title="Rollout">
               <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
@@ -98,7 +100,7 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
               {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
             </Section>
           )}
-        </div>
+        </DetailTabs>
       </DialogContent>
     </Dialog>
   );

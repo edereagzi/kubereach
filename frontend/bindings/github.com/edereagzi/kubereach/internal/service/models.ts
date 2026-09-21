@@ -263,6 +263,25 @@ export interface NamedPort {
     "port": number;
 }
 
+/**
+ * ObjectKind names an object GetYAML can fetch; the lowercase Kubernetes kind.
+ */
+export enum ObjectKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    ObjectPod = "pod",
+    ObjectDeployment = "deployment",
+    ObjectStatefulSet = "statefulset",
+    ObjectDaemonSet = "daemonset",
+    ObjectCronJob = "cronjob",
+    ObjectService = "service",
+    ObjectConfigMap = "configmap",
+    ObjectSecret = "secret",
+};
+
 export interface PodCondition {
     "type": string;
     "status": string;
