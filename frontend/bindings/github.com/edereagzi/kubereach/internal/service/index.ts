@@ -22,6 +22,7 @@ export type {
     ForwardTarget,
     HostKeyPrompt,
     ImportPreview,
+    KubeConfigObject,
     KubeEvent,
     KubePod,
     KubeService,

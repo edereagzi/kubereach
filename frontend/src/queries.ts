@@ -50,6 +50,29 @@ export const workloadQuery = (clusterId: string, kind: WorkloadKind, namespace: 
     retry: false,
   });
 
+export const configMapsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "configmaps"],
+    queryFn: async () => (await ClusterService.ListConfigMaps(clusterId)) ?? [],
+    retry: false,
+  });
+
+export const secretsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "secrets"],
+    queryFn: async () => (await ClusterService.ListSecrets(clusterId)) ?? [],
+    retry: false,
+  });
+
+// Secret values are held only in this query's cache and dropped as soon as the detail closes.
+export const configObjectQuery = (clusterId: string, kind: "cm" | "secret", namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, kind, namespace, name],
+    queryFn: () => (kind === "secret" ? ClusterService.GetSecret : ClusterService.GetConfigMap)(clusterId, namespace, name),
+    retry: false,
+    gcTime: kind === "secret" ? 0 : undefined,
+  });
+
 export const workloadsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "workloads"],

@@ -10,7 +10,7 @@ import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // Kinds the Overview can open a detail for; anything else is shown by name only.
-const targetKind: Record<string, Kind> = { Pod: "pod", Deployment: "deploy", StatefulSet: "sts", DaemonSet: "ds", CronJob: "cron" };
+const targetKind: Record<string, Kind> = { Pod: "pod", Deployment: "deploy", StatefulSet: "sts", DaemonSet: "ds", CronJob: "cron", ConfigMap: "cm", Secret: "secret" };
 // kubectl's short names for the kinds that fill an event stream; an unlisted kind is shown lowercased.
 const shortKind: Record<string, string> = {
   ...targetKind,
@@ -21,7 +21,6 @@ const shortKind: Record<string, string> = {
   Ingress: "ing",
   HorizontalPodAutoscaler: "hpa",
   PersistentVolumeClaim: "pvc",
-  ConfigMap: "cm",
   Endpoints: "ep",
   EndpointSlice: "eps",
   Namespace: "ns",

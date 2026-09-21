@@ -129,6 +129,22 @@ export interface ImportPreview {
 }
 
 /**
+ * KubeConfigObject is a ConfigMap or a Secret. Lists carry the keys only; Data is filled by GetConfigMap and GetSecret,
+ * so a Secret's values leave the Cluster only when one is opened. Nothing here is logged or written to disk.
+ */
+export interface KubeConfigObject {
+    "namespace": string;
+    "name": string;
+
+    /**
+     * Type is the Secret's type; empty for a ConfigMap.
+     */
+    "type"?: string;
+    "keys": string[] | null;
+    "data"?: { [_ in string]?: string } | null;
+}
+
+/**
  * KubeEvent is one event; ID is the event object's own namespace/name, so a repeated event replaces its earlier delivery.
  */
 export interface KubeEvent {

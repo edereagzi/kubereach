@@ -70,3 +70,19 @@ func (c *ClusterService) DescribePod(ctx context.Context, clusterID, namespace, 
 func (c *ClusterService) DescribeWorkload(ctx context.Context, clusterID string, kind service.WorkloadKind, namespace, name string) (service.WorkloadDiagnosis, error) {
 	return c.svc.DescribeWorkload(ctx, clusterID, kind, namespace, name)
 }
+
+func (c *ClusterService) ListConfigMaps(ctx context.Context, clusterID string) ([]service.KubeConfigObject, error) {
+	return c.svc.ListConfigMaps(ctx, clusterID)
+}
+
+func (c *ClusterService) ListSecrets(ctx context.Context, clusterID string) ([]service.KubeConfigObject, error) {
+	return c.svc.ListSecrets(ctx, clusterID)
+}
+
+func (c *ClusterService) GetConfigMap(ctx context.Context, clusterID, namespace, name string) (service.KubeConfigObject, error) {
+	return c.svc.GetConfigMap(ctx, clusterID, namespace, name)
+}
+
+func (c *ClusterService) GetSecret(ctx context.Context, clusterID, namespace, name string) (service.KubeConfigObject, error) {
+	return c.svc.GetSecret(ctx, clusterID, namespace, name)
+}

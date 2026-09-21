@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeWorkload, type NamedPort } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeWorkload, type NamedPort } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -13,10 +13,10 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { podsQuery, servicesQuery, workloadsQuery } from "@/queries";
+import { configMapsQuery, podsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "deploy" | "sts" | "ds" | "cron" | "pod";
+export type Kind = "svc" | "deploy" | "sts" | "ds" | "cron" | "pod" | "cm" | "secret";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -34,9 +34,12 @@ export type Target = {
   restarts?: number;
   // Workloads only: rollout state, or the CronJob's schedule.
   workload?: KubeWorkload;
+  // ConfigMaps and Secrets only: the keys, never the values.
+  config?: KubeConfigObject;
 };
 
-export type TargetGroup = { label: string; items: Target[] };
+// error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
+export type TargetGroup = { label: string; items: Target[]; error?: unknown };
 
 const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron" };
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {
@@ -48,10 +51,13 @@ export const logKind: Partial<Record<Kind, LogSourceKind>> = {
 export const forwardKind = (kind: Kind) => (kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod);
 export const targetValue = (kind: Kind, namespace: string, name: string) => `${kind}:${namespace}/${name}`;
 
-export function useTargets(cluster: Cluster) {
+// withConfig adds ConfigMaps and Secrets, which only the Overview lists; a role that cannot read them still gets the rest.
+export function useTargets(cluster: Cluster, withConfig = false) {
   const services = useQuery(servicesQuery(cluster.id));
   const workloads = useQuery(workloadsQuery(cluster.id));
   const pods = useQuery(podsQuery(cluster.id));
+  const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: withConfig });
+  const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: withConfig });
   const make = (kind: Kind, namespace: string, name: string, ports: NamedPort[] = [], containers: string[] = []): Target => ({
     value: targetValue(kind, namespace, name),
     label: `${namespace}/${name}`,
@@ -66,7 +72,17 @@ export function useTargets(cluster: Cluster) {
     { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
     { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts })) },
   ];
-  return { groups, error: services.error ?? workloads.error ?? pods.error, pending: services.isPending || workloads.isPending || pods.isPending };
+  if (withConfig) {
+    groups.push(
+      { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => ({ ...make("cm", c.namespace, c.name), config: c })), error: configMaps.error },
+      { label: "Secrets", items: (secrets.data ?? []).map((c) => ({ ...make("secret", c.namespace, c.name), config: c })), error: secrets.error },
+    );
+  }
+  return {
+    groups,
+    error: services.error ?? workloads.error ?? pods.error,
+    pending: services.isPending || workloads.isPending || pods.isPending || (withConfig && (configMaps.isPending || secrets.isPending)),
+  };
 }
 
 // kind is a Kind, or any short name for one the app has no row for (an event's ReplicaSet, say).

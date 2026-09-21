@@ -25,6 +25,14 @@ export function DescribeWorkload(clusterID: string, kind: service$0.WorkloadKind
     return $Call.ByID(3413420857, clusterID, kind, $namespace, name);
 }
 
+export function GetConfigMap(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.KubeConfigObject> {
+    return $Call.ByID(2292636801, clusterID, $namespace, name);
+}
+
+export function GetSecret(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.KubeConfigObject> {
+    return $Call.ByID(4277133519, clusterID, $namespace, name);
+}
+
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */
@@ -36,12 +44,20 @@ export function ImportPaths(paths: string[] | null): $CancellablePromise<service
     return $Call.ByID(3966526160, paths);
 }
 
+export function ListConfigMaps(clusterID: string): $CancellablePromise<service$0.KubeConfigObject[] | null> {
+    return $Call.ByID(2756024224, clusterID);
+}
+
 export function ListNamespaces(clusterID: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(3507898021, clusterID);
 }
 
 export function ListPods(clusterID: string): $CancellablePromise<service$0.KubePod[] | null> {
     return $Call.ByID(1789994825, clusterID);
+}
+
+export function ListSecrets(clusterID: string): $CancellablePromise<service$0.KubeConfigObject[] | null> {
+    return $Call.ByID(2427122018, clusterID);
 }
 
 export function ListServices(clusterID: string): $CancellablePromise<service$0.KubeService[] | null> {

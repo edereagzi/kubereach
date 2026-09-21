@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, State, type Cluster } from "@bindings/internal/service";
+import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel } from "@/components/pod-detail";
@@ -18,8 +19,8 @@ import { configQuery, isForbidden, namespacesQuery } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
-type Filter = "all" | "Services" | "Workloads" | "Pods" | "Problems";
-const filters: Filter[] = ["all", "Services", "Workloads", "Pods", "Problems"];
+type Filter = "all" | "Services" | "Workloads" | "Pods" | "ConfigMaps" | "Secrets" | "Problems";
+const filters: Filter[] = ["all", "Services", "Workloads", "Pods", "ConfigMaps", "Secrets", "Problems"];
 
 // Passage states a pod goes through on its way up or out; any other reason, and a stuck rollout, is a problem.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating"]);
@@ -29,7 +30,7 @@ const isProblem = (t: Target) =>
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
-  const { groups, error: listError, pending } = useTargets(cluster);
+  const { groups, error: listError, pending } = useTargets(cluster, true);
   const [editing, setEditing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [needle, setNeedle] = useState("");
@@ -97,9 +98,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       )}
       {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.workload && <WorkloadDetail cluster={cluster} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
+      {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
-          <InputGroupInput ref={search} placeholder="Filter services, workloads and pods" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput ref={search} placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
@@ -119,13 +121,20 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           <span className="text-muted-foreground/70">· Edit scope</span>
         </Button>
       </div>
+      {groups
+        .filter((g) => g.error && (filter === "all" || filter === g.label))
+        .map((g) => (
+          <p key={g.label} className="px-4 pb-1 text-xs text-muted-foreground">
+            {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${String(g.error)}`}
+          </p>
+        ))}
       <div className="min-h-0 flex-1 overflow-auto pb-4">
         {total === 0 && !pending && (
           <Empty className="border-0">
             <EmptyHeader>
               <EmptyTitle>{lower ? `Nothing matches “${needle.trim()}”` : filter === "Problems" ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {lower ? "Try a shorter name." : filter === "Problems" ? "No crash loops, pull failures, pending pods or stuck rollouts." : "This scope has no services, workloads or pods."}
+                {lower ? "Try a shorter name." : filter === "Problems" ? "No crash loops, pull failures, pending pods or stuck rollouts." : `This scope has no ${filter === "all" ? "services, workloads, pods, configmaps or secrets" : filter.toLowerCase()}.`}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -153,6 +162,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 const meta = (t: Target) => {
   if (t.kind === "svc") return portsLabel(t.ports);
   if (t.kind === "pod") return [t.containers.join(", "), portsLabel(t.ports)].filter(Boolean).join(" · ");
+  if (t.config) return [t.config.type, t.config.keys?.join(", ") || "no keys"].filter(Boolean).join(" · ");
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
@@ -179,8 +189,13 @@ function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluste
   return (
     <div className="group grid h-8 grid-cols-[44px_minmax(160px,240px)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
       <KindBadge kind={target.kind} />
-      {target.kind === "pod" || target.workload ? (
-        <button type="button" className="truncate text-left hover:underline" title={`Why is ${target.name} in this state?`} onClick={onInspect}>
+      {target.kind === "pod" || target.workload || target.config ? (
+        <button
+          type="button"
+          className="truncate text-left hover:underline"
+          title={target.config ? `What is in ${target.name}?` : `Why is ${target.name} in this state?`}
+          onClick={onInspect}
+        >
           {target.name}
         </button>
       ) : (
