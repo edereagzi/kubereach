@@ -5,29 +5,6 @@ import (
 	"slices"
 )
 
-// OverallState folds every Route and forward into one state for the tray icon:
-// error > reconnecting > connecting > connected; idle and stopped entities do not count.
-func (s *Service) OverallState() State {
-	var states []State
-	for _, r := range s.RouteStatuses() {
-		states = append(states, r.State)
-	}
-	for _, f := range s.ForwardStatuses() {
-		states = append(states, f.State)
-	}
-	switch {
-	case slices.Contains(states, StateError):
-		return StateError
-	case slices.Contains(states, StateReconnecting):
-		return StateReconnecting
-	case slices.Contains(states, StateConnecting):
-		return StateConnecting
-	case slices.Contains(states, StateConnected):
-		return StateConnected
-	}
-	return StateIdle
-}
-
 // Shutdown stops every shell, log stream, forward and Route, returning once all of them are down.
 // Saved Forwards keep their on/off state for the next launch.
 func (s *Service) Shutdown() {

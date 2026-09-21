@@ -24,6 +24,7 @@ var (
 )
 
 // Tray keeps the system tray menu in step with the service; closing the window only hides it.
+// The menu is rebuilt each time it opens, so it is always current and never changes under the cursor.
 type Tray struct {
 	app     *application.App
 	svc     *service.Service
@@ -36,6 +37,7 @@ type Tray struct {
 
 func NewTray(app *application.App, svc *service.Service, window *application.WebviewWindow, version string) *Tray {
 	t := &Tray{app: app, svc: svc, window: window, tray: app.SystemTray.New(), version: version}
+	t.tray.SetTooltip("Kubereach")
 	if runtime.GOOS == "darwin" {
 		t.tray.SetTemplateIcon(trayTemplateIcon)
 	} else {
@@ -45,71 +47,67 @@ func NewTray(app *application.App, svc *service.Service, window *application.Web
 		window.Hide()
 		e.Cancel()
 	})
-	for _, name := range []string{service.EventRouteState, service.EventForwardState, service.EventConfigChanged} {
-		app.Event.On(name, func(*application.CustomEvent) { t.Refresh() })
-	}
-	t.Refresh()
+	t.tray.OnClick(t.open)
+	t.tray.OnRightClick(t.open)
+	t.rebuild()
 	return t
 }
 
-var trayLabels = map[service.State]string{
-	service.StateIdle:         "Nothing connected",
-	service.StateConnected:    "Connected",
-	service.StateConnecting:   "Connecting",
-	service.StateReconnecting: "Reconnecting",
-	service.StateError:        "Error",
+func (t *Tray) open() {
+	t.rebuild()
+	t.tray.OpenMenu()
 }
 
-// Refresh rebuilds the menu from the current state and Saved Forwards.
-func (t *Tray) Refresh() {
+// rebuild creates the menu: every Cluster reachable through an active Route, or a direct one with an enabled forward,
+// with its enabled forwards beneath it; a forward opens in the browser.
+func (t *Tray) rebuild() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	state := t.svc.OverallState()
-	t.tray.SetTooltip("Kubereach: " + trayLabels[state])
-
-	menu := t.app.NewMenu()
-	menu.Add(trayLabels[state]).SetEnabled(false)
-	menu.AddSeparator()
 	cfg, _ := t.svc.LoadConfig()
-	bound := map[string]service.ForwardStatus{}
-	for _, st := range t.svc.ForwardStatuses() {
-		bound[st.Forward.ID] = st
-	}
-	listed := false
-	for _, c := range cfg.Clusters {
-		var sub *application.Menu
-		for _, pf := range cfg.Forwards {
-			if pf.ClusterID != c.ID {
-				continue
-			}
-			if sub == nil {
-				sub = menu.AddSubmenu(c.Name)
-				listed = true
-			}
-			label := fmt.Sprintf("%s/%s:%d → localhost:%d", pf.Target.Namespace, pf.Target.Name, pf.RemotePort, pf.LocalPort)
-			if st, ok := bound[pf.ID]; ok && st.State != service.StateIdle {
-				label += " (" + string(st.State) + ")"
-			}
-			sub.AddCheckbox(label, pf.Enabled).OnClick(func(*application.Context) { go t.report(t.svc.SetForwardEnabled(pf.ID, !pf.Enabled)) })
+	routeState := map[string]service.State{}
+	for _, st := range t.svc.RouteStatuses() {
+		if st.State != service.StateIdle && st.State != service.StateStopped {
+			routeState[st.RouteID] = st.State
 		}
 	}
-	if listed {
-		menu.AddSeparator()
+
+	menu := t.app.NewMenu()
+	listed := false
+	for _, c := range cfg.Clusters {
+		var forwards []service.PortForward
+		for _, pf := range cfg.Forwards {
+			if pf.Enabled && pf.ClusterID == c.ID {
+				forwards = append(forwards, pf)
+			}
+		}
+		// Behind a Route the Cluster is reachable only while the Route is up; a direct Cluster is running when it forwards.
+		state, viaRoute := routeState[c.RouteID]
+		if c.RouteID != "" && !viaRoute || c.RouteID == "" && len(forwards) == 0 {
+			continue
+		}
+		listed = true
+		label := c.Name
+		if viaRoute && state != service.StateConnected {
+			label += "  – " + string(state)
+		}
+		menu.Add(label).SetEnabled(false)
+		for _, pf := range forwards {
+			url := fmt.Sprintf("http://localhost:%d", pf.LocalPort)
+			menu.Add(fmt.Sprintf("    localhost:%d  %s/%s", pf.LocalPort, pf.Target.Namespace, pf.Target.Name)).
+				OnClick(func(*application.Context) { _ = t.app.Browser.OpenURL(url) })
+		}
 	}
-	menu.Add("Kubereach " + t.version).SetEnabled(false)
-	menu.Add("Show Window").OnClick(func(*application.Context) { t.window.Show().Focus() })
-	menu.Add("Quit").OnClick(func(*application.Context) { t.app.Quit() })
+	if !listed {
+		menu.Add("Nothing running").SetEnabled(false)
+	}
+	menu.AddSeparator()
+	menu.Add("Open").OnClick(func(*application.Context) { t.window.Show().Focus() })
+	menu.Add("Quit").SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { t.app.Quit() })
 
 	old := t.menu
 	t.menu = menu
 	t.tray.SetMenu(menu)
 	if old != nil {
 		old.Destroy()
-	}
-}
-
-func (t *Tray) report(err error) {
-	if err != nil {
-		t.app.Dialog.Error().SetTitle("Kubereach").SetMessage(err.Error()).Show()
 	}
 }

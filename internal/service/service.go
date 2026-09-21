@@ -48,6 +48,8 @@ func New(configPath string, clients ClientFactory) *Service {
 	}
 }
 
+func (s *Service) ConfigPath() string { return s.configPath }
+
 func (s *Service) LoadConfig() (Config, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
