@@ -39,6 +39,10 @@ type LogSource struct {
 	Namespace string        `json:"namespace"`
 	Kind      LogSourceKind `json:"kind"`
 	Name      string        `json:"name"`
+	// Container narrows a pod source to one of its containers, init containers included.
+	Container string `json:"container,omitempty"`
+	// Previous reads the last terminated run once instead of following the current one.
+	Previous bool `json:"previous,omitempty"`
 }
 
 // LogLine carries the raw text; a line that is a JSON object also carries its top-level fields as strings.
@@ -98,6 +102,9 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 	if src.Namespace == "" || src.Name == "" {
 		return LogStatus{}, errors.New("namespace and name are required")
 	}
+	if (src.Previous || src.Container != "") && src.Kind != LogSourcePod {
+		return LogStatus{}, errors.New("previous logs and a single container are read from a single pod")
+	}
 	k, err := s.clusterClient(src.ClusterID)
 	if err != nil {
 		return LogStatus{}, err
@@ -111,6 +118,14 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 			return LogStatus{}, err
 		}
 		containers = pod.Spec.Containers
+		if src.Container != "" {
+			all := slices.Concat(pod.Spec.InitContainers, pod.Spec.Containers)
+			i := slices.IndexFunc(all, func(c corev1.Container) bool { return c.Name == src.Container })
+			if i < 0 {
+				return LogStatus{}, fmt.Errorf("pod %s has no container %q", src.Name, src.Container)
+			}
+			containers = all[i : i+1]
+		}
 	case LogSourceDeployment:
 		d, err := k.client.AppsV1().Deployments(src.Namespace).Get(ctx, src.Name, metav1.GetOptions{})
 		if err != nil {
@@ -215,6 +230,11 @@ func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1c
 	<-readersDone
 	if ctx.Err() != nil {
 		s.setLogState(lc, StateStopped, nil)
+		return
+	}
+	// Readers only finish on their own when the pod is gone or a previous run has been read in full.
+	if gone == nil {
+		s.setLogState(lc, StateIdle, nil)
 		return
 	}
 	s.setLogState(lc, StateError, gone)
@@ -339,6 +359,10 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 		if apierrors.IsNotFound(err) {
 			return err
 		}
+		// A previous run is read once; a container without one is answered with 400, which is the same nothing to read.
+		if lc.status.Source.Previous && (opened || apierrors.IsBadRequest(err)) {
+			return nil
+		}
 		if opened {
 			backoff = time.Second
 		}
@@ -372,7 +396,8 @@ func (lc *logConn) openBodies(delta int) int {
 // readContainerLogs streams one follow body, reporting whether it opened. The first read tails the backlog;
 // later reads start at the last line seen. SinceTime has second precision, so the overlap is dropped here.
 func (s *Service) readContainerLogs(ctx context.Context, lc *logConn, pods corev1client.PodInterface, pod, container string, since *time.Time) (bool, error) {
-	opts := &corev1.PodLogOptions{Container: container, Follow: true, Timestamps: true}
+	previous := lc.status.Source.Previous
+	opts := &corev1.PodLogOptions{Container: container, Follow: !previous, Previous: previous, Timestamps: true}
 	cutoff := *since
 	if cutoff.IsZero() {
 		tail := int64(logTailLines)

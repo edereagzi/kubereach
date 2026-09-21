@@ -62,3 +62,7 @@ func (c *ClusterService) ListWorkloads(ctx context.Context, clusterID string) ([
 func (c *ClusterService) SetNamespaces(clusterID string, namespaces []string) error {
 	return c.svc.SetNamespaces(clusterID, namespaces)
 }
+
+func (c *ClusterService) DescribePod(ctx context.Context, clusterID, namespace, name string) (service.PodDiagnosis, error) {
+	return c.svc.DescribePod(ctx, clusterID, namespace, name)
+}

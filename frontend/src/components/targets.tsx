@@ -29,6 +29,9 @@ export type Target = {
   containers: string[];
   // Set when the row stands for one container of a pod rather than the pod itself.
   container?: string;
+  // Pods only: what is wrong, and how often it restarted.
+  reason?: string;
+  restarts?: number;
 };
 
 export type TargetGroup = { label: string; items: Target[] };
@@ -59,7 +62,7 @@ export function useTargets(cluster: Cluster) {
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).map((w) => make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name)) },
-    { label: "Pods", items: (pods.data ?? []).map((p) => make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? [])) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts })) },
   ];
   return { groups, error: services.error ?? workloads.error ?? pods.error, pending: services.isPending || workloads.isPending || pods.isPending };
 }

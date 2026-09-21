@@ -14,14 +14,14 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Toggle } from "@/components/ui/toggle";
 import { podsQuery } from "@/queries";
 import { useUIStore } from "@/store";
-import { cn } from "@/lib/utils";
+import { cn, isZeroTime } from "@/lib/utils";
 
 const sourceKind: Record<string, Kind> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", pod: "pod" };
 // One stable colour per pod name, so a pod keeps its colour while others join and leave.
 const podColors = ["text-sky-600", "text-emerald-600", "text-amber-600", "text-rose-600", "text-violet-600", "text-teal-600", "text-orange-600", "text-fuchsia-600"];
 const podColor = (pod: string) => podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hour12: false });
-const formatTime = (iso: string) => (iso.startsWith("0001") ? "" : timeFormat.format(new Date(iso)));
+const formatTime = (iso: string) => (isZeroTime(iso) ? "" : timeFormat.format(new Date(iso)));
 const lineText = (l: LogLine, showPod: boolean) => [formatTime(l.time), showPod && l.pod, l.container, l.text].filter((s) => s !== false).join("  ");
 // Structured lines colour by their level field; the key names cover the common loggers.
 const level = (l: LogLine) => (l.fields?.level ?? l.fields?.lvl ?? l.fields?.severity ?? "").toLowerCase();
@@ -39,10 +39,17 @@ export const streamFor = (streams: Record<string, LogStatus>, cluster: Cluster) 
 export function useStartLogs(cluster: Cluster) {
   const selectTab = useUIStore((s) => s.selectTab);
   return useMutation({
-    mutationFn: async (target: Target) => {
+    mutationFn: async (target: Target & { previous?: boolean }) => {
       const current = streamFor(useUIStore.getState().logStreams, cluster);
       if (current) await LogService.Stop(current.id);
-      await LogService.Start({ clusterId: cluster.id, kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod, namespace: target.namespace, name: target.name });
+      await LogService.Start({
+        clusterId: cluster.id,
+        kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod,
+        namespace: target.namespace,
+        name: target.name,
+        container: target.container,
+        previous: target.previous,
+      });
     },
     onSuccess: () => selectTab("logs"),
   });
@@ -75,6 +82,8 @@ export function Logs({ cluster }: { cluster: Cluster }) {
               {stream.source.namespace}/{stream.source.name}
             </span>
             {stream.source.kind !== LogSourceKind.LogSourcePod && <span className="text-muted-foreground">· {stream.pods?.length ?? 0} pods</span>}
+            {stream.source.container && <span className="text-muted-foreground">· {stream.source.container}</span>}
+            {stream.source.previous && <span className="text-muted-foreground">· previous run</span>}
           </>
         ) : (
           "Pick a workload or pod"

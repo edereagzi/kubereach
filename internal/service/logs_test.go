@@ -24,13 +24,19 @@ func logKey(pod, container string) string { return pod + "/" + container }
 // then the body follows a feed until the client goes away.
 func (a *testAPI) logHandler(w http.ResponseWriter, r *http.Request, pod string) {
 	container := r.URL.Query().Get("container")
-	if r.URL.Query().Get("follow") != "true" || r.URL.Query().Get("timestamps") != "true" {
-		http.Error(w, "expected follow=true&timestamps=true", http.StatusBadRequest)
+	previous := r.URL.Query().Get("previous") == "true"
+	follow := r.URL.Query().Get("follow") == "true"
+	if follow == previous || r.URL.Query().Get("timestamps") != "true" {
+		http.Error(w, "expected follow unless previous, and timestamps=true", http.StatusBadRequest)
 		return
+	}
+	key := logKey(pod, container)
+	if previous {
+		key += "/previous"
 	}
 	a.mu.Lock()
 	gone := a.gone[pod]
-	seeded := a.logs[logKey(pod, container)]
+	seeded := a.logs[key]
 	feed := a.feed(pod, container)
 	a.mu.Unlock()
 	if gone {
@@ -38,7 +44,7 @@ func (a *testAPI) logHandler(w http.ResponseWriter, r *http.Request, pod string)
 		return
 	}
 	if seeded == nil {
-		http.Error(w, "container not found", http.StatusBadRequest)
+		http.Error(w, "previous terminated container not found", http.StatusBadRequest)
 		return
 	}
 	flusher := w.(http.Flusher)
@@ -46,6 +52,9 @@ func (a *testAPI) logHandler(w http.ResponseWriter, r *http.Request, pod string)
 		_, _ = fmt.Fprintln(w, line)
 	}
 	flusher.Flush()
+	if previous {
+		return
+	}
 	for {
 		select {
 		case <-r.Context().Done():
@@ -71,11 +80,20 @@ func (a *testAPI) feed(pod, container string) chan string {
 
 // seedLogs stores backlog lines stamped one second apart, continuing from the last seeded line of any container.
 func (a *testAPI) seedLogs(pod, container string, lines ...string) {
+	a.seed(logKey(pod, container), lines)
+}
+
+// seedPreviousLogs stores the lines of the container's previous run.
+func (a *testAPI) seedPreviousLogs(pod, container string, lines ...string) {
+	a.seed(logKey(pod, container)+"/previous", lines)
+}
+
+func (a *testAPI) seed(key string, lines []string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, text := range lines {
 		stamp := logEpoch.Add(time.Duration(a.seeded) * time.Second).Format(time.RFC3339Nano)
-		a.logs[logKey(pod, container)] = append(a.logs[logKey(pod, container)], stamp+" "+text)
+		a.logs[key] = append(a.logs[key], stamp+" "+text)
 		a.seeded++
 	}
 }
@@ -417,5 +435,62 @@ func TestLogs_MissingPodFails(t *testing.T) {
 	}
 	if got := f.svc.LogStatuses(); len(got) != 0 {
 		t.Errorf("failed start left statuses %v", got)
+	}
+}
+
+func TestLogs_PreviousRunIsReadOnceAndStaysReadable(t *testing.T) {
+	f := newForwardFixture(t, twoContainerPod("default", "api-0"))
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-0", "app", "current")
+	f.api.seedPreviousLogs("api-0", "app", "panic: boom", "goroutine 1 [running]")
+	f.api.seedPreviousLogs("api-0", "sidecar", "not asked for")
+
+	src := service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "app", Previous: true}
+	stream, err := f.svc.StartLogs(context.Background(), src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stream.Containers, []string{"app"}) {
+		t.Errorf("containers = %v, want only app", stream.Containers)
+	}
+	lines := collectLogs(t, batches, stream.ID, 2)
+	if diff := cmp.Diff([]string{"app: panic: boom", "app: goroutine 1 [running]"}, texts(lines)); diff != "" {
+		t.Errorf("previous lines (-want +got):\n%s", diff)
+	}
+	ended := waitLogState(t, states, service.StateIdle)
+	if ended.Error != "" || !ended.Source.Previous {
+		t.Errorf("ended stream = %+v, want idle without error and marked previous", ended)
+	}
+	if got := f.svc.LogStatuses(); len(got) != 1 || got[0].State != service.StateIdle {
+		t.Errorf("statuses after end = %+v, want the finished stream", got)
+	}
+	if err := f.svc.StopLogs(stream.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The whole pod: the sidecar has no previous run, which the API answers with 400, and that ends its read too.
+	f.api.mu.Lock()
+	delete(f.api.logs, logKey("api-0", "sidecar")+"/previous")
+	f.api.mu.Unlock()
+	src.Container = ""
+	stream, err = f.svc.StartLogs(context.Background(), src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectLogs(t, batches, stream.ID, 2)
+	if ended := waitLogState(t, states, service.StateIdle); ended.Error != "" {
+		t.Errorf("ended stream = %+v, want idle without error", ended)
+	}
+	if err := f.svc.StopLogs(stream.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	src.Container = "nope"
+	if _, err := f.svc.StartLogs(context.Background(), src); err == nil {
+		t.Fatal("unknown container started without error")
+	}
+	src.Container, src.Kind = "", service.LogSourceDeployment
+	if _, err := f.svc.StartLogs(context.Background(), src); err == nil {
+		t.Fatal("previous logs of a workload started without error")
 	}
 }

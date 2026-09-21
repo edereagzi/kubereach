@@ -35,6 +35,13 @@ export const podsQuery = (clusterId: string) =>
     retry: false,
   });
 
+export const podQuery = (clusterId: string, namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "pod", namespace, name],
+    queryFn: () => ClusterService.DescribePod(clusterId, namespace, name),
+    retry: false,
+  });
+
 export const workloadsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "workloads"],

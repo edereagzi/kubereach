@@ -32,6 +32,34 @@ export interface Config {
     "forwards": PortForward[] | null;
 }
 
+export interface ContainerDiagnosis {
+    "name": string;
+    "init"?: boolean;
+    "image": string;
+    "ready": boolean;
+    "restarts": number;
+
+    /**
+     * State is empty when the container has never been started; LastState is the previous run, whose logs can be read.
+     */
+    "state": ContainerState;
+    "lastState"?: ContainerState | null;
+    "requests"?: { [_ in string]?: string } | null;
+    "limits"?: { [_ in string]?: string } | null;
+}
+
+/**
+ * ContainerState is one run: Status is running, waiting or terminated; ExitCode and the times apply to a terminated run.
+ */
+export interface ContainerState {
+    "status": string;
+    "reason"?: string;
+    "message"?: string;
+    "exitCode": number;
+    "startedAt": string;
+    "finishedAt": string;
+}
+
 /**
  * ForwardStatus describes a bound forward: idle until the first inbound connection, connected while a pod
  * connection is up, error when the port could not be bound or the last dial failed.
@@ -75,11 +103,25 @@ export interface ImportPreview {
     "missingPaths": string[] | null;
 }
 
+export interface KubeEvent {
+    "type": string;
+    "reason": string;
+    "message": string;
+    "count": number;
+    "time": string;
+}
+
 export interface KubePod {
     "namespace": string;
     "name": string;
     "containers": string[] | null;
     "ports": NamedPort[] | null;
+
+    /**
+     * Reason is what is wrong with the pod, empty when nothing is; see PodReason.
+     */
+    "reason"?: string;
+    "restarts": number;
 }
 
 export interface KubeService {
@@ -121,6 +163,16 @@ export interface LogSource {
     "namespace": string;
     "kind": LogSourceKind;
     "name": string;
+
+    /**
+     * Container narrows a pod source to one of its containers, init containers included.
+     */
+    "container"?: string;
+
+    /**
+     * Previous reads the last terminated run once instead of following the current one.
+     */
+    "previous"?: boolean;
 }
 
 export enum LogSourceKind {
@@ -154,6 +206,32 @@ export interface LogStatus {
 export interface NamedPort {
     "name": string;
     "port": number;
+}
+
+export interface PodCondition {
+    "type": string;
+    "status": string;
+    "reason"?: string;
+    "message"?: string;
+}
+
+/**
+ * PodDiagnosis is why a pod is in its state: phase, conditions, each container's state and the pod's events newest first.
+ */
+export interface PodDiagnosis {
+    "namespace": string;
+    "name": string;
+    "phase": string;
+    "reason": string;
+    "node": string;
+    "conditions": PodCondition[] | null;
+    "containers": ContainerDiagnosis[] | null;
+
+    /**
+     * Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.
+     */
+    "events": KubeEvent[] | null;
+    "eventsError"?: string;
 }
 
 /**

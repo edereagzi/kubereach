@@ -44,6 +44,9 @@ type KubePod struct {
 	Name       string      `json:"name"`
 	Containers []string    `json:"containers"`
 	Ports      []NamedPort `json:"ports"`
+	// Reason is what is wrong with the pod, empty when nothing is; see PodReason.
+	Reason   string `json:"reason,omitempty"`
+	Restarts int32  `json:"restarts"`
 }
 
 // kube is one Cluster's clientset and REST config, built per call so dialing always uses the Route's live connection.
@@ -216,7 +219,7 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 			return nil, wrapForbidden(err)
 		}
 		for _, pod := range list.Items {
-			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers)}
+			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(&pod), Restarts: podRestarts(&pod)}
 			for _, c := range pod.Spec.Containers {
 				for _, p := range c.Ports {
 					kp.Ports = append(kp.Ports, NamedPort{Name: p.Name, Port: p.ContainerPort})

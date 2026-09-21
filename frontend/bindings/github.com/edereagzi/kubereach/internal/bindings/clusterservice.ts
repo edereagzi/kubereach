@@ -17,6 +17,10 @@ export function Delete(clusterID: string): $CancellablePromise<void> {
     return $Call.ByID(2664650794, clusterID);
 }
 
+export function DescribePod(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.PodDiagnosis> {
+    return $Call.ByID(4197865875, clusterID, $namespace, name);
+}
+
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */
