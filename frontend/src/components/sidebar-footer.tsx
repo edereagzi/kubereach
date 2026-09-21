@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { ConfigService } from "@bindings/internal/bindings";
+import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { AppService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +44,10 @@ export function SidebarFooter() {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <AppearanceMenu />
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => AppService.ShowAbout()}>
+            <InfoIcon /> About Kubereach
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {error && <p className="px-2 pb-1 text-xs text-destructive">{String(error)}</p>}

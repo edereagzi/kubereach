@@ -26,17 +26,16 @@ var (
 // Tray keeps the system tray menu in step with the service; closing the window only hides it.
 // The menu is rebuilt each time it opens, so it is always current and never changes under the cursor.
 type Tray struct {
-	app     *application.App
-	svc     *service.Service
-	window  *application.WebviewWindow
-	tray    *application.SystemTray
-	mu      sync.Mutex
-	menu    *application.Menu
-	version string
+	app    *application.App
+	svc    *service.Service
+	window *application.WebviewWindow
+	tray   *application.SystemTray
+	mu     sync.Mutex
+	menu   *application.Menu
 }
 
-func NewTray(app *application.App, svc *service.Service, window *application.WebviewWindow, version string) *Tray {
-	t := &Tray{app: app, svc: svc, window: window, tray: app.SystemTray.New(), version: version}
+func NewTray(app *application.App, svc *service.Service, window *application.WebviewWindow) *Tray {
+	t := &Tray{app: app, svc: svc, window: window, tray: app.SystemTray.New()}
 	t.tray.SetTooltip("Kubereach")
 	if runtime.GOOS == "darwin" {
 		t.tray.SetTemplateIcon(trayTemplateIcon)

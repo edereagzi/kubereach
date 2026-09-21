@@ -80,8 +80,11 @@ func main() {
 		Height: 760,
 		URL:    "/",
 	})
-	bindings.NewTray(app, svc, window, version)
+	bindings.NewTray(app, svc, window)
 	app.RegisterService(application.NewService(bindings.NewWindowTheme(app, window)))
+	appSvc := bindings.NewAppService(app, version, configPath)
+	bindings.InstallMenu(app, appSvc.ShowAbout)
+	app.RegisterService(application.NewService(appSvc))
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
