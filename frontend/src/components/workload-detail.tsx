@@ -1,9 +1,10 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, CopyIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, Section } from "@/components/pod-detail";
 import { Badge } from "@/components/ui/badge";
+import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { workloadQuery } from "@/queries";
@@ -72,9 +73,7 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
                       <span className="truncate" title={c.image}>
                         {c.image}
                       </span>
-                      <Button variant="ghost" size="icon-xs" title="Copy image" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => navigator.clipboard.writeText(c.image)}>
-                        <CopyIcon />
-                      </Button>
+                      <CopyButton text={c.image} title="Copy image" />
                     </dd>
                   </Fragment>
                 ))}

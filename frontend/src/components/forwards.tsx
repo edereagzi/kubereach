@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, CopyIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
 import { ForwardService } from "@bindings/internal/bindings";
 import { State, TargetKind, type Cluster, type ForwardStatus, type PortForward } from "@bindings/internal/service";
+import { CopyButton } from "@/components/copy-button";
 import { StateDot } from "@/components/routes";
 import { forwardKind, KindBadge, portsLabel, TargetPicker, targetValue, useTargets, type Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
@@ -150,15 +151,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
             {address}
             <ArrowRightIcon className="size-3 text-muted-foreground" />
             {forward.remotePort}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              title="Copy address"
-              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-              onClick={() => navigator.clipboard.writeText(address)}
-            >
-              <CopyIcon />
-            </Button>
+            <CopyButton text={address} title="Copy address" />
           </>
         )}
       </span>
