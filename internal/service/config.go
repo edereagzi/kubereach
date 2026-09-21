@@ -71,6 +71,10 @@ func loadConfig(path string) (Config, error) {
 	if len(data) == 0 {
 		return Config{Version: ConfigVersion}, nil
 	}
+	return parseConfig(path, data)
+}
+
+func parseConfig(path string, data []byte) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse %s: %w", path, err)

@@ -3,6 +3,7 @@ import { ArrowsClockwiseIcon, CubeIcon, FolderOpenIcon, WarningIcon } from "@pho
 import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
+import { ImportExport } from "@/components/import-export";
 import { PortForwards } from "@/components/forwards";
 import { Logs } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
@@ -52,6 +53,7 @@ export function Shell() {
           <ClusterList />
         </div>
         <RouteList />
+        <ImportExport />
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <ClusterTabs />

@@ -9,6 +9,31 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as service$0 from "../service/models.js";
 
+/**
+ * Export asks where to save and writes the configuration there; "" when cancelled.
+ */
+export function Export(): $CancellablePromise<string> {
+    return $Call.ByID(69441191);
+}
+
+export function Import(path: string, remap: { [_ in string]?: string } | null): $CancellablePromise<void> {
+    return $Call.ByID(3750031176, path, remap);
+}
+
+/**
+ * InspectImport opens the native file picker and previews the chosen file; nil when cancelled.
+ */
+export function InspectImport(): $CancellablePromise<service$0.ImportPreview | null> {
+    return $Call.ByID(1789456490);
+}
+
 export function Load(): $CancellablePromise<service$0.Config> {
     return $Call.ByID(4188282093);
+}
+
+/**
+ * PickPath opens the native file picker in the home directory and returns the chosen path, or "" when cancelled.
+ */
+export function PickPath(title: string): $CancellablePromise<string> {
+    return $Call.ByID(3876564131, title);
 }

@@ -14,6 +14,7 @@ export type {
     ForwardStatus,
     ForwardTarget,
     HostKeyPrompt,
+    ImportPreview,
     KubePod,
     KubeService,
     KubeWorkload,

@@ -60,6 +60,19 @@ export interface HostKeyPrompt {
     "fingerprint": string;
 }
 
+/**
+ * ImportPreview is what ImportConfig would add from a file: entries whose ID is not configured yet, how many
+ * were skipped as duplicates, and every kubeconfig or key path in the new entries that does not exist locally.
+ */
+export interface ImportPreview {
+    "path": string;
+    "routes": Route[] | null;
+    "clusters": Cluster[] | null;
+    "forwards": PortForward[] | null;
+    "duplicates": number;
+    "missingPaths": string[] | null;
+}
+
 export interface KubePod {
     "namespace": string;
     "name": string;

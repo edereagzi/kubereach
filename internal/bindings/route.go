@@ -65,9 +65,14 @@ func (r *RouteService) PickKeyFile() (string, error) {
 
 func pickInSSHDir(title string) (string, error) {
 	home, _ := os.UserHomeDir()
+	return pickFile(title, filepath.Join(home, ".ssh"))
+}
+
+// pickFile opens the native file picker in dir and returns the chosen path, or "" when cancelled.
+func pickFile(title, dir string) (string, error) {
 	return application.Get().Dialog.OpenFile().
 		SetTitle(title).
-		SetDirectory(filepath.Join(home, ".ssh")).
+		SetDirectory(dir).
 		ShowHiddenFiles(true).
 		PromptForSingleSelection()
 }
