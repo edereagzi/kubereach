@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { AppService, ConfigService } from "@bindings/internal/bindings";
+import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,15 +16,22 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
 
 // Settings is a menu rather than a screen: everything about Kubereach itself rather than a Cluster or a Route.
 export function SidebarFooter() {
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const preview = useUIStore((s) => s.importPreviews[0]);
+  const pushImportPreviews = useUIStore((s) => s.pushImportPreviews);
+  const shiftImportPreview = useUIStore((s) => s.shiftImportPreview);
   const exportConfig = useMutation({ mutationFn: () => ConfigService.Export() });
   const inspect = useMutation({
-    mutationFn: () => ConfigService.InspectImport(),
-    onSuccess: (p) => setPreview(p),
+    mutationFn: async () => {
+      const p = await ConfigService.InspectImport();
+      if (p?.kubeconfig) throw new Error(`${p.path} is a kubeconfig, not a Kubereach export`);
+      return p;
+    },
+    onSuccess: (p) => p && pushImportPreviews([p]),
   });
   const error = exportConfig.error ?? inspect.error;
 
@@ -44,10 +51,6 @@ export function SidebarFooter() {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <AppearanceMenu />
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => AppService.ShowAbout()}>
-            <InfoIcon /> About Kubereach
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {error && <p className="px-2 pb-1 text-xs text-destructive">{String(error)}</p>}
@@ -56,7 +59,7 @@ export function SidebarFooter() {
           Exported to {exportConfig.data}
         </p>
       )}
-      {preview && <ImportDialog preview={preview} onClose={() => setPreview(null)} />}
+      {preview && <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />}
     </div>
   );
 }

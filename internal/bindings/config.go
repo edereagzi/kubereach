@@ -48,6 +48,10 @@ func (c *ConfigService) InspectImport() (*service.ImportPreview, error) {
 	return &preview, nil
 }
 
+func (c *ConfigService) InspectPath(path string) (service.ImportPreview, error) {
+	return c.svc.InspectImport(path)
+}
+
 func (c *ConfigService) Import(path string, remap map[string]string) error {
 	return c.svc.ImportConfig(path, remap)
 }

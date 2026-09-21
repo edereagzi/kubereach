@@ -11,7 +11,7 @@ import (
 
 const repoURL = "https://github.com/edereagzi/kubereach"
 
-// AppService is what the Settings menu needs about Kubereach itself.
+// AppService holds what the About dialog shows about Kubereach itself.
 type AppService struct {
 	app        *application.App
 	version    string

@@ -63,9 +63,11 @@ export interface HostKeyPrompt {
 /**
  * ImportPreview is what ImportConfig would add from a file: entries whose ID is not configured yet, how many
  * were skipped as duplicates, and every kubeconfig or key path in the new entries that does not exist locally.
+ * A file without the export schema is a kubeconfig; only Path and Kubeconfig are set then.
  */
 export interface ImportPreview {
     "path": string;
+    "kubeconfig": boolean;
     "routes": Route[] | null;
     "clusters": Cluster[] | null;
     "forwards": PortForward[] | null;

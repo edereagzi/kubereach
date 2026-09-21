@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"os"
 	"slices"
+
+	"github.com/goccy/go-yaml"
 )
 
 // ImportPreview is what ImportConfig would add from a file: entries whose ID is not configured yet, how many
 // were skipped as duplicates, and every kubeconfig or key path in the new entries that does not exist locally.
+// A file without the export schema is a kubeconfig; only Path and Kubeconfig are set then.
 type ImportPreview struct {
 	Path         string        `json:"path"`
+	Kubeconfig   bool          `json:"kubeconfig"`
 	Routes       []Route       `json:"routes"`
 	Clusters     []Cluster     `json:"clusters"`
 	Forwards     []PortForward `json:"forwards"`
@@ -43,6 +47,9 @@ func previewImport(cfg Config, path string) (ImportPreview, error) {
 	if err != nil {
 		return ImportPreview{}, err
 	}
+	if !isExport(data) {
+		return ImportPreview{Path: path, Kubeconfig: true}, nil
+	}
 	in, err := parseConfig(path, data)
 	if err != nil {
 		return ImportPreview{}, err
@@ -74,6 +81,14 @@ func previewImport(cfg Config, path string) (ImportPreview, error) {
 		p.Forwards = append(p.Forwards, f)
 	}
 	return p, nil
+}
+
+// isExport reports whether data carries the export schema: a top-level version, which a kubeconfig never has.
+func isExport(data []byte) bool {
+	var probe struct {
+		Version int `yaml:"version"`
+	}
+	return yaml.Unmarshal(data, &probe) == nil && probe.Version != 0
 }
 
 // noteMissing appends path to missing when it is set, not yet listed and absent from the local disk.

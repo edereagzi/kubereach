@@ -31,6 +31,14 @@ func (c *ClusterService) Import() ([]service.Cluster, error) {
 	return c.svc.ImportKubeconfigs(paths)
 }
 
+func (c *ClusterService) ImportPaths(paths []string) ([]service.Cluster, error) {
+	return c.svc.ImportKubeconfigs(paths)
+}
+
+func (c *ClusterService) Delete(clusterID string) error {
+	return c.svc.DeleteCluster(clusterID)
+}
+
 func (c *ClusterService) CheckReachability(ctx context.Context, clusterID string) (string, error) {
 	return c.svc.CheckReachability(ctx, clusterID)
 }

@@ -27,6 +27,10 @@ export function InspectImport(): $CancellablePromise<service$0.ImportPreview | n
     return $Call.ByID(1786347306);
 }
 
+export function InspectPath(path: string): $CancellablePromise<service$0.ImportPreview> {
+    return $Call.ByID(2971576276, path);
+}
+
 export function Load(): $CancellablePromise<service$0.Config> {
     return $Call.ByID(2848347053);
 }

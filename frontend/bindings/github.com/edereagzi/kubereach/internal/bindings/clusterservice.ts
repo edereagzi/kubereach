@@ -13,11 +13,19 @@ export function CheckReachability(clusterID: string): $CancellablePromise<string
     return $Call.ByID(273405860, clusterID);
 }
 
+export function Delete(clusterID: string): $CancellablePromise<void> {
+    return $Call.ByID(2664650794, clusterID);
+}
+
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */
 export function Import(): $CancellablePromise<service$0.Cluster[] | null> {
     return $Call.ByID(469537716);
+}
+
+export function ImportPaths(paths: string[] | null): $CancellablePromise<service$0.Cluster[] | null> {
+    return $Call.ByID(3966526160, paths);
 }
 
 export function ListNamespaces(clusterID: string): $CancellablePromise<string[] | null> {

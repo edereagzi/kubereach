@@ -3,6 +3,7 @@ import {
   State,
   type ForwardStatus,
   type HostKeyPrompt,
+  type ImportPreview,
   type LogBatch,
   type LogLine,
   type LogStatus,
@@ -41,6 +42,10 @@ interface UIState {
   hostKeyPrompts: HostKeyPrompt[];
   addHostKeyPrompt: (prompt: HostKeyPrompt) => void;
   removeHostKeyPrompt: (routeId: string) => void;
+  // Export files waiting for the import dialog, shown one at a time.
+  importPreviews: ImportPreview[];
+  pushImportPreviews: (previews: ImportPreview[]) => void;
+  shiftImportPreview: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -101,4 +106,10 @@ export const useUIStore = create<UIState>((set) => ({
   addHostKeyPrompt: (prompt) => set((s) => ({ hostKeyPrompts: [...s.hostKeyPrompts, prompt] })),
   removeHostKeyPrompt: (routeId) =>
     set((s) => ({ hostKeyPrompts: s.hostKeyPrompts.filter((p) => p.routeId !== routeId) })),
+  importPreviews: [],
+  pushImportPreviews: (previews) =>
+    set((s) => ({
+      importPreviews: [...s.importPreviews, ...previews.filter((p) => !s.importPreviews.some((q) => q.path === p.path))],
+    })),
+  shiftImportPreview: () => set((s) => ({ importPreviews: s.importPreviews.slice(1) })),
 }));

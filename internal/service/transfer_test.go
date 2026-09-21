@@ -129,3 +129,18 @@ func TestInspectImport_RejectsUnknownVersion(t *testing.T) {
 		t.Fatal("absent file accepted")
 	}
 }
+
+func TestInspectImport_DetectsKubeconfigByContent(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "export.yaml")
+	if err := os.WriteFile(file, []byte(twoContextKubeconfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, _ := newService(t)
+	preview, err := svc.InspectImport(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preview.Kubeconfig || preview.Path != file {
+		t.Errorf("preview = %+v, want kubeconfig at %s", preview, file)
+	}
+}

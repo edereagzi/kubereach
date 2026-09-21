@@ -9,6 +9,7 @@ import (
 	"github.com/edereagzi/kubereach/internal/bindings"
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -75,16 +76,18 @@ func main() {
 	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "Kubereach",
-		Width:  1200,
-		Height: 760,
-		URL:    "/",
+		Title:          "Kubereach",
+		Width:          1200,
+		Height:         760,
+		URL:            "/",
+		EnableFileDrop: true,
+	})
+	window.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		app.Event.Emit("files:dropped", e.Context().DroppedFiles())
 	})
 	bindings.NewTray(app, svc, window)
 	app.RegisterService(application.NewService(bindings.NewWindowTheme(app, window)))
-	appSvc := bindings.NewAppService(app, version, configPath)
-	bindings.InstallMenu(app, appSvc.ShowAbout)
-	app.RegisterService(application.NewService(appSvc))
+	bindings.InstallMenu(app, bindings.NewAppService(app, version, configPath).ShowAbout)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

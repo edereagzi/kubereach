@@ -99,6 +99,50 @@ func (s *Service) ImportKubeconfigs(paths []string) ([]Cluster, error) {
 	return added, s.saveConfig(cfg)
 }
 
+// DeleteCluster stops the Cluster's log streams and shells, releases and forgets its Saved Forwards, then forgets the Cluster.
+func (s *Service) DeleteCluster(clusterID string) error {
+	s.mu.Lock()
+	var logs, shells []string
+	for id, lc := range s.logs {
+		lc.mu.Lock()
+		if lc.status.Source.ClusterID == clusterID {
+			logs = append(logs, id)
+		}
+		lc.mu.Unlock()
+	}
+	for id, sc := range s.shells {
+		sc.mu.Lock()
+		if sc.status.Target.ClusterID == clusterID {
+			shells = append(shells, id)
+		}
+		sc.mu.Unlock()
+	}
+	s.mu.Unlock()
+	for _, id := range logs {
+		_ = s.StopLogs(id)
+	}
+	for _, id := range shells {
+		_ = s.StopShell(id)
+	}
+	return s.editForwards(func(cfg *Config) ([]PortForward, error) {
+		i, err := findCluster(*cfg, clusterID)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Clusters = slices.Delete(cfg.Clusters, i, i+1)
+		var gone []PortForward
+		cfg.Forwards = slices.DeleteFunc(cfg.Forwards, func(f PortForward) bool {
+			if f.ClusterID != clusterID {
+				return false
+			}
+			f.Enabled = false
+			gone = append(gone, f)
+			return true
+		})
+		return gone, nil
+	})
+}
+
 // CheckReachability returns the API server version, or an error if it cannot be reached.
 func (s *Service) CheckReachability(ctx context.Context, clusterID string) (string, error) {
 	k, err := s.clusterClient(clusterID)

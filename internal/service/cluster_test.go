@@ -252,3 +252,40 @@ func TestSetNamespaces_UnknownCluster(t *testing.T) {
 		t.Fatal("expected error for unknown cluster")
 	}
 }
+
+func TestDeleteCluster_DropsItsForwards(t *testing.T) {
+	svc, _ := newService(t)
+	clusters, err := svc.ImportKubeconfigs([]string{writeKubeconfig(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := svc.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := service.ForwardTarget{Kind: service.TargetPod, Namespace: "default", Name: "p"}
+	cfg.Forwards = []service.PortForward{
+		{ID: "f1", ClusterID: clusters[0].ID, Target: target, RemotePort: 80, LocalPort: 20000},
+		{ID: "f2", ClusterID: clusters[1].ID, Target: target, RemotePort: 80, LocalPort: 20001},
+	}
+	if err := svc.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.DeleteCluster(clusters[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Clusters) != 1 || got.Clusters[0].ID != clusters[1].ID {
+		t.Errorf("clusters = %+v, want only %s", got.Clusters, clusters[1].ID)
+	}
+	if len(got.Forwards) != 1 || got.Forwards[0].ID != "f2" {
+		t.Errorf("forwards = %+v, want only f2", got.Forwards)
+	}
+	if err := svc.DeleteCluster(clusters[0].ID); err == nil {
+		t.Fatal("deleting an unknown cluster succeeded")
+	}
+}

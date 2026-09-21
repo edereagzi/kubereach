@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, CubeIcon, PlusIcon, WarningIcon } from "@phosphor-icons/react";
-import { ClusterService, RouteService } from "@bindings/internal/bindings";
+import { ArrowsClockwiseIcon, CubeIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
+import { Events } from "@wailsio/runtime";
+import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
 import { PortForwards } from "@/components/forwards";
@@ -22,6 +24,19 @@ export function Shell() {
     mutationFn: () => ClusterService.Import(),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
   });
+  // Dropped export files queue up for the import dialog; everything else is imported as a kubeconfig in one go.
+  const pushImportPreviews = useUIStore((s) => s.pushImportPreviews);
+  const importDropped = useMutation({
+    mutationFn: async (paths: string[]) => {
+      const previews = await Promise.all(paths.map((p) => ConfigService.InspectPath(p)));
+      pushImportPreviews(previews.filter((p) => !p.kubeconfig));
+      const kubeconfigs = previews.filter((p) => p.kubeconfig).map((p) => p.path);
+      return kubeconfigs.length > 0 ? ClusterService.ImportPaths(kubeconfigs) : null;
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
+  });
+  useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
+  const importError = importKubeconfig.error ?? importDropped.error;
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -46,9 +61,7 @@ export function Shell() {
             <PlusIcon />
           </Button>
         </div>
-        {importKubeconfig.error && (
-          <p className="px-4 py-1 text-xs text-destructive">{String(importKubeconfig.error)}</p>
-        )}
+        {importError && <p className="px-4 py-1 text-xs text-destructive">{String(importError)}</p>}
         <div className="min-h-0 flex-1 overflow-auto">
           <ClusterList />
           <RouteList />
@@ -187,6 +200,14 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
     mutationFn: (routeId: string) => RouteService.SetClusterRoute(cluster.id, routeId),
     onSuccess: () => queryClient.invalidateQueries(),
   });
+  const selectCluster = useUIStore((s) => s.selectCluster);
+  const remove = useMutation({
+    mutationFn: () => ClusterService.Delete(cluster.id),
+    onSuccess: () => {
+      selectCluster(null);
+      queryClient.invalidateQueries();
+    },
+  });
   return (
     <div className="flex h-14 items-center gap-3 px-4">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
@@ -225,6 +246,10 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
         />
         {status === "pending" ? "Checking…" : status === "error" ? "Unreachable" : version || "Reachable"}
       </span>
+      {remove.error && <span className="max-w-48 truncate text-xs text-destructive">{String(remove.error)}</span>}
+      <Button variant="ghost" size="icon-sm" title="Remove cluster" disabled={remove.isPending} onClick={() => remove.mutate()}>
+        <TrashIcon />
+      </Button>
     </div>
   );
 }
