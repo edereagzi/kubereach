@@ -23,6 +23,7 @@ const podColors = ["text-sky-600", "text-emerald-600", "text-amber-600", "text-r
 const podColor = (pod: string) => podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hour12: false });
 const formatTime = (iso: string) => (iso.startsWith("0001") ? "" : timeFormat.format(new Date(iso)));
+const lineText = (l: LogLine, showPod: boolean) => [formatTime(l.time), showPod && l.pod, l.container, l.text].filter((s) => s !== false).join("  ");
 
 export function Logs({ cluster }: { cluster: Cluster }) {
   const pods = useQuery(podsQuery(cluster.id));
@@ -184,6 +185,8 @@ function LogView({ streamId, containers, pods, showPod }: { streamId: string; co
 function LogList({ lines, version, follow, showPod }: { lines: LogLine[]; version: number; follow: boolean; showPod: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  // Only the rows in view exist in the DOM, so Select All is remembered and Copy writes every line itself.
+  const allSelected = useRef(false);
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => parentRef.current,
@@ -198,10 +201,24 @@ function LogList({ lines, version, follow, showPod }: { lines: LogLine[]; versio
   return (
     <div
       ref={parentRef}
-      className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 font-mono text-xs"
+      tabIndex={0}
+      className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       onScroll={(e) => {
         const el = e.currentTarget;
         atBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+      }}
+      onMouseDown={() => (allSelected.current = false)}
+      onKeyDown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+          e.preventDefault();
+          window.getSelection()?.selectAllChildren(e.currentTarget);
+          allSelected.current = true;
+        }
+      }}
+      onCopy={(e) => {
+        if (!allSelected.current) return;
+        e.preventDefault();
+        e.clipboardData.setData("text/plain", lines.map((l) => lineText(l, showPod)).join("\n"));
       }}
     >
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
