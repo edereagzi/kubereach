@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { State, type Cluster } from "@bindings/internal/service";
+import { RolloutState, State, type Cluster } from "@bindings/internal/service";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel } from "@/components/pod-detail";
@@ -18,7 +18,13 @@ import { configQuery, isForbidden, namespacesQuery } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
-type Filter = "all" | "Services" | "Workloads" | "Pods";
+type Filter = "all" | "Services" | "Workloads" | "Pods" | "Problems";
+const filters: Filter[] = ["all", "Services", "Workloads", "Pods", "Problems"];
+
+// Passage states a pod goes through on its way up or out; any other reason, and a stuck rollout, is a problem.
+const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating"]);
+const isProblem = (t: Target) =>
+  t.kind === "pod" ? !!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")) : t.workload?.rollout?.state === RolloutState.RolloutStuck;
 
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
@@ -70,8 +76,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 
   const lower = needle.trim().toLowerCase();
   const shown = groups
-    .filter((g) => filter === "all" || g.label === filter)
-    .map((g) => ({ ...g, items: g.items.filter((t) => !lower || t.label.toLowerCase().includes(lower)) }));
+    .filter((g) => filter === "all" || filter === "Problems" || g.label === filter)
+    .map((g) => ({ ...g, items: g.items.filter((t) => (filter !== "Problems" || isProblem(t)) && (!lower || t.label.toLowerCase().includes(lower))) }));
   const byNamespace = new Map<string, TargetGroup[]>();
   for (const ns of namespaces.data ?? []) byNamespace.set(ns, []);
   for (const g of shown) {
@@ -102,7 +108,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           </InputGroupAddon>
         </InputGroup>
         <ToggleGroup value={[filter]} onValueChange={(v) => setFilter((v[0] as Filter) ?? "all")} variant="outline" size="sm" spacing={0}>
-          {(["all", "Services", "Workloads", "Pods"] as const).map((f) => (
+          {filters.map((f) => (
             <ToggleGroupItem key={f} value={f}>
               {f === "all" ? "All" : f}
             </ToggleGroupItem>
@@ -117,8 +123,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         {total === 0 && !pending && (
           <Empty className="border-0">
             <EmptyHeader>
-              <EmptyTitle>{lower ? `Nothing matches “${needle.trim()}”` : "Nothing to show"}</EmptyTitle>
-              <EmptyDescription>{lower ? "Try a shorter name." : "This scope has no services, workloads or pods."}</EmptyDescription>
+              <EmptyTitle>{lower ? `Nothing matches “${needle.trim()}”` : filter === "Problems" ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
+              <EmptyDescription>
+                {lower ? "Try a shorter name." : filter === "Problems" ? "No crash loops, pull failures, pending pods or stuck rollouts." : "This scope has no services, workloads or pods."}
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
