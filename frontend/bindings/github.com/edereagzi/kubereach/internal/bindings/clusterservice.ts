@@ -72,6 +72,14 @@ export function ListWorkloads(clusterID: string): $CancellablePromise<service$0.
     return $Call.ByID(1696905001, clusterID);
 }
 
+export function NodeMetrics(clusterID: string): $CancellablePromise<service$0.NodeMetrics> {
+    return $Call.ByID(2035447726, clusterID);
+}
+
+export function PodMetrics(clusterID: string): $CancellablePromise<service$0.PodMetrics> {
+    return $Call.ByID(1371814305, clusterID);
+}
+
 export function SetNamespaces(clusterID: string, namespaces: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(1583854951, clusterID, namespaces);
 }

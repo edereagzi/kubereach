@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import type { ObjectKind, WorkloadKind } from "@bindings/internal/service";
+import type { ObjectKind, PodMetrics, PodUsage, WorkloadKind } from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
@@ -33,6 +33,17 @@ export const podsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "pods"],
     queryFn: async () => (await ClusterService.ListPods(clusterId)) ?? [],
+    retry: false,
+  });
+
+// A Cluster without metrics-server yields an empty map, and the usage columns stay out.
+export const podUsageKey = (namespace: string, name: string) => `${namespace}/${name}`;
+const indexPodMetrics = (m: PodMetrics) => new Map((m.pods ?? []).map((p): [string, PodUsage] => [podUsageKey(p.namespace, p.name), p]));
+export const podMetricsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "pod-metrics"],
+    queryFn: () => ClusterService.PodMetrics(clusterId),
+    select: indexPodMetrics,
     retry: false,
   });
 

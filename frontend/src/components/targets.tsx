@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeWorkload, type NamedPort } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeWorkload, type NamedPort, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -29,9 +29,11 @@ export type Target = {
   containers: string[];
   // Set when the row stands for one container of a pod rather than the pod itself.
   container?: string;
-  // Pods only: what is wrong, and how often it restarted.
+  // Pods only: what is wrong, how often it restarted, and what its containers ask for.
   reason?: string;
   restarts?: number;
+  requests?: ResourceUsage;
+  limits?: ResourceUsage;
   // Workloads only: rollout state, or the CronJob's schedule.
   workload?: KubeWorkload;
   // ConfigMaps and Secrets only: the keys, never the values.
@@ -70,7 +72,7 @@ export function useTargets(cluster: Cluster, withConfig = false) {
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts })) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, requests: p.requests, limits: p.limits })) },
   ];
   if (withConfig) {
     groups.push(

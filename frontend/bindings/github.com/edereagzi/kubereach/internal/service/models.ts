@@ -174,6 +174,12 @@ export interface KubePod {
      */
     "reason"?: string;
     "restarts": number;
+
+    /**
+     * Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
+     */
+    "requests": ResourceUsage;
+    "limits": ResourceUsage;
 }
 
 export interface KubeService {
@@ -263,6 +269,16 @@ export interface NamedPort {
     "port": number;
 }
 
+export interface NodeMetrics {
+    "available": boolean;
+    "nodes": NodeUsage[] | null;
+}
+
+export interface NodeUsage {
+    "name": string;
+    "usage": ResourceUsage;
+}
+
 /**
  * ObjectKind names an object GetYAML can fetch; the lowercase Kubernetes kind.
  */
@@ -309,6 +325,21 @@ export interface PodDiagnosis {
 }
 
 /**
+ * PodMetrics and NodeMetrics are what metrics-server reports; Available is false when the Cluster has no metrics.k8s.io.
+ */
+export interface PodMetrics {
+    "available": boolean;
+    "pods": PodUsage[] | null;
+}
+
+export interface PodUsage {
+    "namespace": string;
+    "name": string;
+    "usage": ResourceUsage;
+    "containers": { [_ in string]?: ResourceUsage } | null;
+}
+
+/**
  * PortForward binds a loopback port to one service or pod port; RemotePort is the service port for services.
  * A zero LocalPort is assigned by SaveForward; Enabled is whether the port is bound whenever Kubereach runs.
  */
@@ -319,6 +350,14 @@ export interface PortForward {
     "remotePort": number;
     "localPort": number;
     "enabled": boolean;
+}
+
+/**
+ * ResourceUsage is CPU in millicores and memory in bytes; zero means none set or none measured.
+ */
+export interface ResourceUsage {
+    "cpu": number;
+    "memory": number;
 }
 
 /**

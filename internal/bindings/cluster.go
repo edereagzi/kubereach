@@ -90,3 +90,11 @@ func (c *ClusterService) GetSecret(ctx context.Context, clusterID, namespace, na
 func (c *ClusterService) GetYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string, reveal bool) (string, error) {
 	return c.svc.GetYAML(ctx, clusterID, kind, namespace, name, reveal)
 }
+
+func (c *ClusterService) PodMetrics(ctx context.Context, clusterID string) (service.PodMetrics, error) {
+	return c.svc.PodMetrics(ctx, clusterID)
+}
+
+func (c *ClusterService) NodeMetrics(ctx context.Context, clusterID string) (service.NodeMetrics, error) {
+	return c.svc.NodeMetrics(ctx, clusterID)
+}

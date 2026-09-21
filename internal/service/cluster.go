@@ -47,6 +47,9 @@ type KubePod struct {
 	// Reason is what is wrong with the pod, empty when nothing is; see PodReason.
 	Reason   string `json:"reason,omitempty"`
 	Restarts int32  `json:"restarts"`
+	// Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
+	Requests ResourceUsage `json:"requests"`
+	Limits   ResourceUsage `json:"limits"`
 }
 
 // kube is one Cluster's clientset and REST config, built per call so dialing always uses the Route's live connection.
@@ -228,6 +231,7 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 		}
 		for _, pod := range list.Items {
 			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(&pod), Restarts: podRestarts(&pod)}
+			kp.Requests, kp.Limits = podResources(pod.Spec)
 			for _, c := range pod.Spec.Containers {
 				for _, p := range c.Ports {
 					kp.Ports = append(kp.Ports, NamedPort{Name: p.Name, Port: p.ContainerPort})

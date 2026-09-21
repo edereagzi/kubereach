@@ -6,7 +6,7 @@ import { RolloutState, State, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
-import { PodDetail, ReasonBadge, restartsLabel } from "@/components/pod-detail";
+import { PodDetail, ReasonBadge, UsageLabel, restartsLabel } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDialog } from "@/components/yaml-view";
 import { KindBadge, logKind, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
@@ -16,7 +16,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Toggle } from "@/components/ui/toggle";
-import { configQuery, isForbidden, namespacesQuery } from "@/queries";
+import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -201,6 +201,7 @@ function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster
     ),
   );
   const startLogs = useStartLogs(cluster);
+  const usage = useQuery({ ...podMetricsQuery(cluster.id), enabled: target.kind === "pod" }).data?.get(podUsageKey(target.namespace, target.name));
   const verb = "h-6 px-2 text-xs";
   const quiet = cn(verb, "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100");
   const active = cn(verb, "text-primary hover:text-primary");
@@ -223,6 +224,7 @@ function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster
           <>
             <ReasonBadge reason={target.reason} className="cursor-pointer" onClick={onInspect} />
             {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts)}</span>}
+            {usage && <UsageLabel usage={usage.usage} limits={target.limits} requests={target.requests} />}
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
