@@ -55,19 +55,18 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
-		},
+		OnShutdown: svc.Shutdown,
 	})
 
 	svc.Emit = func(name string, data any) { app.Event.Emit(name, data) }
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Kubereach",
 		Width:  1200,
 		Height: 760,
 		URL:    "/",
 	})
+	bindings.NewTray(app, svc, window)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

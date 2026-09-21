@@ -54,7 +54,7 @@ func (s *Service) ImportSSHConfig(path string) ([]Route, error) {
 		return nil, nil
 	}
 	cfg.Routes = append(cfg.Routes, added...)
-	return added, saveConfig(s.configPath, cfg)
+	return added, s.saveConfig(cfg)
 }
 
 // sshBlock is one Host block: its patterns and the first value seen for each keyword.

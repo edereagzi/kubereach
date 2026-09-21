@@ -12,6 +12,7 @@ import type * as service$0 from "../../../../edereagzi/kubereach/internal/servic
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "config:changed": void;
             "forward:state": service$0.ForwardStatus;
             "logs:lines": service$0.LogBatch;
             "logs:state": service$0.LogStatus;

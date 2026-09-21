@@ -53,5 +53,17 @@ func (s *Service) LoadConfig() (Config, error) {
 func (s *Service) SaveConfig(cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return saveConfig(s.configPath, cfg)
+	return s.saveConfig(cfg)
+}
+
+// EventConfigChanged fires after every successful write of the configuration file.
+const EventConfigChanged = "config:changed"
+
+// saveConfig persists cfg and announces the change; callers hold s.mu.
+func (s *Service) saveConfig(cfg Config) error {
+	if err := saveConfig(s.configPath, cfg); err != nil {
+		return err
+	}
+	s.Emit(EventConfigChanged, nil)
+	return nil
 }

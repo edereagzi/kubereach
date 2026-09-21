@@ -96,7 +96,7 @@ func (s *Service) ImportKubeconfigs(paths []string) ([]Cluster, error) {
 		return nil, nil
 	}
 	cfg.Clusters = append(cfg.Clusters, added...)
-	return added, saveConfig(s.configPath, cfg)
+	return added, s.saveConfig(cfg)
 }
 
 // CheckReachability returns the API server version, or an error if it cannot be reached.
@@ -252,7 +252,7 @@ func (s *Service) SetNamespaces(clusterID string, namespaces []string) error {
 		return err
 	}
 	cfg.Clusters[i].Namespaces = namespaces
-	return saveConfig(s.configPath, cfg)
+	return s.saveConfig(cfg)
 }
 
 // ponytail: builds a fresh clientset per call; the dial function always reaches the Route's live SSH connection.

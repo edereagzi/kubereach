@@ -356,9 +356,8 @@ func TestForward_BusyLocalPortSuggestsFreeOne(t *testing.T) {
 	_ = l.Close()
 }
 
-func TestForward_ThroughRoute(t *testing.T) {
-	priv, pub := newKeyPair(t)
-	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+// captureForwards diverts forward events into a channel, leaving Route events on the fixture's own.
+func (f *routeFixture) captureForwards() <-chan service.ForwardStatus {
 	forwards := make(chan service.ForwardStatus, 100)
 	emit := f.svc.Emit
 	f.svc.Emit = func(name string, data any) {
@@ -368,6 +367,13 @@ func TestForward_ThroughRoute(t *testing.T) {
 		}
 		emit(name, data)
 	}
+	return forwards
+}
+
+func TestForward_ThroughRoute(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	forwards := f.captureForwards()
 	f.connect(t)
 
 	local := freePort(t)
@@ -503,15 +509,7 @@ func TestForward_ReconnectsToNewPodWhenPodDies(t *testing.T) {
 func TestForward_ResumesAfterRouteReconnects(t *testing.T) {
 	priv, pub := newKeyPair(t)
 	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
-	forwards := make(chan service.ForwardStatus, 100)
-	emit := f.svc.Emit
-	f.svc.Emit = func(name string, data any) {
-		if status, ok := data.(service.ForwardStatus); ok {
-			forwards <- status
-			return
-		}
-		emit(name, data)
-	}
+	forwards := f.captureForwards()
 	f.connect(t)
 
 	local := freePort(t)

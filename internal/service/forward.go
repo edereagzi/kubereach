@@ -132,7 +132,7 @@ func (s *Service) SaveForward(pf PortForward) (PortForward, error) {
 	} else {
 		cfg.Forwards[i] = pf
 	}
-	return pf, saveConfig(s.configPath, cfg)
+	return pf, s.saveConfig(cfg)
 }
 
 // DeleteForward stops the forward if it is running and forgets the Saved Forward.
@@ -149,7 +149,7 @@ func (s *Service) DeleteForward(forwardID string) error {
 		return fmt.Errorf("unknown forward %q", forwardID)
 	}
 	cfg.Forwards = slices.Delete(cfg.Forwards, i, i+1)
-	return saveConfig(s.configPath, cfg)
+	return s.saveConfig(cfg)
 }
 
 func findForward(cfg Config, forwardID string) int {

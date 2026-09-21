@@ -132,7 +132,7 @@ func (s *Service) SaveRoute(r Route) (Route, error) {
 		}
 		cfg.Routes[i] = r
 	}
-	return r, saveConfig(s.configPath, cfg)
+	return r, s.saveConfig(cfg)
 }
 
 func validateRoute(r *Route) error {
@@ -184,7 +184,7 @@ func (s *Service) DeleteRoute(routeID string) error {
 	}
 	delete(s.routes, routeID)
 	cfg.Routes = slices.Delete(cfg.Routes, i, i+1)
-	return saveConfig(s.configPath, cfg)
+	return s.saveConfig(cfg)
 }
 
 // SetClusterRoute attaches a Route to a Cluster; an empty routeID means direct access.
@@ -205,7 +205,7 @@ func (s *Service) SetClusterRoute(clusterID, routeID string) error {
 		}
 	}
 	cfg.Clusters[i].RouteID = routeID
-	return saveConfig(s.configPath, cfg)
+	return s.saveConfig(cfg)
 }
 
 // ConnectRoute starts connecting in the background and returns once credentials are resolved.
