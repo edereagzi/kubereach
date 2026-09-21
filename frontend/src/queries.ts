@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
+import type { WorkloadKind } from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
@@ -39,6 +40,13 @@ export const podQuery = (clusterId: string, namespace: string, name: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "pod", namespace, name],
     queryFn: () => ClusterService.DescribePod(clusterId, namespace, name),
+    retry: false,
+  });
+
+export const workloadQuery = (clusterId: string, kind: WorkloadKind, namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "workload", kind, namespace, name],
+    queryFn: () => ClusterService.DescribeWorkload(clusterId, kind, namespace, name),
     retry: false,
   });
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, type Cluster, type NamedPort } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeWorkload, type NamedPort } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -16,7 +16,7 @@ import {
 import { podsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "deploy" | "sts" | "ds" | "pod";
+export type Kind = "svc" | "deploy" | "sts" | "ds" | "cron" | "pod";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -32,11 +32,13 @@ export type Target = {
   // Pods only: what is wrong, and how often it restarted.
   reason?: string;
   restarts?: number;
+  // Workloads only: rollout state, or the CronJob's schedule.
+  workload?: KubeWorkload;
 };
 
 export type TargetGroup = { label: string; items: Target[] };
 
-const workloadKind: Partial<Record<LogSourceKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds" };
+const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron" };
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {
   deploy: LogSourceKind.LogSourceDeployment,
   sts: LogSourceKind.LogSourceStatefulSet,
@@ -61,7 +63,7 @@ export function useTargets(cluster: Cluster) {
   });
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
-    { label: "Workloads", items: (workloads.data ?? []).map((w) => make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name)) },
+    { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
     { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts })) },
   ];
   return { groups, error: services.error ?? workloads.error ?? pods.error, pending: services.isPending || workloads.isPending || pods.isPending };

@@ -386,9 +386,9 @@ func TestLogs_ListWorkloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []service.KubeWorkload{
-		{Namespace: "db", Name: "postgres", Kind: service.LogSourceStatefulSet},
-		{Namespace: "default", Name: "api", Kind: service.LogSourceDeployment},
-		{Namespace: "kube-system", Name: "node-exporter", Kind: service.LogSourceDaemonSet},
+		{Namespace: "db", Name: "postgres", Kind: service.WorkloadStatefulSet, Rollout: &service.Rollout{Desired: 1, State: service.RolloutProgressing}},
+		{Namespace: "default", Name: "api", Kind: service.WorkloadDeployment, Rollout: &service.Rollout{Desired: 1, State: service.RolloutProgressing}},
+		{Namespace: "kube-system", Name: "node-exporter", Kind: service.WorkloadDaemonSet, Rollout: &service.Rollout{State: service.RolloutComplete}},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("workloads (-want +got):\n%s", diff)

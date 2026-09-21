@@ -78,7 +78,7 @@ func (s *Service) DescribePod(ctx context.Context, clusterID, namespace, name st
 		d.Conditions = append(d.Conditions, PodCondition{Type: string(c.Type), Status: string(c.Status), Reason: c.Reason, Message: c.Message})
 	}
 	d.Containers = append(describeContainers(pod.Spec.InitContainers, pod.Status.InitContainerStatuses, true), describeContainers(pod.Spec.Containers, pod.Status.ContainerStatuses, false)...)
-	d.Events, err = s.podEvents(ctx, k, pod)
+	d.Events, err = objectEvents(ctx, k, "Pod", pod.Namespace, pod.Name, string(pod.UID))
 	if err != nil {
 		d.EventsError = err.Error()
 	}
@@ -126,17 +126,17 @@ func containerState(st corev1.ContainerState) ContainerState {
 	return ContainerState{}
 }
 
-// podEvents lists the pod's events newest first.
-func (s *Service) podEvents(ctx context.Context, k kube, pod *corev1.Pod) ([]KubeEvent, error) {
-	selector := fields.Set{"involvedObject.kind": "Pod", "involvedObject.name": pod.Name, "involvedObject.uid": string(pod.UID)}.AsSelector().String()
-	list, err := k.client.CoreV1().Events(pod.Namespace).List(ctx, metav1.ListOptions{FieldSelector: selector})
+// objectEvents lists one object's events newest first.
+func objectEvents(ctx context.Context, k kube, kind, namespace, name, uid string) ([]KubeEvent, error) {
+	selector := fields.Set{"involvedObject.kind": kind, "involvedObject.name": name, "involvedObject.uid": uid}.AsSelector().String()
+	list, err := k.client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{FieldSelector: selector})
 	if err != nil {
 		return nil, wrapForbidden(err)
 	}
 	out := []KubeEvent{}
 	for _, e := range list.Items {
 		// ponytail: the fake clientset ignores field selectors, so kind and name are re-checked here; a reactor in the tests would remove this.
-		if e.InvolvedObject.Kind != "Pod" || e.InvolvedObject.Name != pod.Name {
+		if e.InvolvedObject.Kind != kind || e.InvolvedObject.Name != name {
 			continue
 		}
 		out = append(out, KubeEvent{Type: e.Type, Reason: e.Reason, Message: e.Message, Count: max(e.Count, 1), Time: eventTime(e)})

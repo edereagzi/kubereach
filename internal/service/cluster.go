@@ -234,50 +234,6 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 	return out, nil
 }
 
-// KubeWorkload is a Deployment, StatefulSet or DaemonSet whose pods can be followed together.
-type KubeWorkload struct {
-	Namespace string        `json:"namespace"`
-	Name      string        `json:"name"`
-	Kind      LogSourceKind `json:"kind"`
-}
-
-// ListWorkloads lists Deployments, StatefulSets and DaemonSets in scope.
-func (s *Service) ListWorkloads(ctx context.Context, clusterID string) ([]KubeWorkload, error) {
-	k, err := s.clusterClient(clusterID)
-	if err != nil {
-		return nil, err
-	}
-	var out []KubeWorkload
-	for _, ns := range k.scope() {
-		apps := k.client.AppsV1()
-		deployments, err := apps.Deployments(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for _, d := range deployments.Items {
-			out = append(out, KubeWorkload{Namespace: d.Namespace, Name: d.Name, Kind: LogSourceDeployment})
-		}
-		statefulSets, err := apps.StatefulSets(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for _, ss := range statefulSets.Items {
-			out = append(out, KubeWorkload{Namespace: ss.Namespace, Name: ss.Name, Kind: LogSourceStatefulSet})
-		}
-		daemonSets, err := apps.DaemonSets(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for _, ds := range daemonSets.Items {
-			out = append(out, KubeWorkload{Namespace: ds.Namespace, Name: ds.Name, Kind: LogSourceDaemonSet})
-		}
-	}
-	slices.SortFunc(out, func(a, b KubeWorkload) int {
-		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Kind, b.Kind))
-	})
-	return out, nil
-}
-
 // scope is the namespaces to list: the Cluster's explicit list, or all.
 func (k kube) scope() []string {
 	if len(k.cluster.Namespaces) > 0 {

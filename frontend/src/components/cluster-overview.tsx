@@ -6,6 +6,7 @@ import { State, type Cluster } from "@bindings/internal/service";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel } from "@/components/pod-detail";
+import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { KindBadge, logKind, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
@@ -79,7 +80,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {forwarding && (
         <AddForward cluster={cluster} saved={forwardsFor(config?.forwards, cluster)} initial={forwarding} onClose={() => setForwarding(null)} />
       )}
-      {inspecting && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.workload && <WorkloadDetail cluster={cluster} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
           <InputGroupInput ref={search} placeholder="Filter services, workloads and pods" value={needle} onChange={(e) => setNeedle(e.target.value)} />
@@ -134,7 +136,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 const meta = (t: Target) => {
   if (t.kind === "svc") return portsLabel(t.ports);
   if (t.kind === "pod") return [t.containers.join(", "), portsLabel(t.ports)].filter(Boolean).join(" · ");
-  return "";
+  return t.workload ? workloadLabel(t.workload) : "";
 };
 
 function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluster; target: Target; onForward: () => void; onInspect: () => void }) {
@@ -160,7 +162,7 @@ function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluste
   return (
     <div className="group grid h-8 grid-cols-[44px_minmax(160px,240px)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
       <KindBadge kind={target.kind} />
-      {target.kind === "pod" ? (
+      {target.kind === "pod" || target.workload ? (
         <button type="button" className="truncate text-left hover:underline" title={`Why is ${target.name} in this state?`} onClick={onInspect}>
           {target.name}
         </button>
@@ -176,6 +178,7 @@ function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluste
             {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts)}</span>}
           </>
         )}
+        {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
         <span className="truncate">{meta(target)}</span>
       </span>
       <span className="flex justify-end gap-0.5">
@@ -189,7 +192,7 @@ function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluste
               Forward
             </Button>
           ))}
-        {target.kind !== "svc" &&
+        {logKind[target.kind] &&
           (following ? (
             <Button variant="ghost" size="xs" className={active} onClick={() => selectTab("logs")}>
               {stream.source.previous ? "Previous logs" : "Following logs"}

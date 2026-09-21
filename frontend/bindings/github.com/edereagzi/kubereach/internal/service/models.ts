@@ -60,6 +60,16 @@ export interface ContainerState {
     "finishedAt": string;
 }
 
+export interface CronJobState {
+    "schedule": string;
+    "suspend": boolean;
+
+    /**
+     * LastScheduled is when the controller last created a Job, zero when it never has.
+     */
+    "lastScheduled": string;
+}
+
 /**
  * ForwardStatus describes a bound forward: idle until the first inbound connection, connected while a pod
  * connection is up, error when the port could not be bound or the last dial failed.
@@ -131,12 +141,14 @@ export interface KubeService {
 }
 
 /**
- * KubeWorkload is a Deployment, StatefulSet or DaemonSet whose pods can be followed together.
+ * KubeWorkload is a Deployment, StatefulSet, DaemonSet or CronJob in scope; Rollout is set for the first three, CronJob for the last.
  */
 export interface KubeWorkload {
     "namespace": string;
     "name": string;
-    "kind": LogSourceKind;
+    "kind": WorkloadKind;
+    "rollout"?: Rollout | null;
+    "cronJob"?: CronJobState | null;
 }
 
 export interface LogBatch {
@@ -248,6 +260,38 @@ export interface PortForward {
 }
 
 /**
+ * Rollout is where a workload's pods stand against its spec, read the way kubectl rollout status does.
+ */
+export interface Rollout {
+    "desired": number;
+    "updated": number;
+    "ready": number;
+    "available": number;
+
+    /**
+     * Revision is the Deployment's revision number, a StatefulSet's update revision or a DaemonSet's template generation.
+     */
+    "revision": string;
+    "state": RolloutState;
+
+    /**
+     * Message is the Progressing condition's message; only Deployments have one.
+     */
+    "message"?: string;
+}
+
+export enum RolloutState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    RolloutProgressing = "progressing",
+    RolloutStuck = "stuck",
+    RolloutComplete = "complete",
+};
+
+/**
  * Route is the ordered list of SSH Servers through which a Cluster is reached.
  */
 export interface Route {
@@ -325,4 +369,26 @@ export enum TargetKind {
 
     TargetService = "service",
     TargetPod = "pod",
+};
+
+export interface WorkloadDiagnosis {
+    "workload": KubeWorkload;
+
+    /**
+     * Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.
+     */
+    "events": KubeEvent[] | null;
+    "eventsError"?: string;
+}
+
+export enum WorkloadKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    WorkloadDeployment = "deployment",
+    WorkloadStatefulSet = "statefulset",
+    WorkloadDaemonSet = "daemonset",
+    WorkloadCronJob = "cronjob",
 };

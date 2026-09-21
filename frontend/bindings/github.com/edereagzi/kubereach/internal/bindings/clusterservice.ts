@@ -21,6 +21,10 @@ export function DescribePod(clusterID: string, $namespace: string, name: string)
     return $Call.ByID(4197865875, clusterID, $namespace, name);
 }
 
+export function DescribeWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string): $CancellablePromise<service$0.WorkloadDiagnosis> {
+    return $Call.ByID(3413420857, clusterID, kind, $namespace, name);
+}
+
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */

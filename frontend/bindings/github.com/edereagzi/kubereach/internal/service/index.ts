@@ -4,8 +4,10 @@
 export {
     AuthMethod,
     LogSourceKind,
+    RolloutState,
     State,
-    TargetKind
+    TargetKind,
+    WorkloadKind
 } from "./models.js";
 
 export type {
@@ -13,6 +15,7 @@ export type {
     Config,
     ContainerDiagnosis,
     ContainerState,
+    CronJobState,
     ForwardStatus,
     ForwardTarget,
     HostKeyPrompt,
@@ -29,10 +32,12 @@ export type {
     PodCondition,
     PodDiagnosis,
     PortForward,
+    Rollout,
     Route,
     RouteStatus,
     SSHServer,
     ShellOutput,
     ShellStatus,
-    ShellTarget
+    ShellTarget,
+    WorkloadDiagnosis
 } from "./models.js";

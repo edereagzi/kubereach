@@ -128,7 +128,9 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 
 	// Following the coredns Deployment through a rollout restart: the new pod joins, the old one leaves.
 	workloads, err := svc.ListWorkloads(ctx, id)
-	if err != nil || !slices.Contains(workloads, service.KubeWorkload{Namespace: "kube-system", Name: "coredns", Kind: service.LogSourceDeployment}) {
+	if err != nil || !slices.ContainsFunc(workloads, func(w service.KubeWorkload) bool {
+		return w.Namespace == "kube-system" && w.Name == "coredns" && w.Kind == service.WorkloadDeployment
+	}) {
 		t.Fatalf("workloads=%v err=%v", workloads, err)
 	}
 	deploy, err := svc.StartLogs(ctx, service.LogSource{ClusterID: id, Namespace: "kube-system", Kind: service.LogSourceDeployment, Name: "coredns"})

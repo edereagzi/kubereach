@@ -60,7 +60,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
   const { groups, error: listError } = useTargets(cluster);
   const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
   const start = useStartLogs(cluster);
-  const loggable = groups.filter((g) => g.label !== "Services");
+  const loggable = groups.filter((g) => g.label !== "Services").map((g) => ({ ...g, items: g.items.filter((t) => logKind[t.kind]) }));
   const kind = stream ? sourceKind[stream.source.kind] ?? "pod" : "pod";
   const current = stream ? loggable.flatMap((g) => g.items).find((t) => t.kind === kind && t.namespace === stream.source.namespace && t.name === stream.source.name) ?? null : null;
   const error = listError ?? start.error;

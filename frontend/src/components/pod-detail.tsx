@@ -10,12 +10,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { podQuery } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
-// Reasons that are a pod's normal passage rather than a fault.
-const calmReasons = new Set(["ContainerCreating", "PodInitializing", "Pending", "Terminating", "Completed"]);
+// States that are normal passage or a deliberate choice rather than a fault; a complete rollout has nothing to say on a row.
+const calmReasons = new Set(["ContainerCreating", "PodInitializing", "Pending", "Terminating", "Completed", "progressing", "suspended"]);
 
 // Shaped like KindBadge so the two sit on one row as one system; red only when the reason is a fault.
 export function ReasonBadge({ reason, className, ...props }: { reason?: string } & ComponentProps<typeof Badge>) {
-  if (!reason) return null;
+  if (!reason || reason === "complete") return null;
   return (
     <Badge
       variant={calmReasons.has(reason) ? "secondary" : "destructive"}
@@ -109,7 +109,7 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1.5">
       <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
@@ -160,7 +160,7 @@ function Container({ container: c, onPrevious, pending }: { container: Container
   );
 }
 
-function Events({ events }: { events: KubeEvent[] }) {
+export function Events({ events }: { events: KubeEvent[] }) {
   if (events.length === 0) return <p className="text-xs text-muted-foreground">No recent events.</p>;
   return (
     <ul className="flex flex-col gap-1 text-xs">
