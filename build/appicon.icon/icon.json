@@ -1,33 +1,22 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-gray:1.00000,1.00000"
+    "solid" : "srgb:0.20784,0.20392,0.71765,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "fill-specializations" : [
-            {
-              "appearance" : "dark",
-              "value" : {
-                "solid" : "srgb:0.92143,0.92145,0.92144,1.00000"
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "solid" : "srgb:0.83742,0.83744,0.83743,1.00000"
-              }
-            }
-          ],
-          "image-name" : "wails_icon_vector.svg",
-          "name" : "wails_icon_vector",
+          "image-name" : "kubereach-mark.svg",
+          "name" : "kubereach-mark",
           "position" : {
-            "scale" : 0.85,
+            "scale" : 1.1,
             "translation-in-points" : [
               0.0,
               0.0
             ]
+          },
+          "fill" : {
+            "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
           }
         }
       ],
