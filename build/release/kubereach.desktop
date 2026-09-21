@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kubereach
+Comment=Access Kubernetes clusters behind SSH bastions, VPNs and closed networks
+Exec=kubereach
+Icon=kubereach
+Categories=Development;
+Terminal=false
+StartupNotify=false

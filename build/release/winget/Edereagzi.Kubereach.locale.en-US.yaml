@@ -1,0 +1,15 @@
+PackageIdentifier: Edereagzi.Kubereach
+PackageVersion: ${VERSION}
+PackageLocale: en-US
+Publisher: Eray Dereagzi
+PublisherUrl: https://github.com/edereagzi
+PublisherSupportUrl: https://github.com/edereagzi/kubereach/issues
+PackageName: Kubereach
+PackageUrl: https://github.com/edereagzi/kubereach
+License: Apache-2.0
+ShortDescription: Access Kubernetes clusters behind SSH bastions, VPNs and closed networks
+Tags:
+  - kubernetes
+  - ssh
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

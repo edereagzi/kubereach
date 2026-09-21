@@ -19,16 +19,17 @@ func init() {
 
 // Tray keeps the system tray icon and menu in step with the service; closing the window only hides it.
 type Tray struct {
-	app    *application.App
-	svc    *service.Service
-	window *application.WebviewWindow
-	tray   *application.SystemTray
-	mu     sync.Mutex
-	menu   *application.Menu
+	app     *application.App
+	svc     *service.Service
+	window  *application.WebviewWindow
+	tray    *application.SystemTray
+	mu      sync.Mutex
+	menu    *application.Menu
+	version string
 }
 
-func NewTray(app *application.App, svc *service.Service, window *application.WebviewWindow) *Tray {
-	t := &Tray{app: app, svc: svc, window: window, tray: app.SystemTray.New()}
+func NewTray(app *application.App, svc *service.Service, window *application.WebviewWindow, version string) *Tray {
+	t := &Tray{app: app, svc: svc, window: window, tray: app.SystemTray.New(), version: version}
 	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		window.Hide()
 		e.Cancel()
@@ -85,6 +86,7 @@ func (t *Tray) Refresh() {
 	if listed {
 		menu.AddSeparator()
 	}
+	menu.Add("Kubereach " + t.version).SetEnabled(false)
 	menu.Add("Show Window").OnClick(func(*application.Context) { t.window.Show().Focus() })
 	menu.Add("Quit").OnClick(func(*application.Context) { t.app.Quit() })
 

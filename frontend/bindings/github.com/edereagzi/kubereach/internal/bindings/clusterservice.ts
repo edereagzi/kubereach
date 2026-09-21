@@ -10,32 +10,32 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as service$0 from "../service/models.js";
 
 export function CheckReachability(clusterID: string): $CancellablePromise<string> {
-    return $Call.ByID(3635985892, clusterID);
+    return $Call.ByID(273405860, clusterID);
 }
 
 /**
  * Import opens the native file picker and imports every chosen kubeconfig.
  */
 export function Import(): $CancellablePromise<service$0.Cluster[] | null> {
-    return $Call.ByID(3379050484);
+    return $Call.ByID(469537716);
 }
 
 export function ListNamespaces(clusterID: string): $CancellablePromise<string[] | null> {
-    return $Call.ByID(1043487461, clusterID);
+    return $Call.ByID(3507898021, clusterID);
 }
 
 export function ListPods(clusterID: string): $CancellablePromise<service$0.KubePod[] | null> {
-    return $Call.ByID(4065161353, clusterID);
+    return $Call.ByID(1789994825, clusterID);
 }
 
 export function ListServices(clusterID: string): $CancellablePromise<service$0.KubeService[] | null> {
-    return $Call.ByID(2705149113, clusterID);
+    return $Call.ByID(2601677433, clusterID);
 }
 
 export function ListWorkloads(clusterID: string): $CancellablePromise<service$0.KubeWorkload[] | null> {
-    return $Call.ByID(2603481193, clusterID);
+    return $Call.ByID(1696905001, clusterID);
 }
 
 export function SetNamespaces(clusterID: string, namespaces: string[] | null): $CancellablePromise<void> {
-    return $Call.ByID(2112128423, clusterID, namespaces);
+    return $Call.ByID(1583854951, clusterID, namespaces);
 }

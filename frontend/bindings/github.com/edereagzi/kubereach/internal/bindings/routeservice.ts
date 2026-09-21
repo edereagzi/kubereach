@@ -10,43 +10,43 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as service$0 from "../service/models.js";
 
 export function AnswerHostKey(routeID: string, accept: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2770194809, routeID, accept);
+    return $Call.ByID(625028665, routeID, accept);
 }
 
 export function Connect(routeID: string, secret: string): $CancellablePromise<void> {
-    return $Call.ByID(3646657140, routeID, secret);
+    return $Call.ByID(792582964, routeID, secret);
 }
 
 export function Delete(routeID: string): $CancellablePromise<void> {
-    return $Call.ByID(2059322849, routeID);
+    return $Call.ByID(214945441, routeID);
 }
 
 /**
  * ImportSSHConfig opens the native file picker in ~/.ssh and imports the chosen SSH config.
  */
 export function ImportSSHConfig(): $CancellablePromise<service$0.Route[] | null> {
-    return $Call.ByID(280677145);
+    return $Call.ByID(794942681);
 }
 
 /**
  * PickKeyFile opens the native file picker in ~/.ssh and returns the chosen path, or "" when cancelled.
  */
 export function PickKeyFile(): $CancellablePromise<string> {
-    return $Call.ByID(686517144);
+    return $Call.ByID(3337795160);
 }
 
 export function Save(route: service$0.Route): $CancellablePromise<service$0.Route> {
-    return $Call.ByID(2713859683, route);
+    return $Call.ByID(4181256739, route);
 }
 
 export function SetClusterRoute(clusterID: string, routeID: string): $CancellablePromise<void> {
-    return $Call.ByID(2649835493, clusterID, routeID);
+    return $Call.ByID(3269752741, clusterID, routeID);
 }
 
 export function Statuses(): $CancellablePromise<service$0.RouteStatus[] | null> {
-    return $Call.ByID(382938252);
+    return $Call.ByID(3706551116);
 }
 
 export function Stop(routeID: string): $CancellablePromise<void> {
-    return $Call.ByID(678234894, routeID);
+    return $Call.ByID(2145631950, routeID);
 }

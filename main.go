@@ -14,6 +14,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// version is overwritten by the release build via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	configPath, err := service.DefaultConfigPath()
 	if err != nil {
@@ -77,7 +80,7 @@ func main() {
 		Height: 760,
 		URL:    "/",
 	})
-	bindings.NewTray(app, svc, window)
+	bindings.NewTray(app, svc, window, version)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

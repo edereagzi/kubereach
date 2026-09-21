@@ -1,0 +1,139 @@
+name: Release
+
+# Pushing a v* tag builds all platforms, publishes a GitHub Release and updates
+# the Homebrew cask, Scoop manifest (both in edereagzi/homebrew-tap) and winget.
+#
+# Secrets:
+#   TAP_GITHUB_TOKEN  fine-grained PAT with contents:write on edereagzi/homebrew-tap
+#   WINGET_TOKEN      classic PAT with public_repo; wingetcreate forks microsoft/winget-pkgs and opens the PR
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3
+      - run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          mkdir dist
+
+      - name: Build macOS app
+        if: runner.os == 'macOS'
+        run: |
+          plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.plist
+          plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.plist
+          wails3 task darwin:package:universal
+      # Disabled until a Developer ID certificate and notarization profile are in secrets (see `wails3 setup`).
+      - name: Sign and notarize macOS app (disabled)
+        if: false && runner.os == 'macOS'
+        run: wails3 task darwin:sign:notarize
+      - if: runner.os == 'macOS'
+        run: |
+          mv bin/kubereach.app bin/Kubereach.app
+          ditto -c -k --keepParent bin/Kubereach.app dist/kubereach_darwin_universal.zip
+
+      - name: Build Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          wails3 build
+          mkdir stage
+          cp bin/kubereach build/release/kubereach.desktop stage/
+          cp build/appicon.png stage/kubereach.png
+          tar -czf dist/kubereach_linux_amd64.tar.gz -C stage .
+
+      - name: Build Windows binary and installer
+        if: runner.os == 'Windows'
+        run: |
+          jq --arg v "$VERSION" '.fixed.file_version = $v | .info["0000"].ProductVersion = $v' build/windows/info.json > info.json && mv info.json build/windows/info.json
+          sed -i "s/INFO_PRODUCTVERSION \"[^\"]*\"/INFO_PRODUCTVERSION \"$VERSION\"/" build/windows/nsis/wails_tools.nsh
+          wails3 task windows:package
+      # Disabled until a code-signing certificate is in secrets (see `wails3 setup`).
+      - name: Sign Windows binary and installer (disabled)
+        if: false && runner.os == 'Windows'
+        run: wails3 tool sign --input bin/kubereach.exe && wails3 tool sign --input bin/kubereach-amd64-installer.exe
+      - if: runner.os == 'Windows'
+        run: |
+          mv bin/kubereach-amd64-installer.exe dist/kubereach_windows_amd64_installer.exe
+          (cd bin && 7z a ../dist/kubereach_windows_amd64.zip kubereach.exe)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          (cd dist && sha256sum -- * > checksums.txt)
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: build/release/render.sh "$VERSION" dist out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winget
+          path: out/winget/
+
+      - uses: actions/checkout@v4
+        with:
+          repository: edereagzi/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+      - name: Update Homebrew cask and Scoop manifest
+        run: |
+          mkdir -p tap/Casks tap/bucket
+          cp out/kubereach.rb tap/Casks/kubereach.rb
+          cp out/kubereach.json tap/bucket/kubereach.json
+          cd tap
+          git add -A
+          git -c user.name=github-actions -c user.email=github-actions@github.com commit -m "kubereach $VERSION"
+          git push
+
+  winget:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: winget
+          path: winget
+      - run: |
+          curl -sSLo wingetcreate.exe https://aka.ms/wingetcreate/latest
+          ./wingetcreate.exe submit --token "$WINGET_TOKEN" winget
+        shell: bash
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

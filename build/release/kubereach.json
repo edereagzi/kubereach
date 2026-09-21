@@ -1,0 +1,14 @@
+{
+    "version": "${VERSION}",
+    "description": "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
+    "homepage": "https://github.com/edereagzi/kubereach",
+    "license": "Apache-2.0",
+    "url": "https://github.com/edereagzi/kubereach/releases/download/v${VERSION}/kubereach_windows_amd64.zip",
+    "hash": "${SHA256_WINDOWS_ZIP}",
+    "bin": "kubereach.exe",
+    "shortcuts": [["kubereach.exe", "Kubereach"]],
+    "checkver": "github",
+    "autoupdate": {
+        "url": "https://github.com/edereagzi/kubereach/releases/download/v$version/kubereach_windows_amd64.zip"
+    }
+}

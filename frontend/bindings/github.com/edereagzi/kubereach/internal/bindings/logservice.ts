@@ -10,13 +10,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as service$0 from "../service/models.js";
 
 export function Start(src: service$0.LogSource): $CancellablePromise<service$0.LogStatus> {
-    return $Call.ByID(2474166719, src);
+    return $Call.ByID(4070863999, src);
 }
 
 export function Statuses(): $CancellablePromise<service$0.LogStatus[] | null> {
-    return $Call.ByID(985526679);
+    return $Call.ByID(2605710679);
 }
 
 export function Stop(streamID: string): $CancellablePromise<void> {
-    return $Call.ByID(3577114949, streamID);
+    return $Call.ByID(3674226693, streamID);
 }

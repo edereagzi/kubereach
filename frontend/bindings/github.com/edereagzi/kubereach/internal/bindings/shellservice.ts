@@ -10,21 +10,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as service$0 from "../service/models.js";
 
 export function Resize(sessionID: string, cols: number, rows: number): $CancellablePromise<void> {
-    return $Call.ByID(1854567153, sessionID, cols, rows);
+    return $Call.ByID(3011930033, sessionID, cols, rows);
 }
 
 export function Start(target: service$0.ShellTarget, cols: number, rows: number): $CancellablePromise<service$0.ShellStatus> {
-    return $Call.ByID(3154817903, target, cols, rows);
+    return $Call.ByID(1026535983, target, cols, rows);
 }
 
 export function Statuses(): $CancellablePromise<service$0.ShellStatus[] | null> {
-    return $Call.ByID(2183046119);
+    return $Call.ByID(2293312935);
 }
 
 export function Stop(sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(4276100021, sessionID);
+    return $Call.ByID(15920245, sessionID);
 }
 
 export function Write(sessionID: string, data: string): $CancellablePromise<void> {
-    return $Call.ByID(281885068, sessionID, data);
+    return $Call.ByID(2766340428, sessionID, data);
 }

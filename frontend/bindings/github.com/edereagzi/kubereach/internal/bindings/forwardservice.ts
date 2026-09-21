@@ -10,17 +10,17 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as service$0 from "../service/models.js";
 
 export function Delete(forwardID: string): $CancellablePromise<void> {
-    return $Call.ByID(429484193, forwardID);
+    return $Call.ByID(2686325857, forwardID);
 }
 
 export function Save(pf: service$0.PortForward): $CancellablePromise<service$0.PortForward> {
-    return $Call.ByID(3724440611, pf);
+    return $Call.ByID(3809231075, pf);
 }
 
 export function SetEnabled(forwardID: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1960525307, forwardID, enabled);
+    return $Call.ByID(346894523, forwardID, enabled);
 }
 
 export function Statuses(): $CancellablePromise<service$0.ForwardStatus[] | null> {
-    return $Call.ByID(1661052236);
+    return $Call.ByID(1934843660);
 }

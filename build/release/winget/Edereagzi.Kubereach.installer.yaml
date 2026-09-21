@@ -1,0 +1,10 @@
+PackageIdentifier: Edereagzi.Kubereach
+PackageVersion: ${VERSION}
+InstallerType: nullsoft
+Scope: machine
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/edereagzi/kubereach/releases/download/v${VERSION}/kubereach_windows_amd64_installer.exe
+    InstallerSha256: ${SHA256_WINDOWS_INSTALLER}
+ManifestType: installer
+ManifestVersion: 1.6.0
