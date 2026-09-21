@@ -5,8 +5,8 @@ import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
-import { PortForwards } from "@/components/forwards";
-import { Logs } from "@/components/logs";
+import { forwardsFor, PortForwards } from "@/components/forwards";
+import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
 import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
@@ -15,6 +15,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, reachabilityLabel, reachabilityQuery } from "@/queries";
+import { State } from "@bindings/internal/service";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -167,13 +168,22 @@ function ClusterTabs() {
     <>
       <ClusterHeader cluster={cluster} />
       <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as typeof activeTab)} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="h-9 w-full justify-start gap-4 border-b px-4">
+        <TabsList variant="line" className="h-9 w-full justify-start gap-5 border-b px-4">
           <TabsTrigger value="overview" className="flex-none px-0">Overview</TabsTrigger>
-          <TabsTrigger value="forwards" className="flex-none px-0">Port forwards</TabsTrigger>
-          <TabsTrigger value="logs" className="flex-none px-0">Logs</TabsTrigger>
-          <TabsTrigger value="shell" className="flex-none px-0">Shell</TabsTrigger>
+          <TabsTrigger value="forwards" className="flex-none px-0">
+            Port forwards
+            <TabCount value={forwardsFor(data?.forwards, cluster).length} />
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex-none px-0">
+            Logs
+            <LogsLive cluster={cluster} />
+          </TabsTrigger>
+          <TabsTrigger value="shell" className="flex-none px-0">
+            Shell
+            <ShellCount cluster={cluster} />
+          </TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="overflow-auto">
+        <TabsContent value="overview" className="flex min-h-0 flex-col">
           <ClusterOverview key={cluster.id} cluster={cluster} />
         </TabsContent>
         <TabsContent value="forwards" className="overflow-auto">
@@ -188,6 +198,25 @@ function ClusterTabs() {
       </Tabs>
     </>
   );
+}
+
+// Counts and the live dot let a tab say what is running on it before it is opened.
+function TabCount({ value }: { value: number }) {
+  return value > 0 ? (
+    <span className="rounded-full bg-muted px-1.5 text-[11px] leading-4 text-muted-foreground tabular-nums">{value}</span>
+  ) : null;
+}
+
+function LogsLive({ cluster }: { cluster: Cluster }) {
+  const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
+  return stream ? <StateDot status={stream} /> : null;
+}
+
+function ShellCount({ cluster }: { cluster: Cluster }) {
+  const open = useUIStore(
+    (s) => Object.values(s.shellSessions).filter((x) => x.target.clusterId === cluster.id && x.state !== State.StateStopped && x.state !== State.StateError).length,
+  );
+  return <TabCount value={open} />;
 }
 
 function ClusterHeader({ cluster }: { cluster: Cluster }) {
@@ -213,7 +242,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate text-base font-semibold">{cluster.name}</span>
         <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.kubeconfig}>
-          {cluster.kubeconfig}
+          {cluster.context}
         </span>
       </div>
       <Select value={cluster.route} items={options} onValueChange={(id) => setRoute.mutate(id ?? "")}>

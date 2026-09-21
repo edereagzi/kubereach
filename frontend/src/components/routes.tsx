@@ -58,11 +58,15 @@ export function statusLabel(status?: Status) {
   return status.error ? `${status.state}: ${status.error}` : status.state;
 }
 
-export function StateDot({ status }: { status?: Status }) {
+// Hollow is the deliberate off state, distinct from idle's filled grey.
+export function StateDot({ status, hollow = false }: { status?: Status; hollow?: boolean }) {
   return (
     <span
-      title={statusLabel(status)}
-      className={cn("size-2 shrink-0 rounded-full", stateColor[status?.state ?? State.StateIdle])}
+      title={hollow ? "off" : statusLabel(status)}
+      className={cn(
+        "size-2 shrink-0 rounded-full",
+        hollow ? "border-[1.5px] border-muted-foreground/70" : stateColor[status?.state ?? State.StateIdle],
+      )}
     />
   );
 }

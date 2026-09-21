@@ -1,36 +1,42 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CopyIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, CopyIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
 import { ForwardService } from "@bindings/internal/bindings";
-import { TargetKind, type Cluster, type ForwardTarget, type NamedPort, type PortForward } from "@bindings/internal/service";
-import { statusLabel, StateDot } from "@/components/routes";
+import { State, TargetKind, type Cluster, type ForwardStatus, type PortForward } from "@bindings/internal/service";
+import { StateDot } from "@/components/routes";
+import { forwardKind, KindBadge, portsLabel, TargetPicker, targetValue, useTargets, type Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { ComboboxInput } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { configQuery, podsQuery, portInUse, servicesQuery } from "@/queries";
+import { configQuery, portInUse } from "@/queries";
 import { useUIStore } from "@/store";
+import { cn } from "@/lib/utils";
 
-type Target = ForwardTarget & { ports: NamedPort[] };
+const forwardKey = (f: PortForward) =>
+  targetValue(f.target.kind === TargetKind.TargetService ? "svc" : "pod", f.target.namespace, f.target.name);
 
-const targetLabel = (t: ForwardTarget) =>
-  `${t.kind === TargetKind.TargetService ? "svc" : "pod"} ${t.namespace}/${t.name}`;
+export const forwardsFor = (forwards: PortForward[] | null | undefined, cluster: Cluster) =>
+  (forwards ?? []).filter((f) => f.clusterId === cluster.id);
 
 export function PortForwards({ cluster }: { cluster: Cluster }) {
   const { data } = useQuery(configQuery);
+  const statuses = useUIStore((s) => s.forwardStatuses);
   const [adding, setAdding] = useState(false);
-  const saved = (data?.forwards ?? []).filter((f) => f.clusterId === cluster.id);
+  const saved = forwardsFor(data?.forwards, cluster);
+  const connected = saved.filter((f) => statuses[f.id]?.state === State.StateConnected).length;
+  const groups = new Map<string, PortForward[]>();
+  for (const f of saved) groups.set(forwardKey(f), [...(groups.get(forwardKey(f)) ?? []), f]);
 
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
-      {saved.length === 0 ? (
+  if (saved.length === 0) {
+    return (
+      <>
+        {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
         <Empty className="border-0">
           <EmptyHeader>
             <EmptyTitle>No port forwards</EmptyTitle>
@@ -42,38 +48,55 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
             </Button>
           </EmptyContent>
         </Empty>
-      ) : (
-        <>
-          <div>
-            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-              <PlusIcon /> Add forward
-            </Button>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>Target</TableHead>
-                <TableHead>Local address</TableHead>
-                <TableHead className="w-16">On</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {saved.map((f) => (
-                <ForwardRow key={f.id} forward={f} />
-              ))}
-            </TableBody>
-          </Table>
-        </>
-      )}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex flex-col pb-4">
+      {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <Button size="sm" onClick={() => setAdding(true)}>
+          <PlusIcon /> Add forward
+        </Button>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {connected} of {saved.length} connected
+        </span>
+      </div>
+      {[...groups].map(([key, forwards]) => (
+        <section key={key}>
+          <h3 className="flex items-center gap-2 px-4 pt-3 pb-1 text-sm font-medium">
+            <KindBadge kind={forwards[0]!.target.kind === TargetKind.TargetService ? "svc" : "pod"} />
+            {forwards[0]!.target.namespace}/{forwards[0]!.target.name}
+          </h3>
+          {forwards.map((f) => (
+            <ForwardRow key={f.id} forward={f} status={statuses[f.id]} />
+          ))}
+        </section>
+      ))}
+      <p className="px-4 pt-4 text-xs text-muted-foreground">Local ports never change on their own. Change one from the row menu.</p>
     </div>
   );
 }
 
-function ForwardRow({ forward }: { forward: PortForward }) {
+function stateSentence(forward: PortForward, status?: ForwardStatus) {
+  if (!forward.enabled) return "Off, port stays reserved";
+  switch (status?.state) {
+    case State.StateConnecting:
+      return "Connecting…";
+    case State.StateConnected:
+      return `Connected through ${status.pod}`;
+    case State.StateReconnecting:
+      return "Reconnecting…";
+    case State.StateError:
+      return status.error ?? "Failed";
+    default:
+      return "Port is bound, connects on first use";
+  }
+}
+
+function ForwardRow({ forward, status }: { forward: PortForward; status?: ForwardStatus }) {
   const queryClient = useQueryClient();
-  const status = useUIStore((s) => s.forwardStatuses[forward.id]);
   const [editing, setEditing] = useState(false);
   const [localPort, setLocalPort] = useState("");
   const invalidateConfig = () => queryClient.invalidateQueries({ queryKey: configQuery.queryKey });
@@ -82,42 +105,38 @@ function ForwardRow({ forward }: { forward: PortForward }) {
     onSuccess: invalidateConfig,
   });
   const save = useMutation({
-    mutationFn: (port: number) => ForwardService.Save({ ...forward, localPort: port }),
+    mutationFn: (patch: Partial<PortForward>) => ForwardService.Save({ ...forward, ...patch }),
     onSuccess: () => {
       setEditing(false);
+      setEnabled.reset();
       invalidateConfig();
     },
   });
   const remove = useMutation({ mutationFn: () => ForwardService.Delete(forward.id), onSuccess: invalidateConfig });
   const address = `localhost:${forward.localPort}`;
-  const error = setEnabled.error ?? remove.error ?? (editing ? null : save.error);
-  const busy = portInUse(save.error);
+  const error = setEnabled.error ?? remove.error ?? save.error;
+  const busy = portInUse(error);
+  const failed = !!error || status?.state === State.StateError;
+
   return (
-    <TableRow>
-      <TableCell>{forward.enabled && <StateDot status={status} />}</TableCell>
-      <TableCell>
-        {targetLabel(forward.target)}
-        <span className="ml-1 font-mono text-xs text-muted-foreground">:{forward.remotePort}</span>
-        {status?.pod && <span className="ml-2 text-xs text-muted-foreground">{status.pod}</span>}
-        {(status?.error || error) && (
-          <p className="text-xs text-destructive">{error ? String(error) : statusLabel(status)}</p>
-        )}
-      </TableCell>
-      <TableCell className="font-mono text-xs">
+    <div className="group flex h-9 items-center gap-3 px-4 hover:bg-accent">
+      <StateDot status={forward.enabled ? status : undefined} hollow={!forward.enabled} />
+      <span className={cn("flex w-64 shrink-0 items-center gap-1.5 font-mono text-xs", !forward.enabled && "text-muted-foreground")}>
         {editing ? (
           <form
             className="flex items-center gap-1"
             onSubmit={(e) => {
               e.preventDefault();
-              save.mutate(Number(localPort));
+              save.mutate({ localPort: Number(localPort) });
             }}
           >
+            <span>localhost:</span>
             <Input
               type="number"
               min={1}
               max={65535}
               autoFocus
-              className="h-7 w-24"
+              className="h-6 w-20 px-1.5 font-mono text-xs"
               value={localPort}
               onChange={(e) => setLocalPort(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
@@ -125,68 +144,87 @@ function ForwardRow({ forward }: { forward: PortForward }) {
             <Button type="submit" size="xs" disabled={save.isPending}>
               Save
             </Button>
-            {busy && (
-              <Button type="button" size="xs" variant="outline" onClick={() => setLocalPort(String(busy.suggested))}>
-                {busy.port} in use, use {busy.suggested}
-              </Button>
-            )}
-            {save.error && !busy && <span className="text-destructive">{String(save.error)}</span>}
           </form>
         ) : (
-          <span className="inline-flex items-center gap-1">
+          <>
             {address}
-            <Button variant="ghost" size="icon-xs" title="Copy address" onClick={() => navigator.clipboard.writeText(address)}>
-              <CopyIcon />
-            </Button>
+            <ArrowRightIcon className="size-3 text-muted-foreground" />
+            {forward.remotePort}
             <Button
               variant="ghost"
               size="icon-xs"
-              title="Change local port"
-              onClick={() => {
-                setLocalPort(String(forward.localPort));
-                setEditing(true);
-              }}
+              title="Copy address"
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+              onClick={() => navigator.clipboard.writeText(address)}
             >
-              <PencilSimpleIcon />
+              <CopyIcon />
             </Button>
-          </span>
+          </>
         )}
-      </TableCell>
-      <TableCell>
-        <Switch
-          checked={forward.enabled}
-          disabled={setEnabled.isPending}
-          onCheckedChange={(checked) => setEnabled.mutate(checked)}
-        />
-      </TableCell>
-      <TableCell>
-        <Button variant="ghost" size="icon-xs" title="Delete forward" onClick={() => remove.mutate()}>
-          <TrashIcon />
-        </Button>
-      </TableCell>
-    </TableRow>
+      </span>
+      <span className={cn("flex min-w-0 flex-1 items-center gap-2 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>
+        {error && !busy ? String(error) : busy ? `Port ${busy.port} is in use by another program` : stateSentence(forward, status)}
+        {busy && (
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={save.isPending}
+            onClick={() => save.mutate({ localPort: busy.suggested, enabled: true })}
+          >
+            Use {busy.suggested} instead
+          </Button>
+        )}
+      </span>
+      <Switch
+        checked={forward.enabled}
+        disabled={setEnabled.isPending}
+        aria-label={forward.enabled ? "Forward on" : "Forward off"}
+        onCheckedChange={(checked) => setEnabled.mutate(checked)}
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-xs" title="More" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100" />}
+        >
+          <DotsThreeIcon weight="bold" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() => {
+              setLocalPort(String(forward.localPort));
+              setEditing(true);
+            }}
+          >
+            Change local port…
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => remove.mutate()}>
+            Delete forward
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
 type PortPick = { checked: boolean; localPort: string };
 
-function AddForward({ cluster, saved, onClose }: { cluster: Cluster; saved: PortForward[]; onClose: () => void }) {
+// AddForward starts from a picked target, or from one handed in by the Overview.
+export function AddForward({
+  cluster,
+  saved,
+  initial = null,
+  onClose,
+}: {
+  cluster: Cluster;
+  saved: PortForward[];
+  initial?: Target | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
-  const services = useQuery(servicesQuery(cluster.id));
-  const pods = useQuery(podsQuery(cluster.id));
-  const targets: Target[] = [
-    ...(services.data ?? []).map((s) => ({ kind: TargetKind.TargetService, namespace: s.namespace, name: s.name, ports: s.ports ?? [] })),
-    ...(pods.data ?? []).map((p) => ({ kind: TargetKind.TargetPod, namespace: p.namespace, name: p.name, ports: p.ports ?? [] })),
-  ];
-  const namespaces = [...new Set(targets.map((t) => t.namespace))].sort();
-  const [namespace, setNamespace] = useState("");
-  const [kind, setKind] = useState<TargetKind>(TargetKind.TargetService);
-  const [name, setName] = useState<string | null>(null);
+  const { groups, error: listError } = useTargets(cluster);
+  const [target, setTarget] = useState<Target | null>(initial);
   const [picks, setPicks] = useState<Record<number, PortPick>>({});
-  const names = targets.filter((t) => t.namespace === namespace && t.kind === kind).map((t) => t.name);
-  const target = targets.find((t) => t.namespace === namespace && t.kind === kind && t.name === name);
-  const existing = (port: number) =>
-    saved.find((f) => f.target.kind === kind && f.target.namespace === namespace && f.target.name === name && f.remotePort === port);
+  const forwardable = groups.filter((g) => g.label !== "Workloads");
+  const existing = (port: number) => target && saved.find((f) => forwardKey(f) === target.value && f.remotePort === port);
   const pick = (port: number): PortPick => picks[port] ?? { checked: true, localPort: "" };
   const ticked = (target?.ports ?? []).filter((p) => !existing(p.port) && pick(p.port).checked);
   const add = useMutation({
@@ -195,7 +233,7 @@ function AddForward({ cluster, saved, onClose }: { cluster: Cluster; saved: Port
         await ForwardService.Save({
           id: "",
           clusterId: cluster.id,
-          target: { kind, namespace, name: name! },
+          target: { kind: forwardKind(target!.kind), namespace: target!.namespace, name: target!.name },
           remotePort: p.port,
           localPort: Number(pick(p.port).localPort) || 0,
           enabled: true,
@@ -208,83 +246,33 @@ function AddForward({ cluster, saved, onClose }: { cluster: Cluster; saved: Port
     },
   });
   const busy = portInUse(add.error);
-  const listError = services.error ?? pods.error;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add forward</DialogTitle>
-          <DialogDescription>Each ticked port becomes a Saved Forward on its own local port.</DialogDescription>
+          <DialogDescription>Each ticked port gets its own local port, kept until you delete the forward.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          <div className="flex gap-2">
-            <div className="grid gap-1.5">
-              <Label>Namespace</Label>
-              <Select
-                value={namespace}
-                items={namespaces.map((ns) => ({ value: ns, label: ns }))}
-                onValueChange={(ns) => {
-                  setNamespace(ns ?? "");
-                  setName(null);
-                }}
-              >
-                <SelectTrigger className="w-44">
-                  <SelectValue placeholder="Namespace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {namespaces.map((ns) => (
-                    <SelectItem key={ns} value={ns}>
-                      {ns}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Kind</Label>
-              <Select
-                value={kind}
-                items={[
-                  { value: TargetKind.TargetService, label: "Service" },
-                  { value: TargetKind.TargetPod, label: "Pod" },
-                ]}
-                onValueChange={(k) => {
-                  setKind(k ?? TargetKind.TargetService);
-                  setName(null);
-                }}
-              >
-                <SelectTrigger className="w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TargetKind.TargetService}>Service</SelectItem>
-                  <SelectItem value={TargetKind.TargetPod}>Pod</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
           <div className="grid gap-1.5">
-            <Label>{kind === TargetKind.TargetService ? "Service" : "Pod"}</Label>
-            <Combobox
-              items={names}
-              value={name}
-              onValueChange={(v) => {
-                setName(v);
+            <Label>Service or pod</Label>
+            <TargetPicker
+              groups={forwardable}
+              value={target}
+              inline
+              onPick={(t) => {
+                setTarget(t);
                 setPicks({});
               }}
             >
-              <ComboboxInput placeholder={namespace ? "Search…" : "Pick a namespace first"} disabled={!namespace} />
-              <ComboboxContent>
-                <ComboboxEmpty>Nothing found.</ComboboxEmpty>
-                <ComboboxList>{(n: string) => <ComboboxItem key={n} value={n}>{n}</ComboboxItem>}</ComboboxList>
-              </ComboboxContent>
-            </Combobox>
+              <ComboboxInput placeholder="Search services and pods" autoFocus={!initial} />
+            </TargetPicker>
           </div>
           {target && (
             <div className="grid gap-1.5">
               <Label>Ports</Label>
-              {target.ports.length === 0 && <p className="text-sm text-muted-foreground">This target declares no ports.</p>}
+              {target.ports.length === 0 && <p className="text-sm text-muted-foreground">{target.label} declares no ports.</p>}
               {target.ports.map((p) => {
                 const already = existing(p.port);
                 const current = pick(p.port);
@@ -295,12 +283,9 @@ function AddForward({ cluster, saved, onClose }: { cluster: Cluster; saved: Port
                       disabled={!!already}
                       onCheckedChange={(checked) => setPicks({ ...picks, [p.port]: { ...current, checked } })}
                     />
-                    <span className="w-40 font-mono text-xs">
-                      {p.port}
-                      {p.name && <span className="ml-1 text-muted-foreground">{p.name}</span>}
-                    </span>
+                    <span className="w-40 font-mono text-xs">{portsLabel([p])}</span>
                     {already ? (
-                      <span className="font-mono text-xs text-muted-foreground">localhost:{already.localPort}</span>
+                      <span className="font-mono text-xs text-muted-foreground">already on localhost:{already.localPort}</span>
                     ) : (
                       <Input
                         type="number"
