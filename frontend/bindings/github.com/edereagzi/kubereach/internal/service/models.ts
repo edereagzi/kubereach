@@ -173,6 +173,7 @@ export interface KubeWorkload {
     "namespace": string;
     "name": string;
     "kind": WorkloadKind;
+    "containers": WorkloadContainer[] | null;
     "rollout"?: Rollout | null;
     "cronJob"?: CronJobState | null;
 }
@@ -396,6 +397,16 @@ export enum TargetKind {
     TargetService = "service",
     TargetPod = "pod",
 };
+
+/**
+ * WorkloadContainer is one container of the pod template, init containers first; Tag is the version a row shows, read from Image.
+ */
+export interface WorkloadContainer {
+    "name": string;
+    "init"?: boolean;
+    "image": string;
+    "tag": string;
+}
 
 export interface WorkloadDiagnosis {
     "workload": KubeWorkload;

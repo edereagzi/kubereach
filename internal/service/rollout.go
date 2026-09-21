@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,11 +34,20 @@ const (
 
 // KubeWorkload is a Deployment, StatefulSet, DaemonSet or CronJob in scope; Rollout is set for the first three, CronJob for the last.
 type KubeWorkload struct {
-	Namespace string        `json:"namespace"`
-	Name      string        `json:"name"`
-	Kind      WorkloadKind  `json:"kind"`
-	Rollout   *Rollout      `json:"rollout,omitempty"`
-	CronJob   *CronJobState `json:"cronJob,omitempty"`
+	Namespace  string              `json:"namespace"`
+	Name       string              `json:"name"`
+	Kind       WorkloadKind        `json:"kind"`
+	Containers []WorkloadContainer `json:"containers"`
+	Rollout    *Rollout            `json:"rollout,omitempty"`
+	CronJob    *CronJobState       `json:"cronJob,omitempty"`
+}
+
+// WorkloadContainer is one container of the pod template, init containers first; Tag is the version a row shows, read from Image.
+type WorkloadContainer struct {
+	Name  string `json:"name"`
+	Init  bool   `json:"init,omitempty"`
+	Image string `json:"image"`
+	Tag   string `json:"tag"`
 }
 
 // Rollout is where a workload's pods stand against its spec, read the way kubectl rollout status does.
@@ -178,7 +189,7 @@ func deploymentWorkload(d *appsv1.Deployment) KubeWorkload {
 	default:
 		r.State = RolloutComplete
 	}
-	return KubeWorkload{Namespace: d.Namespace, Name: d.Name, Kind: WorkloadDeployment, Rollout: r}
+	return KubeWorkload{Namespace: d.Namespace, Name: d.Name, Kind: WorkloadDeployment, Containers: workloadContainers(d.Spec.Template.Spec), Rollout: r}
 }
 
 func statefulSetWorkload(ss *appsv1.StatefulSet) KubeWorkload {
@@ -200,7 +211,7 @@ func statefulSetWorkload(ss *appsv1.StatefulSet) KubeWorkload {
 	case st.UpdateRevision != st.CurrentRevision:
 		r.State = RolloutProgressing
 	}
-	return KubeWorkload{Namespace: ss.Namespace, Name: ss.Name, Kind: WorkloadStatefulSet, Rollout: r}
+	return KubeWorkload{Namespace: ss.Namespace, Name: ss.Name, Kind: WorkloadStatefulSet, Containers: workloadContainers(ss.Spec.Template.Spec), Rollout: r}
 }
 
 func daemonSetWorkload(ds *appsv1.DaemonSet) KubeWorkload {
@@ -209,7 +220,7 @@ func daemonSetWorkload(ds *appsv1.DaemonSet) KubeWorkload {
 	if ds.Spec.UpdateStrategy.Type != appsv1.OnDeleteDaemonSetStrategyType && (ds.Generation > st.ObservedGeneration || r.Updated < r.Desired || r.Available < r.Desired) {
 		r.State = RolloutProgressing
 	}
-	return KubeWorkload{Namespace: ds.Namespace, Name: ds.Name, Kind: WorkloadDaemonSet, Rollout: r}
+	return KubeWorkload{Namespace: ds.Namespace, Name: ds.Name, Kind: WorkloadDaemonSet, Containers: workloadContainers(ds.Spec.Template.Spec), Rollout: r}
 }
 
 func cronJobWorkload(cj *batchv1.CronJob) KubeWorkload {
@@ -217,7 +228,31 @@ func cronJobWorkload(cj *batchv1.CronJob) KubeWorkload {
 	if cj.Status.LastScheduleTime != nil {
 		c.LastScheduled = cj.Status.LastScheduleTime.Time
 	}
-	return KubeWorkload{Namespace: cj.Namespace, Name: cj.Name, Kind: WorkloadCronJob, CronJob: c}
+	return KubeWorkload{Namespace: cj.Namespace, Name: cj.Name, Kind: WorkloadCronJob, Containers: workloadContainers(cj.Spec.JobTemplate.Spec.Template.Spec), CronJob: c}
+}
+
+func workloadContainers(spec corev1.PodSpec) []WorkloadContainer {
+	var out []WorkloadContainer
+	for _, c := range spec.InitContainers {
+		out = append(out, WorkloadContainer{Name: c.Name, Init: true, Image: c.Image, Tag: imageTag(c.Image)})
+	}
+	for _, c := range spec.Containers {
+		out = append(out, WorkloadContainer{Name: c.Name, Image: c.Image, Tag: imageTag(c.Image)})
+	}
+	return out
+}
+
+// imageTag is the digest's first 12 hex digits when the reference is pinned, otherwise the tag after the last colon
+// that is not a registry port, and "latest" when there is none, as the kubelet reads it.
+func imageTag(image string) string {
+	if _, digest, ok := strings.Cut(image, "@"); ok {
+		_, hex, _ := strings.Cut(digest, ":")
+		return hex[:min(12, len(hex))]
+	}
+	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
+		return image[i+1:]
+	}
+	return "latest"
 }
 
 // replicas is the spec's count, which defaults to one when unset.

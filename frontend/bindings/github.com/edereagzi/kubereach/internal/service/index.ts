@@ -41,5 +41,6 @@ export type {
     ShellOutput,
     ShellStatus,
     ShellTarget,
+    WorkloadContainer,
     WorkloadDiagnosis
 } from "./models.js";

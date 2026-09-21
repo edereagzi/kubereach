@@ -1,7 +1,9 @@
+import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CopyIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, Section } from "@/components/pod-detail";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { workloadQuery } from "@/queries";
@@ -10,11 +12,12 @@ import { cn, isZeroTime } from "@/lib/utils";
 // workloadReason is what a row's badge says: the rollout state, or that the CronJob is suspended.
 export const workloadReason = (w: KubeWorkload) => w.rollout?.state ?? (w.cronJob?.suspend ? "suspended" : undefined);
 
-// workloadLabel is the row's one-line summary: ready over desired, or a CronJob's schedule and last run.
+// workloadLabel is the row's one-line summary: ready over desired or a CronJob's schedule and last run, then the image tags.
 export function workloadLabel(w: KubeWorkload) {
-  if (w.rollout) return `${w.rollout.ready}/${w.rollout.desired} ready`;
-  if (w.cronJob) return [w.cronJob.schedule, !isZeroTime(w.cronJob.lastScheduled) && `last run ${ago(w.cronJob.lastScheduled)}`].filter(Boolean).join(" · ");
-  return "";
+  const state = w.rollout
+    ? [`${w.rollout.ready}/${w.rollout.desired} ready`]
+    : [w.cronJob?.schedule, w.cronJob && !isZeroTime(w.cronJob.lastScheduled) && `last run ${ago(w.cronJob.lastScheduled)}`];
+  return [...state, [...new Set(w.containers?.map((c) => c.tag))].join(", ")].filter(Boolean).join(" · ");
 }
 
 export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluster; workload: KubeWorkload; onClose: () => void }) {
@@ -53,6 +56,28 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
                 </dd>
                 <dt className="text-muted-foreground">Revision</dt>
                 <dd className="font-mono">{r.revision || "—"}</dd>
+              </dl>
+            </Section>
+          )}
+          {!!w.containers?.length && (
+            <Section title="Images">
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+                {w.containers.map((c) => (
+                  <Fragment key={c.name}>
+                    <dt className="flex items-center gap-2 text-muted-foreground">
+                      {c.name}
+                      {c.init && <Badge variant="outline">init</Badge>}
+                    </dt>
+                    <dd className="group flex min-w-0 items-center gap-1 font-mono">
+                      <span className="truncate" title={c.image}>
+                        {c.image}
+                      </span>
+                      <Button variant="ghost" size="icon-xs" title="Copy image" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => navigator.clipboard.writeText(c.image)}>
+                        <CopyIcon />
+                      </Button>
+                    </dd>
+                  </Fragment>
+                ))}
               </dl>
             </Section>
           )}
