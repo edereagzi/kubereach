@@ -12,14 +12,20 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { podsQuery } from "@/queries";
 import { useUIStore } from "@/store";
+import { useTheme } from "@/theme";
 import { cn } from "@/lib/utils";
+
+// Surfaces follow the app background; the ANSI palette stays xterm's default in both modes.
+const xtermTheme = (dark: boolean) =>
+  dark ? { background: "#13161c" } : { background: "#ffffff", foreground: "#0a0a0a", cursor: "#0a0a0a", selectionBackground: "#0a0a0a33" };
 
 // Terminals live outside React so output arriving before the view mounts is kept; xterm buffers writes until open().
 const terminals = new Map<string, Terminal>();
+useTheme.subscribe((s) => terminals.forEach((t) => (t.options.theme = xtermTheme(s.dark))));
 const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
-    term = new Terminal({ fontSize: 12, cursorBlink: true, scrollback: 5000 });
+    term = new Terminal({ fontSize: 12, cursorBlink: true, scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
     terminals.set(id, term);
   }
   return term;
@@ -96,7 +102,7 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
       <div className="flex items-center gap-1">
         {sessions.map((s) => (
           <div key={s.id} className={cn("flex items-center gap-1 rounded-md border pl-2 text-sm", s.id === activeShellId && "bg-accent")}>
@@ -157,7 +163,7 @@ function TerminalView({ session }: { session: ShellStatus }) {
   }, [session.id]);
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-black p-1">
+    <div className="relative min-h-0 flex-1 overflow-hidden rounded-md border p-1">
       <div ref={ref} className="h-full" />
       {done && (
         <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", session.state === State.StateError ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>

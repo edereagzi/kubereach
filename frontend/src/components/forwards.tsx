@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,11 +29,6 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div>
-        <Button size="sm" onClick={() => setAdding(true)}>
-          <PlusIcon /> Add forward
-        </Button>
-      </div>
       {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
       {saved.length === 0 ? (
         <Empty className="border-0">
@@ -41,24 +36,36 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
             <EmptyTitle>No port forwards</EmptyTitle>
             <EmptyDescription>Add a service or pod to get a stable local port for each of its ports.</EmptyDescription>
           </EmptyHeader>
+          <EmptyContent>
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <PlusIcon /> Add forward
+            </Button>
+          </EmptyContent>
         </Empty>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8" />
-              <TableHead>Target</TableHead>
-              <TableHead>Local address</TableHead>
-              <TableHead className="w-16">On</TableHead>
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {saved.map((f) => (
-              <ForwardRow key={f.id} forward={f} />
-            ))}
-          </TableBody>
-        </Table>
+        <>
+          <div>
+            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+              <PlusIcon /> Add forward
+            </Button>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8" />
+                <TableHead>Target</TableHead>
+                <TableHead>Local address</TableHead>
+                <TableHead className="w-16">On</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {saved.map((f) => (
+                <ForwardRow key={f.id} forward={f} />
+              ))}
+            </TableBody>
+          </Table>
+        </>
       )}
     </div>
   );

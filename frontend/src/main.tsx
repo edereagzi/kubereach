@@ -7,6 +7,7 @@ import { ForwardService, LogService, RouteService, ShellService } from "@binding
 import { writeShellOutput } from "@/components/terminal";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
+import "@/theme";
 import "@/index.css";
 
 const queryClient = new QueryClient();

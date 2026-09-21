@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadSimpleIcon, FolderOpenIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AppearanceMenu } from "@/theme";
 
-export function ImportExport() {
+// Settings is a menu rather than a screen: everything about Kubereach itself rather than a Cluster or a Route.
+export function SidebarFooter() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const exportConfig = useMutation({ mutationFn: () => ConfigService.Export() });
   const inspect = useMutation({
@@ -26,15 +29,23 @@ export function ImportExport() {
   const error = exportConfig.error ?? inspect.error;
 
   return (
-    <div className="flex flex-col border-t px-2 py-1">
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" className="flex-1" disabled={exportConfig.isPending} onClick={() => exportConfig.mutate()}>
-          <UploadSimpleIcon /> Export
-        </Button>
-        <Button variant="ghost" size="sm" className="flex-1" disabled={inspect.isPending} onClick={() => inspect.mutate()}>
-          <DownloadSimpleIcon /> Import
-        </Button>
-      </div>
+    <div className="flex flex-col border-t p-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
+          <GearIcon />
+          Settings
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-56">
+          <DropdownMenuItem disabled={exportConfig.isPending} onClick={() => exportConfig.mutate()}>
+            <UploadSimpleIcon /> Export configuration…
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={inspect.isPending} onClick={() => inspect.mutate()}>
+            <DownloadSimpleIcon /> Import configuration…
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <AppearanceMenu />
+        </DropdownMenuContent>
+      </DropdownMenu>
       {error && <p className="px-2 pb-1 text-xs text-destructive">{String(error)}</p>}
       {exportConfig.data && (
         <p className="truncate px-2 pb-1 text-xs text-muted-foreground" title={exportConfig.data}>

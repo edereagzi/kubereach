@@ -20,6 +20,7 @@ import {
   type SSHServer,
 } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -93,29 +94,30 @@ export function RouteList() {
   const listError = (!credential && connectError) || (importSSHConfig.error ? String(importSSHConfig.error) : null);
 
   return (
-    <div className="flex flex-col border-t">
-      <div className="flex h-10 items-center gap-1 px-4 text-sm font-medium">
-        <span className="flex-1">Routes</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title="Import SSH config"
-          disabled={importSSHConfig.isPending}
-          onClick={() => importSSHConfig.mutate()}
-        >
-          <FolderOpenIcon />
-        </Button>
-        <Button variant="ghost" size="icon-sm" title="New route" onClick={() => setEditing(null)}>
-          <PlusIcon />
-        </Button>
+    <div className="flex flex-col">
+      <div className="flex h-10 items-center gap-0.5 px-3 pt-2 text-xs font-medium text-muted-foreground">
+        <span className="flex-1 pl-1">Routes</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="Add route" />}>
+            <PlusIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setEditing(null)}>
+              <PlusIcon /> New route…
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={importSSHConfig.isPending} onClick={() => importSSHConfig.mutate()}>
+              <FolderOpenIcon /> Import from SSH config…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {listError && <p className="px-4 pb-2 text-xs text-destructive">{listError}</p>}
-      <ul className="flex flex-col gap-1 px-2 pb-2">
+      <ul className="flex flex-col gap-px px-2 pb-2">
         {routes.map((r) => {
           const status = routeStatuses[r.id];
           const up = isUp(status);
           return (
-            <li key={r.id} className="group flex items-center gap-2 rounded-md px-3 py-1 text-sm hover:bg-accent">
+            <li key={r.id} className="group flex h-7 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent">
               <StateDot status={status} />
               <span className="flex-1 truncate" title={statusLabel(status)}>
                 {r.name}

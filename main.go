@@ -81,6 +81,7 @@ func main() {
 		URL:    "/",
 	})
 	bindings.NewTray(app, svc, window, version)
+	app.RegisterService(application.NewService(bindings.NewWindowTheme(app, window)))
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
