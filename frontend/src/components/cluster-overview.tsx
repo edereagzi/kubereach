@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, State, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
@@ -14,13 +14,20 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Toggle } from "@/components/ui/toggle";
 import { configQuery, isForbidden, namespacesQuery } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
-type Filter = "all" | "Services" | "Workloads" | "Pods" | "ConfigMaps" | "Secrets" | "Problems";
-const filters: Filter[] = ["all", "Services", "Workloads", "Pods", "ConfigMaps", "Secrets", "Problems"];
+// The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
+// Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
+const folded = (group: string) => group === "ConfigMaps" || group === "Secrets";
+const counts = (kinds: TargetGroup[]) => kinds.map((g) => `${g.items.length} ${g.label.toLowerCase().replace(/s$/, g.items.length === 1 ? "" : "s")}`).join(" · ");
+
+const matches = (words: string[], group: string, t: Target) => {
+  const hay = `${t.kind} ${t.workload?.kind ?? ""} ${group} ${t.label}`.toLowerCase();
+  return words.every((w) => hay.includes(w));
+};
 
 // Passage states a pod goes through on its way up or out; any other reason, and a stuck rollout, is a problem.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating"]);
@@ -32,7 +39,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const { data: config } = useQuery(configQuery);
   const { groups, error: listError, pending } = useTargets(cluster, true);
   const [editing, setEditing] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [problems, setProblems] = useState(false);
+  const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
   const [needle, setNeedle] = useState("");
   const [forwarding, setForwarding] = useState<Target | null>(null);
   const [inspecting, setInspecting] = useState<Target | null>(null);
@@ -75,10 +83,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     );
   }
 
-  const lower = needle.trim().toLowerCase();
-  const shown = groups
-    .filter((g) => filter === "all" || filter === "Problems" || g.label === filter)
-    .map((g) => ({ ...g, items: g.items.filter((t) => (filter !== "Problems" || isProblem(t)) && (!lower || t.label.toLowerCase().includes(lower))) }));
+  const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t)) && matches(words, g.label, t)) }));
   const byNamespace = new Map<string, TargetGroup[]>();
   for (const ns of namespaces.data ?? []) byNamespace.set(ns, []);
   for (const g of shown) {
@@ -101,7 +107,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
-          <InputGroupInput ref={search} placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
@@ -109,20 +115,16 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <kbd className="rounded border px-1 font-sans text-[10px] text-muted-foreground">/</kbd>
           </InputGroupAddon>
         </InputGroup>
-        <ToggleGroup value={[filter]} onValueChange={(v) => setFilter((v[0] as Filter) ?? "all")} variant="outline" size="sm" spacing={0}>
-          {filters.map((f) => (
-            <ToggleGroupItem key={f} value={f}>
-              {f === "all" ? "All" : f}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <Toggle variant="outline" size="sm" pressed={problems} onPressedChange={setProblems} title="Only pods and workloads that are not healthy">
+          Problems
+        </Toggle>
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
           {explicit.length ? explicit.join(", ") : "All namespaces"}
           <span className="text-muted-foreground/70">· Edit scope</span>
         </Button>
       </div>
       {groups
-        .filter((g) => g.error && (filter === "all" || filter === g.label))
+        .filter((g) => g.error)
         .map((g) => (
           <p key={g.label} className="px-4 pb-1 text-xs text-muted-foreground">
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${String(g.error)}`}
@@ -132,28 +134,43 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         {total === 0 && !pending && (
           <Empty className="border-0">
             <EmptyHeader>
-              <EmptyTitle>{lower ? `Nothing matches “${needle.trim()}”` : filter === "Problems" ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
+              <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {lower ? "Try a shorter name." : filter === "Problems" ? "No crash loops, pull failures, pending pods or stuck rollouts." : `This scope has no ${filter === "all" ? "services, workloads, pods, configmaps or secrets" : filter.toLowerCase()}.`}
+                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods or stuck rollouts." : "This scope has no services, workloads, pods, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
-        {[...byNamespace].map(([ns, kinds]) =>
-          kinds.length === 0 ? null : (
+        {[...byNamespace].map(([ns, kinds]) => {
+          if (kinds.length === 0) return null;
+          const running = kinds.filter((g) => !folded(g.label));
+          const reference = kinds.filter((g) => folded(g.label));
+          const open = words.length > 0 || !!unfolded[ns];
+          const line = (t: Target) => (
+            <TargetLine key={t.value} cluster={cluster} target={t} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} onKind={() => setNeedle(t.kind)} />
+          );
+          return (
             <section key={ns}>
               <h3 className="sticky top-0 z-10 flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium">
                 {ns}
-                <span className="text-xs font-normal text-muted-foreground">
-                  {kinds.map((g) => `${g.items.length} ${g.label.toLowerCase().replace(/s$/, g.items.length === 1 ? "" : "s")}`).join(" · ")}
-                </span>
+                <span className="text-xs font-normal text-muted-foreground">{counts(running)}</span>
               </h3>
-              {kinds.flatMap((g) => g.items).map((t) => (
-                <TargetLine key={t.value} cluster={cluster} target={t} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} />
-              ))}
+              {running.flatMap((g) => g.items).map(line)}
+              {reference.length > 0 && words.length === 0 && (
+                <button
+                  type="button"
+                  className="grid h-8 w-full grid-cols-[44px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
+                  aria-expanded={open}
+                  onClick={() => setUnfolded((u) => ({ ...u, [ns]: !open }))}
+                >
+                  {open ? <CaretDownIcon className="size-3" /> : <CaretRightIcon className="size-3" />}
+                  {counts(reference)}
+                </button>
+              )}
+              {open && reference.flatMap((g) => g.items).map(line)}
             </section>
-          ),
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -166,7 +183,7 @@ const meta = (t: Target) => {
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
-function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluster; target: Target; onForward: () => void; onInspect: () => void }) {
+function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster: Cluster; target: Target; onForward: () => void; onInspect: () => void; onKind: () => void }) {
   const { data } = useQuery(configQuery);
   const selectTab = useUIStore((s) => s.selectTab);
   const selectShell = useUIStore((s) => s.selectShell);
@@ -188,7 +205,9 @@ function TargetLine({ cluster, target, onForward, onInspect }: { cluster: Cluste
 
   return (
     <div className="group grid h-8 grid-cols-[44px_minmax(160px,240px)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
-      <KindBadge kind={target.kind} />
+      <button type="button" className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Show only ${target.kind}`} onClick={onKind}>
+        <KindBadge kind={target.kind} className="hover:bg-muted-foreground/20" />
+      </button>
       {target.kind === "pod" || target.workload || target.config ? (
         <button
           type="button"
