@@ -2,12 +2,10 @@ package bindings
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
-	"slices"
 	"sync"
 
 	"github.com/edereagzi/kubereach/internal/service"
@@ -62,9 +60,9 @@ func (t *Tray) Refresh() {
 	menu.Add(trayLabels[state]).SetEnabled(false)
 	menu.AddSeparator()
 	cfg, _ := t.svc.LoadConfig()
-	running := map[string]service.State{}
+	bound := map[string]service.ForwardStatus{}
 	for _, st := range t.svc.ForwardStatuses() {
-		running[st.Forward.ID] = st.State
+		bound[st.Forward.ID] = st
 	}
 	listed := false
 	for _, c := range cfg.Clusters {
@@ -77,12 +75,11 @@ func (t *Tray) Refresh() {
 				sub = menu.AddSubmenu(c.Name)
 				listed = true
 			}
-			st, on := running[pf.ID]
 			label := fmt.Sprintf("%s/%s:%d → localhost:%d", pf.Target.Namespace, pf.Target.Name, pf.RemotePort, pf.LocalPort)
-			if on && st != service.StateConnected {
-				label += " (" + string(st) + ")"
+			if st, ok := bound[pf.ID]; ok && st.State != service.StateIdle {
+				label += " (" + string(st.State) + ")"
 			}
-			sub.AddCheckbox(label, on).OnClick(func(*application.Context) { go t.toggle(pf) })
+			sub.AddCheckbox(label, pf.Enabled).OnClick(func(*application.Context) { go t.report(t.svc.SetForwardEnabled(pf.ID, !pf.Enabled)) })
 		}
 	}
 	if listed {
@@ -99,13 +96,8 @@ func (t *Tray) Refresh() {
 	}
 }
 
-// toggle stops the forward when it runs and starts it otherwise, judged at click time rather than menu build time.
-func (t *Tray) toggle(pf service.PortForward) {
-	if slices.ContainsFunc(t.svc.ForwardStatuses(), func(st service.ForwardStatus) bool { return st.Forward.ID == pf.ID }) {
-		_ = t.svc.StopForward(pf.ID)
-		return
-	}
-	if _, err := t.svc.StartForward(context.Background(), pf); err != nil {
+func (t *Tray) report(err error) {
+	if err != nil {
 		t.app.Dialog.Error().SetTitle("Kubereach").SetMessage(err.Error()).Show()
 	}
 }

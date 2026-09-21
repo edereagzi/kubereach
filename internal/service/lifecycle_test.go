@@ -1,11 +1,7 @@
 package service_test
 
 import (
-	"context"
-	"net"
-	"strconv"
 	"testing"
-	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
 )
@@ -25,32 +21,30 @@ func TestOverallState_AggregatesRoutesAndForwards(t *testing.T) {
 	f.connect(t)
 	assertOverall(service.StateConnected)
 
-	pf, err := f.svc.StartForward(context.Background(), service.PortForward{
-		ClusterID:  f.cluster,
-		Target:     service.ForwardTarget{Kind: service.TargetPod, Namespace: "default", Name: "api-0"},
-		RemotePort: 8080,
-		LocalPort:  freePort(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForwardState(t, forwards, service.StateConnected)
+	// An idle forward does not count; a failed dial does.
+	pf := f.saveForward(t)
+	waitForwardState(t, forwards, service.StateIdle)
 	assertOverall(service.StateConnected)
+	pingThroughPort(t, pf.LocalPort)
+	waitForwardState(t, forwards, service.StateConnected)
 
-	// A dropped Route takes the forward down with it: one reconnecting entity outweighs the connected ones.
 	f.ssh.dropConnections()
 	f.waitState(t, service.StateReconnecting)
 	assertOverall(service.StateReconnecting)
 	f.waitState(t, service.StateConnected)
-	waitForwardState(t, forwards, service.StateConnected)
+	waitForwardState(t, forwards, service.StateIdle)
 
-	if err := f.svc.StopForward(pf.ID); err != nil {
-		t.Fatal(err)
-	}
 	if err := f.svc.StopRoute(f.route.ID); err != nil {
 		t.Fatal(err)
 	}
 	f.waitState(t, service.StateStopped)
+	assertOverall(service.StateIdle)
+	touchPort(t, pf.LocalPort)
+	waitForwardState(t, forwards, service.StateError)
+	assertOverall(service.StateError)
+	if err := f.svc.SetForwardEnabled(pf.ID, false); err != nil {
+		t.Fatal(err)
+	}
 	assertOverall(service.StateIdle)
 
 	// A refused password is fatal for the Route and outweighs everything else.
@@ -74,15 +68,8 @@ func TestShutdown_ClosesEveryRouteAndForward(t *testing.T) {
 	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
 	forwards := f.captureForwards()
 	f.connect(t)
-	local := freePort(t)
-	if _, err := f.svc.StartForward(context.Background(), service.PortForward{
-		ClusterID:  f.cluster,
-		Target:     service.ForwardTarget{Kind: service.TargetPod, Namespace: "default", Name: "api-0"},
-		RemotePort: 8080,
-		LocalPort:  local,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	pf := f.saveForward(t)
+	pingThroughPort(t, pf.LocalPort)
 	waitForwardState(t, forwards, service.StateConnected)
 
 	f.svc.Shutdown()
@@ -95,8 +82,10 @@ func TestShutdown_ClosesEveryRouteAndForward(t *testing.T) {
 	if got := f.svc.OverallState(); got != service.StateIdle {
 		t.Errorf("overall state %q after shutdown, want idle", got)
 	}
-	if conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(local)), time.Second); err == nil {
-		_ = conn.Close()
-		t.Errorf("local port %d still open after shutdown", local)
+	if !dialFails(pf.LocalPort) {
+		t.Errorf("local port %d still open after shutdown", pf.LocalPort)
+	}
+	if cfg, _ := f.svc.LoadConfig(); len(cfg.Forwards) != 1 || !cfg.Forwards[0].Enabled {
+		t.Errorf("saved forwards after shutdown = %+v, want the forward still on", cfg.Forwards)
 	}
 }

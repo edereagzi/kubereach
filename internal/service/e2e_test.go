@@ -76,20 +76,23 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 		t.Fatalf("default/kubernetes not in %v", services)
 	}
 
-	// CoreDNS serves Prometheus metrics on the kube-dns service's metrics port.
-	local := freePort(t)
-	pf, err := svc.StartForward(ctx, service.PortForward{
+	// CoreDNS serves Prometheus metrics on the kube-dns service's metrics port; the forward gets an automatic
+	// local port and dials the pod on the first request.
+	pf, err := svc.SaveForward(service.PortForward{
 		ClusterID:  id,
 		Target:     service.ForwardTarget{Kind: service.TargetService, Namespace: "kube-system", Name: "kube-dns"},
 		RemotePort: 9153,
-		LocalPort:  local,
+		Enabled:    true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = svc.StopForward(pf.ID) }()
-	waitForwardState(t, forwards, service.StateConnected)
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/metrics", local))
+	defer func() { _ = svc.DeleteForward(pf.ID) }()
+	if pf.LocalPort < service.ForwardPortStart {
+		t.Fatalf("assigned local port = %d, want one from %d", pf.LocalPort, service.ForwardPortStart)
+	}
+	waitForwardState(t, forwards, service.StateIdle)
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/metrics", pf.LocalPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +101,7 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "coredns_") {
 		t.Fatalf("metrics through local port: status %d, body %.200q", resp.StatusCode, body)
 	}
+	waitForwardState(t, forwards, service.StateConnected)
 
 	// CoreDNS logs its Corefile on startup, so a fresh follow always has lines to deliver.
 	pods, err := svc.ListPods(ctx, id)

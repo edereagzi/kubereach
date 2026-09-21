@@ -32,11 +32,15 @@ export interface Config {
     "forwards": PortForward[] | null;
 }
 
+/**
+ * ForwardStatus describes a bound forward: idle until the first inbound connection, connected while a pod
+ * connection is up, error when the port could not be bound or the last dial failed.
+ */
 export interface ForwardStatus {
     "forward": PortForward;
 
     /**
-     * Pod is the backing pod the forward resolved to.
+     * Pod is the backing pod while a connection is up.
      */
     "pod": string;
     "state": State;
@@ -139,6 +143,7 @@ export interface NamedPort {
 
 /**
  * PortForward binds a loopback port to one service or pod port; RemotePort is the service port for services.
+ * A zero LocalPort is assigned by SaveForward; Enabled is whether the port is bound whenever Kubereach runs.
  */
 export interface PortForward {
     "id": string;
@@ -146,6 +151,7 @@ export interface PortForward {
     "target": ForwardTarget;
     "remotePort": number;
     "localPort": number;
+    "enabled": boolean;
 }
 
 /**

@@ -141,7 +141,7 @@ function ClusterTabs() {
       <Empty className="h-full border-0">
         <EmptyHeader>
           <EmptyTitle>Select a cluster</EmptyTitle>
-          <EmptyDescription>Port Forwards, Logs, Shell and Expose live here.</EmptyDescription>
+          <EmptyDescription>Port Forwards, Logs and Shell live here.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -156,7 +156,6 @@ function ClusterTabs() {
           <TabsTrigger value="forwards">Port Forwards</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="shell">Shell</TabsTrigger>
-          <TabsTrigger value="expose">Expose Mode</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="overflow-auto">
           <ClusterOverview key={cluster.id} cluster={cluster} />

@@ -16,7 +16,7 @@ const maxLogLines = 50_000;
 // Lines are appended in place and version bumps notify subscribers, so a batch never copies the buffer.
 type LogBuffer = { lines: LogLine[]; version: number };
 
-type ClusterTab = "overview" | "forwards" | "logs" | "shell" | "expose";
+type ClusterTab = "overview" | "forwards" | "logs" | "shell";
 
 interface UIState {
   selectedClusterId: string | null;
@@ -52,7 +52,7 @@ export const useUIStore = create<UIState>((set) => ({
   setRouteStatus: (status) =>
     set((s) => ({ routeStatuses: { ...s.routeStatuses, [status.routeId]: status } })),
   forwardStatuses: {},
-  // A stopped forward is forgotten by the backend, so it leaves the list.
+  // A forward that is switched off is forgotten by the backend, so it leaves the list.
   setForwardStatus: (status) =>
     set((s) => {
       const forwardStatuses = { ...s.forwardStatuses };

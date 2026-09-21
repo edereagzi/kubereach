@@ -10,8 +10,15 @@ import { useUIStore } from "@/store";
 import "@/index.css";
 
 const queryClient = new QueryClient();
-const { setRouteStatus, setForwardStatus, setLogStatus, appendLogs, setShellStatus, addHostKeyPrompt, removeHostKeyPrompt } =
-  useUIStore.getState();
+const {
+  setRouteStatus,
+  setForwardStatus,
+  setLogStatus,
+  appendLogs,
+  setShellStatus,
+  addHostKeyPrompt,
+  removeHostKeyPrompt,
+} = useUIStore.getState();
 
 // Any state change after a host key prompt means the prompt was answered or the Route was stopped.
 Events.On("route:state", ({ data }) => {

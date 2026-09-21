@@ -34,6 +34,14 @@ func main() {
 				data, _ := json.Marshal(need)
 				return data
 			}
+			var exists *service.ForwardExistsError
+			if errors.As(err, &exists) {
+				data, _ := json.Marshal(struct {
+					Code string `json:"code"`
+					*service.ForwardExistsError
+				}{"forward-exists", exists})
+				return data
+			}
 			var inUse *service.PortInUseError
 			if errors.As(err, &inUse) {
 				data, _ := json.Marshal(struct {
@@ -59,6 +67,9 @@ func main() {
 	})
 
 	svc.Emit = func(name string, data any) { app.Event.Emit(name, data) }
+	if err := svc.BindForwards(); err != nil {
+		log.Print(err)
+	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Kubereach",

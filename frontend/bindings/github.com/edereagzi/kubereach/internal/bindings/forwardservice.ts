@@ -17,14 +17,10 @@ export function Save(pf: service$0.PortForward): $CancellablePromise<service$0.P
     return $Call.ByID(3724440611, pf);
 }
 
-export function Start(pf: service$0.PortForward): $CancellablePromise<service$0.PortForward> {
-    return $Call.ByID(736417254, pf);
+export function SetEnabled(forwardID: string, enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1960525307, forwardID, enabled);
 }
 
 export function Statuses(): $CancellablePromise<service$0.ForwardStatus[] | null> {
     return $Call.ByID(1661052236);
-}
-
-export function Stop(forwardID: string): $CancellablePromise<void> {
-    return $Call.ByID(1688815822, forwardID);
 }

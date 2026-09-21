@@ -224,7 +224,7 @@ func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1c
 func (s *Service) watchWorkload(ctx context.Context, lc *logConn, k kube, pods corev1client.PodInterface, selector labels.Selector) {
 	list := k.client.CoreV1().Pods(lc.status.Source.Namespace)
 	_, ctrl := cache.NewInformerWithOptions(cache.InformerOptions{
-		ListerWatcher: podListWatch{&cache.ListWatch{
+		ListerWatcher: plainListWatch{&cache.ListWatch{
 			ListWithContextFunc: func(ctx context.Context, o metav1.ListOptions) (runtime.Object, error) {
 				o.LabelSelector = selector.String()
 				return list.List(ctx, o)
@@ -254,10 +254,10 @@ func (s *Service) watchWorkload(ctx context.Context, lc *logConn, k kube, pods c
 	ctrl.RunWithContext(ctx)
 }
 
-// podListWatch opts out of watch-list semantics, which the fake clientset in tests does not speak; plain list+watch works everywhere.
-type podListWatch struct{ *cache.ListWatch }
+// plainListWatch opts out of watch-list semantics, which the fake clientset in tests does not speak; plain list+watch works everywhere.
+type plainListWatch struct{ *cache.ListWatch }
 
-func (podListWatch) IsWatchListSemanticsUnSupported() bool { return true }
+func (plainListWatch) IsWatchListSemanticsUnSupported() bool { return true }
 
 func (s *Service) followWorkloadPod(ctx context.Context, lc *logConn, pods corev1client.PodInterface, pod *corev1.Pod) {
 	containers := containerNames(pod.Spec.Containers)
