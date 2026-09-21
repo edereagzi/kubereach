@@ -5,6 +5,7 @@ import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
+import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
 import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
@@ -170,6 +171,10 @@ function ClusterTabs() {
       <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as typeof activeTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-9 w-full justify-start gap-5 border-b px-4">
           <TabsTrigger value="overview" className="flex-none px-0">Overview</TabsTrigger>
+          <TabsTrigger value="events" className="flex-none px-0">
+            Events
+            <EventsLive cluster={cluster} />
+          </TabsTrigger>
           <TabsTrigger value="forwards" className="flex-none px-0">
             Port forwards
             <TabCount value={forwardsFor(data?.forwards, cluster).length} />
@@ -185,6 +190,9 @@ function ClusterTabs() {
         </TabsList>
         <TabsContent value="overview" className="flex min-h-0 flex-col">
           <ClusterOverview key={cluster.id} cluster={cluster} />
+        </TabsContent>
+        <TabsContent value="events" className="flex min-h-0 flex-col">
+          <ClusterEvents key={cluster.id} cluster={cluster} />
         </TabsContent>
         <TabsContent value="forwards" className="overflow-auto">
           <PortForwards key={cluster.id} cluster={cluster} />
@@ -209,6 +217,11 @@ function TabCount({ value }: { value: number }) {
 
 function LogsLive({ cluster }: { cluster: Cluster }) {
   const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
+  return stream ? <StateDot status={stream} /> : null;
+}
+
+function EventsLive({ cluster }: { cluster: Cluster }) {
+  const stream = useUIStore((s) => eventStreamFor(s.eventStreams, cluster));
   return stream ? <StateDot status={stream} /> : null;
 }
 

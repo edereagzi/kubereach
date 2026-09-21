@@ -70,6 +70,21 @@ export interface CronJobState {
     "lastScheduled": string;
 }
 
+export interface EventBatch {
+    "streamId": string;
+    "events": KubeEvent[] | null;
+}
+
+/**
+ * EventStatus is one Cluster's event watch over its namespace scope.
+ */
+export interface EventStatus {
+    "id": string;
+    "clusterId": string;
+    "state": State;
+    "error"?: string;
+}
+
 /**
  * ForwardStatus describes a bound forward: idle until the first inbound connection, connected while a pod
  * connection is up, error when the port could not be bound or the last dial failed.
@@ -113,7 +128,18 @@ export interface ImportPreview {
     "missingPaths": string[] | null;
 }
 
+/**
+ * KubeEvent is one event; ID is the event object's own namespace/name, so a repeated event replaces its earlier delivery.
+ */
 export interface KubeEvent {
+    "id": string;
+
+    /**
+     * Kind, Namespace and Name are the involved object.
+     */
+    "kind": string;
+    "namespace": string;
+    "name": string;
     "type": string;
     "reason": string;
     "message": string;

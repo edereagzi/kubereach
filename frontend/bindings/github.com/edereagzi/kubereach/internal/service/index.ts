@@ -16,6 +16,8 @@ export type {
     ContainerDiagnosis,
     ContainerState,
     CronJobState,
+    EventBatch,
+    EventStatus,
     ForwardStatus,
     ForwardTarget,
     HostKeyPrompt,

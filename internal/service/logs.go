@@ -226,7 +226,7 @@ func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1c
 		}
 		lc.wg.Wait()
 	}()
-	s.batchLogs(ctx, lc, readersDone)
+	batchInto(ctx, lc.lines, readersDone, func(batch []LogLine) { s.emitLogs(lc, batch) })
 	<-readersDone
 	if ctx.Err() != nil {
 		s.setLogState(lc, StateStopped, nil)
@@ -466,31 +466,29 @@ func parseJSONFields(text string) map[string]string {
 	return fields
 }
 
-// batchLogs emits lines as they arrive, waiting up to logBatchLinger to fill a batch, until the readers are done.
-// A batch is ordered by timestamp so the containers' backlogs interleave chronologically.
-func (s *Service) batchLogs(ctx context.Context, lc *logConn, readersDone <-chan struct{}) {
-	lines := lc.lines
+// batchInto emits items as they arrive, waiting up to logBatchLinger to fill a batch, until the producers are done.
+func batchInto[T any](ctx context.Context, items <-chan T, producersDone <-chan struct{}, emit func([]T)) {
 	for {
-		var batch []LogLine
+		var batch []T
 		select {
 		case <-ctx.Done():
 			return
-		case <-readersDone:
-			for len(lines) > 0 {
-				batch = append(batch, <-lines)
+		case <-producersDone:
+			for len(items) > 0 {
+				batch = append(batch, <-items)
 			}
 			if len(batch) > 0 {
-				s.emitLogs(lc, batch)
+				emit(batch)
 			}
 			return
-		case l := <-lines:
+		case l := <-items:
 			batch = append(batch, l)
 		}
 		linger := time.After(logBatchLinger)
 	fill:
 		for len(batch) < logBatchMax {
 			select {
-			case l := <-lines:
+			case l := <-items:
 				batch = append(batch, l)
 			case <-linger:
 				break fill
@@ -498,10 +496,11 @@ func (s *Service) batchLogs(ctx context.Context, lc *logConn, readersDone <-chan
 				return
 			}
 		}
-		s.emitLogs(lc, batch)
+		emit(batch)
 	}
 }
 
+// emitLogs orders a batch by timestamp so the containers' backlogs interleave chronologically.
 func (s *Service) emitLogs(lc *logConn, batch []LogLine) {
 	slices.SortStableFunc(batch, func(a, b LogLine) int { return a.Time.Compare(b.Time) })
 	s.Emit(EventLogLines, LogBatch{StreamID: lc.status.ID, Lines: batch})

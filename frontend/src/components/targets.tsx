@@ -69,9 +69,13 @@ export function useTargets(cluster: Cluster) {
   return { groups, error: services.error ?? workloads.error ?? pods.error, pending: services.isPending || workloads.isPending || pods.isPending };
 }
 
-export function KindBadge({ kind, className }: { kind: Kind; className?: string }) {
+// kind is a Kind, or any short name for one the app has no row for (an event's ReplicaSet, say).
+export function KindBadge({ kind, className, title }: { kind: Kind | string; className?: string; title?: string }) {
   return (
-    <span className={cn("inline-flex h-[18px] w-11 shrink-0 items-center justify-center rounded bg-muted font-mono text-[11px] font-medium text-muted-foreground", className)}>
+    <span
+      title={title}
+      className={cn("inline-flex h-[18px] w-11 shrink-0 items-center justify-center truncate rounded bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
+    >
       {kind}
     </span>
   );

@@ -55,12 +55,18 @@ type ContainerState struct {
 	FinishedAt time.Time `json:"finishedAt"`
 }
 
+// KubeEvent is one event; ID is the event object's own namespace/name, so a repeated event replaces its earlier delivery.
 type KubeEvent struct {
-	Type    string    `json:"type"`
-	Reason  string    `json:"reason"`
-	Message string    `json:"message"`
-	Count   int32     `json:"count"`
-	Time    time.Time `json:"time"`
+	ID string `json:"id"`
+	// Kind, Namespace and Name are the involved object.
+	Kind      string    `json:"kind"`
+	Namespace string    `json:"namespace"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Reason    string    `json:"reason"`
+	Message   string    `json:"message"`
+	Count     int32     `json:"count"`
+	Time      time.Time `json:"time"`
 }
 
 // DescribePod explains one pod's state; events it cannot list are reported in EventsError rather than failing.
@@ -139,10 +145,19 @@ func objectEvents(ctx context.Context, k kube, kind, namespace, name, uid string
 		if e.InvolvedObject.Kind != kind || e.InvolvedObject.Name != name {
 			continue
 		}
-		out = append(out, KubeEvent{Type: e.Type, Reason: e.Reason, Message: e.Message, Count: max(e.Count, 1), Time: eventTime(e)})
+		out = append(out, newKubeEvent(&e))
 	}
-	slices.SortStableFunc(out, func(a, b KubeEvent) int { return b.Time.Compare(a.Time) })
+	sortEventsNewestFirst(out)
 	return out, nil
+}
+
+func newKubeEvent(e *corev1.Event) KubeEvent {
+	o := e.InvolvedObject
+	return KubeEvent{ID: e.Namespace + "/" + e.Name, Kind: o.Kind, Namespace: o.Namespace, Name: o.Name, Type: e.Type, Reason: e.Reason, Message: e.Message, Count: max(e.Count, 1), Time: eventTime(*e)}
+}
+
+func sortEventsNewestFirst(events []KubeEvent) {
+	slices.SortStableFunc(events, func(a, b KubeEvent) int { return b.Time.Compare(a.Time) })
 }
 
 // eventTime is when the event was last seen; the events.k8s.io shape fills EventTime and series instead of the legacy stamps.

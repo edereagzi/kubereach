@@ -77,8 +77,8 @@ func TestDescribePod_CrashLooping(t *testing.T) {
 			Limits:    map[string]string{"memory": "128Mi"},
 		}},
 		Events: []service.KubeEvent{
-			{Type: "Warning", Reason: "BackOff", Message: "Back-off restarting failed container", Count: 12, Time: diagEpoch.Add(time.Minute)},
-			{Type: "Normal", Reason: "Pulled", Message: "Container image already present", Count: 6, Time: diagEpoch.Add(-time.Minute)},
+			{ID: "default/api-0.BackOff", Kind: "Pod", Namespace: "default", Name: "api-0", Type: "Warning", Reason: "BackOff", Message: "Back-off restarting failed container", Count: 12, Time: diagEpoch.Add(time.Minute)},
+			{ID: "default/api-0.Pulled", Kind: "Pod", Namespace: "default", Name: "api-0", Type: "Normal", Reason: "Pulled", Message: "Container image already present", Count: 6, Time: diagEpoch.Add(-time.Minute)},
 		},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {

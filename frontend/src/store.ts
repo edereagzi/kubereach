@@ -1,9 +1,13 @@
 import { create } from "zustand";
+import type { Kind } from "@/components/targets";
 import {
   State,
+  type EventBatch,
+  type EventStatus,
   type ForwardStatus,
   type HostKeyPrompt,
   type ImportPreview,
+  type KubeEvent,
   type LogBatch,
   type LogLine,
   type LogStatus,
@@ -17,7 +21,15 @@ const maxLogLines = 50_000;
 // Lines are appended in place and version bumps notify subscribers, so a batch never copies the buffer.
 type LogBuffer = { lines: LogLine[]; version: number };
 
-type ClusterTab = "overview" | "forwards" | "logs" | "shell";
+// ponytail: the newest events of one stream, trimmed from the end; enough for an incident's hour.
+const maxEvents = 5_000;
+
+type EventBuffer = { events: KubeEvent[]; version: number };
+
+type ClusterTab = "overview" | "events" | "forwards" | "logs" | "shell";
+
+// An object another tab asks the Overview to open the detail of.
+export type InspectRequest = { clusterId: string; kind: Kind; namespace: string; name: string };
 
 interface UIState {
   selectedClusterId: string | null;
@@ -33,6 +45,12 @@ interface UIState {
   logBuffers: Record<string, LogBuffer>;
   appendLogs: (batch: LogBatch) => void;
   clearLogs: (streamId: string) => void;
+  eventStreams: Record<string, EventStatus>;
+  setEventStatus: (status: EventStatus) => void;
+  eventBuffers: Record<string, EventBuffer>;
+  appendEvents: (batch: EventBatch) => void;
+  inspectRequest: InspectRequest | null;
+  requestInspect: (request: InspectRequest | null) => void;
   shellSessions: Record<string, ShellStatus>;
   activeShellId: string | null;
   setShellStatus: (status: ShellStatus) => void;
@@ -87,6 +105,29 @@ export const useUIStore = create<UIState>((set) => ({
     }),
   clearLogs: (streamId) =>
     set((s) => ({ logBuffers: { ...s.logBuffers, [streamId]: { lines: [], version: (s.logBuffers[streamId]?.version ?? 0) + 1 } } })),
+  eventStreams: {},
+  setEventStatus: (status) =>
+    set((s) => {
+      const eventStreams = { ...s.eventStreams };
+      const eventBuffers = { ...s.eventBuffers };
+      if (status.state === State.StateStopped) {
+        delete eventStreams[status.id];
+        delete eventBuffers[status.id];
+      } else eventStreams[status.id] = status;
+      return { eventStreams, eventBuffers };
+    }),
+  eventBuffers: {},
+  // A repeated event replaces its earlier delivery by ID; the buffer stays newest first.
+  appendEvents: ({ streamId, events }) =>
+    set((s) => {
+      const buffer = s.eventBuffers[streamId] ?? { events: [], version: 0 };
+      const byId = new Map(buffer.events.map((e) => [e.id, e]));
+      for (const e of events ?? []) byId.set(e.id, e);
+      const merged = [...byId.values()].sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, maxEvents);
+      return { eventBuffers: { ...s.eventBuffers, [streamId]: { events: merged, version: buffer.version + 1 } } };
+    }),
+  inspectRequest: null,
+  requestInspect: (request) => set({ inspectRequest: request }),
   shellSessions: {},
   activeShellId: null,
   setShellStatus: (status) =>

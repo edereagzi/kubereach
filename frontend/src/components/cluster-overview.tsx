@@ -31,6 +31,15 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const [inspecting, setInspecting] = useState<Target | null>(null);
   const search = useRef<HTMLInputElement>(null);
   const explicit = cluster.namespaces ?? [];
+  const inspectRequest = useUIStore((s) => s.inspectRequest);
+  const requestInspect = useUIStore((s) => s.requestInspect);
+
+  // Another tab asked for an object's detail; it opens once the lists have it, and a request for nothing listed is dropped.
+  useEffect(() => {
+    if (!inspectRequest || inspectRequest.clusterId !== cluster.id || pending) return;
+    setInspecting(groups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
+    requestInspect(null);
+  }, [inspectRequest, pending, groups, cluster.id, requestInspect]);
 
   // "/" jumps to the filter from anywhere on the tab that is not already typing.
   useEffect(() => {

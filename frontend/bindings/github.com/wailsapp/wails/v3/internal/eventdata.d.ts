@@ -13,6 +13,8 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "config:changed": void;
+            "events:batch": service$0.EventBatch;
+            "events:state": service$0.EventStatus;
             "forward:state": service$0.ForwardStatus;
             "logs:lines": service$0.LogBatch;
             "logs:state": service$0.LogStatus;

@@ -3,6 +3,7 @@
 
 import * as ClusterService from "./clusterservice.js";
 import * as ConfigService from "./configservice.js";
+import * as EventService from "./eventservice.js";
 import * as ForwardService from "./forwardservice.js";
 import * as LogService from "./logservice.js";
 import * as RouteService from "./routeservice.js";
@@ -10,6 +11,7 @@ import * as ShellService from "./shellservice.js";
 export {
     ClusterService,
     ConfigService,
+    EventService,
     ForwardService,
     LogService,
     RouteService,

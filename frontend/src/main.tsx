@@ -16,6 +16,8 @@ const {
   setForwardStatus,
   setLogStatus,
   appendLogs,
+  setEventStatus,
+  appendEvents,
   setShellStatus,
   addHostKeyPrompt,
   removeHostKeyPrompt,
@@ -31,6 +33,8 @@ Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));
 Events.On("logs:state", ({ data }) => setLogStatus(data));
 Events.On("logs:lines", ({ data }) => appendLogs(data));
+Events.On("events:state", ({ data }) => setEventStatus(data));
+Events.On("events:batch", ({ data }) => appendEvents(data));
 Events.On("shell:state", ({ data }) => setShellStatus(data));
 Events.On("shell:output", ({ data }) => writeShellOutput(data));
 RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));

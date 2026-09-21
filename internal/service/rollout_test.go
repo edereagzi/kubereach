@@ -47,7 +47,7 @@ func TestDescribeWorkload_Deployments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantEvents := []service.KubeEvent{{Type: "Warning", Reason: "ScalingReplicaSet", Message: "Scaled up replica set worker-9f2 to 1", Count: 1, Time: diagEpoch}}
+	wantEvents := []service.KubeEvent{{ID: "default/worker.scaled", Kind: "Deployment", Namespace: "default", Name: "worker", Type: "Warning", Reason: "ScalingReplicaSet", Message: "Scaled up replica set worker-9f2 to 1", Count: 1, Time: diagEpoch}}
 	if diff := cmp.Diff(service.WorkloadDiagnosis{Workload: want[2], Events: wantEvents}, d); diff != "" {
 		t.Errorf("diagnosis (-want +got):\n%s", diff)
 	}
