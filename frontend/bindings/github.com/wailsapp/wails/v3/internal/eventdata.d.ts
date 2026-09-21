@@ -17,6 +17,8 @@ declare module "@wailsio/runtime" {
             "logs:state": service$0.LogStatus;
             "route:hostkey": service$0.HostKeyPrompt;
             "route:state": service$0.RouteStatus;
+            "shell:output": service$0.ShellOutput;
+            "shell:state": service$0.ShellStatus;
         }
     }
 }

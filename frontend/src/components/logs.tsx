@@ -5,6 +5,7 @@ import { EraserIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
 import { LogSourceKind, type Cluster, type LogLine, type LogSource } from "@bindings/internal/service";
 import { statusLabel, StateDot } from "@/components/routes";
+import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,12 @@ export function Logs({ cluster }: { cluster: Cluster }) {
   });
   const items = [...workloadItems, ...podItems];
   const error = pods.error ?? workloads.error ?? start.error;
+  // The followed pods, with their containers from the pod list; a pod not listed yet falls back to the stream's union.
+  const shellPods = (stream?.pods ?? []).map((name) => ({
+    namespace: stream!.source.namespace,
+    name,
+    containers: pods.data?.find((p) => p.namespace === stream!.source.namespace && p.name === name)?.containers ?? stream!.containers ?? [],
+  }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
@@ -72,6 +79,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
           </SelectContent>
         </Select>
         {stream && <StateDot status={stream} />}
+        {stream && <OpenShell cluster={cluster} pods={shellPods} />}
         {(error || stream?.error) && (
           <span className="truncate text-xs text-destructive">{String(error ?? statusLabel(stream))}</span>
         )}

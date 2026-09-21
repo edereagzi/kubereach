@@ -25,5 +25,8 @@ export type {
     PortForward,
     Route,
     RouteStatus,
-    SSHServer
+    SSHServer,
+    ShellOutput,
+    ShellStatus,
+    ShellTarget
 } from "./models.js";

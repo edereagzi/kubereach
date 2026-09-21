@@ -6,10 +6,12 @@ import * as ConfigService from "./configservice.js";
 import * as ForwardService from "./forwardservice.js";
 import * as LogService from "./logservice.js";
 import * as RouteService from "./routeservice.js";
+import * as ShellService from "./shellservice.js";
 export {
     ClusterService,
     ConfigService,
     ForwardService,
     LogService,
-    RouteService
+    RouteService,
+    ShellService
 };

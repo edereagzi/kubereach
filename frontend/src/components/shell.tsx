@@ -5,6 +5,7 @@ import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
 import { PortForwards } from "@/components/forwards";
 import { Logs } from "@/components/logs";
+import { PodShell } from "@/components/terminal";
 import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -130,6 +131,8 @@ function ReachabilityDot({ clusterId }: { clusterId: string }) {
 
 function ClusterTabs() {
   const selectedClusterId = useUIStore((s) => s.selectedClusterId);
+  const activeTab = useUIStore((s) => s.activeTab);
+  const selectTab = useUIStore((s) => s.selectTab);
   const { data } = useQuery(configQuery);
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
 
@@ -147,7 +150,7 @@ function ClusterTabs() {
   return (
     <>
       <ClusterHeader cluster={cluster} />
-      <Tabs defaultValue="overview" className="min-h-0 flex-1">
+      <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as typeof activeTab)} className="min-h-0 flex-1">
         <TabsList className="m-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="forwards">Port Forwards</TabsTrigger>
@@ -163,6 +166,9 @@ function ClusterTabs() {
         </TabsContent>
         <TabsContent value="logs" className="flex min-h-0 flex-col">
           <Logs key={cluster.id} cluster={cluster} />
+        </TabsContent>
+        <TabsContent value="shell" className="flex min-h-0 flex-col">
+          <PodShell key={cluster.id} cluster={cluster} />
         </TabsContent>
       </Tabs>
     </>

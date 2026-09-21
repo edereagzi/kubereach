@@ -40,9 +40,10 @@ type NamedPort struct {
 }
 
 type KubePod struct {
-	Namespace string      `json:"namespace"`
-	Name      string      `json:"name"`
-	Ports     []NamedPort `json:"ports"`
+	Namespace  string      `json:"namespace"`
+	Name       string      `json:"name"`
+	Containers []string    `json:"containers"`
+	Ports      []NamedPort `json:"ports"`
 }
 
 // kube is one Cluster's clientset and REST config, built per call so dialing always uses the Route's live connection.
@@ -171,7 +172,7 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 			return nil, wrapForbidden(err)
 		}
 		for _, pod := range list.Items {
-			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name}
+			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers)}
 			for _, c := range pod.Spec.Containers {
 				for _, p := range c.Ports {
 					kp.Ports = append(kp.Ports, NamedPort{Name: p.Name, Port: p.ContainerPort})

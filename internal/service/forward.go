@@ -21,7 +21,6 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 	"k8s.io/streaming/pkg/httpstream"
-	streamspdy "k8s.io/streaming/pkg/httpstream/spdy"
 )
 
 type TargetKind string
@@ -299,18 +298,9 @@ func restarts(p corev1.Pod) int32 {
 	return n
 }
 
-// forwardDialer upgrades to SPDY through the config's own transport, so the Route's dial function is honoured
-// where client-go's spdy.RoundTripperFor would dial the API server directly.
+// forwardDialer dials the pod's port-forward subresource over SPDY through the Route.
 func forwardDialer(ctx context.Context, cfg *rest.Config, namespace, pod string) (httpstream.Dialer, error) {
-	base, err := rest.TransportFor(cfg)
-	if err != nil {
-		return nil, err
-	}
-	upgrader, err := streamspdy.NewRoundTripperWithConfig(streamspdy.RoundTripperConfig{UpgradeTransport: base, PingPeriod: 5 * time.Second})
-	if err != nil {
-		return nil, err
-	}
-	rt, err := rest.HTTPWrappersForConfig(cfg, upgrader)
+	rt, upgrader, err := spdyTransport(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +309,7 @@ func forwardDialer(ctx context.Context, cfg *rest.Config, namespace, pod string)
 		return nil, err
 	}
 	u.Path = path.Join(u.Path, "api/v1/namespaces", namespace, "pods", pod, "portforward")
-	return &spdyDialer{ctx: ctx, upgrader: spdy.NewUpgraderForStreaming(upgrader), client: &http.Client{Transport: rt}, url: u.String()}, nil
+	return &spdyDialer{ctx: ctx, upgrader: upgrader, client: &http.Client{Transport: rt}, url: u.String()}, nil
 }
 
 // spdyDialer is client-go's SPDY dialer with the forward's context on the request, so Stop interrupts a stalled dial.

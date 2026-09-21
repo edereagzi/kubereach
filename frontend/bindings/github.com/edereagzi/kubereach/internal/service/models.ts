@@ -59,6 +59,7 @@ export interface HostKeyPrompt {
 export interface KubePod {
     "namespace": string;
     "name": string;
+    "containers": string[] | null;
     "ports": NamedPort[] | null;
 }
 
@@ -171,6 +172,33 @@ export interface SSHServer {
     "user": string;
     "auth": AuthMethod;
     "keyFile": string;
+}
+
+export interface ShellOutput {
+    "sessionId": string;
+    "data": string | null;
+}
+
+export interface ShellStatus {
+    "id": string;
+    "target": ShellTarget;
+
+    /**
+     * Shell is the command currently being tried, then the one that started.
+     */
+    "shell": string;
+    "state": State;
+    "error"?: string;
+}
+
+/**
+ * ShellTarget is the container an interactive shell is opened in; an empty Container means the pod's first one.
+ */
+export interface ShellTarget {
+    "clusterId": string;
+    "namespace": string;
+    "pod": string;
+    "container": string;
 }
 
 /**

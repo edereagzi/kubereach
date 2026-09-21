@@ -50,6 +50,7 @@ func main() {
 			application.NewService(bindings.NewRouteService(svc)),
 			application.NewService(bindings.NewForwardService(svc)),
 			application.NewService(bindings.NewLogService(svc)),
+			application.NewService(bindings.NewShellService(svc)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

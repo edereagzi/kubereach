@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/streaming/pkg/httpstream"
 	"k8s.io/streaming/pkg/httpstream/spdy"
 )
@@ -38,6 +39,10 @@ type testAPI struct {
 	feeds  map[string]chan string
 	gone   map[string]bool
 	seeded int
+	// shells are the commands the exec subresource can start; execs and resizes record what it was asked.
+	shells  map[string]bool
+	execs   []string
+	resizes []remotecommand.TerminalSize
 }
 
 func newTestAPI() *testAPI {
@@ -53,6 +58,10 @@ func (a *testAPI) podHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 8 && parts[5] == "pods" && parts[7] == "log" {
 		a.logHandler(w, r, parts[6])
+		return
+	}
+	if len(parts) == 8 && parts[5] == "pods" && parts[7] == "exec" {
+		a.execHandler(w, r)
 		return
 	}
 	if len(parts) != 8 || parts[5] != "pods" || parts[7] != "portforward" {
@@ -227,10 +236,10 @@ func TestForward_ServiceResolvesReadyPodLikeKubectl(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantPods := []service.KubePod{
-		{Namespace: "default", Name: "api-notready", Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
-		{Namespace: "default", Name: "api-pending", Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
-		{Namespace: "default", Name: "api-ready", Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
-		{Namespace: "default", Name: "other", Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
+		{Namespace: "default", Name: "api-notready", Containers: []string{"main"}, Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
+		{Namespace: "default", Name: "api-pending", Containers: []string{"main"}, Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
+		{Namespace: "default", Name: "api-ready", Containers: []string{"main"}, Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
+		{Namespace: "default", Name: "other", Containers: []string{"main"}, Ports: []service.NamedPort{{Name: "http", Port: 8080}}},
 	}
 	if diff := cmp.Diff(wantPods, pods); diff != "" {
 		t.Errorf("pods mismatch (-want +got):\n%s", diff)
