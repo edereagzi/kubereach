@@ -41,13 +41,12 @@ jobs:
       - run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           mkdir dist
+      - name: Stamp the tag into the generated build assets
+        run: wails3 update build-assets -config build/config.yml -dir build -name kubereach -binaryname kubereach -productversion "$VERSION" -silent
 
       - name: Build macOS app
         if: runner.os == 'macOS'
-        run: |
-          plutil -replace CFBundleVersion -string "$VERSION" build/darwin/Info.plist
-          plutil -replace CFBundleShortVersionString -string "$VERSION" build/darwin/Info.plist
-          wails3 task darwin:package:universal
+        run: wails3 task darwin:package:universal
       # Disabled until a Developer ID certificate and notarization profile are in secrets (see `wails3 setup`).
       - name: Sign and notarize macOS app (disabled)
         if: false && runner.os == 'macOS'
@@ -68,10 +67,7 @@ jobs:
 
       - name: Build Windows binary and installer
         if: runner.os == 'Windows'
-        run: |
-          jq --arg v "$VERSION" '.fixed.file_version = $v | .info["0000"].ProductVersion = $v' build/windows/info.json > info.json && mv info.json build/windows/info.json
-          sed -i "s/INFO_PRODUCTVERSION \"[^\"]*\"/INFO_PRODUCTVERSION \"$VERSION\"/" build/windows/nsis/wails_tools.nsh
-          wails3 task windows:package
+        run: wails3 task windows:package
       # Disabled until a code-signing certificate is in secrets (see `wails3 setup`).
       - name: Sign Windows binary and installer (disabled)
         if: false && runner.os == 'Windows'

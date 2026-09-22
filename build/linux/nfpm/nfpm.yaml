@@ -10,7 +10,7 @@ version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "Access Kubernetes clusters behind SSH bastions"
+description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks"
 vendor: "Eray Dereagzi"
 homepage: "https://wails.io"
 license: "MIT"

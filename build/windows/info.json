@@ -6,7 +6,7 @@
 		"0000": {
 			"ProductVersion": "0.1.0",
 			"CompanyName": "Eray Dereagzi",
-			"FileDescription": "Access Kubernetes clusters behind SSH bastions",
+			"FileDescription": "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
 			"LegalCopyright": "© 2026 Eray Dereagzi",
 			"ProductName": "Kubereach",
 			"Comments": "(c) 2026 Eray Dereagzi"

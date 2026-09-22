@@ -22,6 +22,9 @@ const podsLabel = (n: number) => `${n} pod${n === 1 ? "" : "s"}`;
 // paint over the reservation and hide it, which is the case worth seeing.
 function Meter({ name, label, used, requested, allocatable, named = false }: { name: string; label: (n: number) => string; used?: number; requested?: number; allocatable: number; named?: boolean }) {
   const [usedPct, requestedPct] = [percent(used ?? 0, allocatable), percent(requested ?? 0, allocatable)];
+  // The tick is two pixels wide on a bar of sixty-four, so at the extremes it is held just inside the track;
+  // clipped in half against the edge it reads as a rendering fault rather than as a reservation.
+  const tickAt = Math.min(Math.max(requestedPct, 2), 98);
   const said = (value: number | undefined, what: string) => (value === undefined ? `${what} unknown` : `${label(value)} ${what}`);
   return (
     <span
@@ -31,13 +34,14 @@ function Meter({ name, label, used, requested, allocatable, named = false }: { n
       {/* The table names these in its column headers; on their own, as in the node detail, they have to name themselves. */}
       {named && <span className="shrink-0">{name === "memory" ? "mem" : name}</span>}
       <span className="relative h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
-        {used !== undefined && <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/40" style={{ width: `${Math.min(usedPct, 100)}%` }} />}
+        {used !== undefined && <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/55" style={{ width: `${Math.min(usedPct, 100)}%` }} />}
         {requested !== undefined && (
-          <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground" style={{ left: `${Math.min(requestedPct, 100)}%` }} />
+          <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground/90" style={{ left: `${tickAt}%` }} />
         )}
       </span>
-      {/* Wide enough for "100% / 100%" in this mono face; the pair never breaks across two lines. */}
-      <span className="w-24 shrink-0 whitespace-nowrap text-right">
+      {/* In the table the pair is a column and holds a width wide enough for "100% / 100%"; named, it sits in a
+          sentence, where that width would strand it a centimetre from its own bar. */}
+      <span className={cn("shrink-0 whitespace-nowrap", named ? "" : "w-24 text-right")}>
         {used === undefined ? "—" : `${usedPct}%`}
         <span className="opacity-60"> / {requested === undefined ? "—" : `${requestedPct}%`}</span>
       </span>
@@ -88,7 +92,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
       {inspecting && <NodeDetail cluster={cluster} node={inspecting} onClose={() => setInspecting(null)} />}
-      <Table>
+      <Table className="w-auto min-w-[52rem]">
         <TableHeader>
           <TableRow>
             <TableHead>Node</TableHead>

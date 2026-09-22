@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Kubereach
-Comment=Access Kubernetes clusters behind SSH bastions
+Comment=Access Kubernetes clusters behind SSH bastions, VPNs and closed networks
 # The Exec line includes %u to pass the URL to the application
 Exec=/usr/local/bin/kubereach %u
 Terminal=false
