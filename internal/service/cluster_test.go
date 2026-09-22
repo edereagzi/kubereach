@@ -3,9 +3,15 @@ package service_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
@@ -324,4 +330,103 @@ func TestClusterClient_BuiltOnceUntilTheClusterOrItsKubeconfigChanges(t *testing
 	}
 	reach(3)
 	reach(3)
+}
+
+// kubeconfigService uses the real client factory against srv, with a header timeout short enough to outlive in a test.
+func kubeconfigService(t *testing.T, srv *httptest.Server) (*service.Service, string) {
+	t.Helper()
+	t.Cleanup(srv.Close)
+	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	if err := os.WriteFile(kubeconfig, []byte(`apiVersion: v1
+kind: Config
+clusters: [{name: c, cluster: {server: `+srv.URL+`}}]
+users: [{name: u, user: {token: t}}]
+contexts: [{name: ctx, context: {cluster: c, user: u}}]
+current-context: ctx
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), nil)
+	svc.ResponseHeaderTimeout = 100 * time.Millisecond
+	clusters, err := svc.ImportKubeconfigs([]string{kubeconfig})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, clusters[0].ID
+}
+
+func TestKubeconfigClient_SlowBodyFlowsButLateHeadersFail(t *testing.T) {
+	const podList = `{"kind":"PodList","apiVersion":"v1","metadata":{},"items":[{"metadata":{"namespace":"ns","name":"web"}}]}`
+	var lateHeaders atomic.Bool
+	var accept atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accept.Store(r.Header.Get("Accept"))
+		if lateHeaders.Load() {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(time.Second):
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		for chunk := range slices.Chunk([]byte(podList), len(podList)/5+1) {
+			_, _ = w.Write(chunk)
+			w.(http.Flusher).Flush()
+			time.Sleep(60 * time.Millisecond)
+		}
+	}))
+	svc, id := kubeconfigService(t, srv)
+
+	pods, err := svc.ListPods(context.Background(), id)
+	if err != nil {
+		t.Fatalf("a body streaming for longer than the header timeout was cut: %v", err)
+	}
+	if len(pods) != 1 || pods[0].Name != "web" {
+		t.Fatalf("pods = %+v", pods)
+	}
+	if got := accept.Load(); got != "application/vnd.kubernetes.protobuf,application/json" {
+		t.Fatalf("Accept = %q, want protobuf with JSON as fallback", got)
+	}
+
+	lateHeaders.Store(true)
+	start := time.Now()
+	if _, err := svc.ListPods(context.Background(), id); err == nil {
+		t.Fatal("headers arriving after the timeout did not fail the request")
+	}
+	if waited := time.Since(start); waited > 500*time.Millisecond {
+		t.Fatalf("late headers failed after %v, want about the timeout", waited)
+	}
+}
+
+// The kubelet sends a follow's headers with its first line, so a quiet container must not trip the header timeout.
+func TestKubeconfigClient_QuietLogFollowIsNotCut(t *testing.T) {
+	svc, id := kubeconfigService(t, httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/log") {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(300 * time.Millisecond):
+			}
+			_, _ = w.Write([]byte("2026-01-01T00:00:00Z hello\n"))
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"Pod","apiVersion":"v1","metadata":{"namespace":"ns","name":"web"},"spec":{"containers":[{"name":"app"}]}}`))
+	})))
+	batches := make(chan service.LogBatch, 100)
+	svc.Emit = func(_ string, data any) {
+		if b, ok := data.(service.LogBatch); ok {
+			batches <- b
+		}
+	}
+	stream, err := svc.StartLogs(context.Background(), service.LogSource{ClusterID: id, Namespace: "ns", Kind: service.LogSourcePod, Name: "web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = svc.StopLogs(stream.ID) }()
+	if lines := collectLogs(t, batches, stream.ID, 1); lines[0].Text != "hello" {
+		t.Fatalf("line = %+v", lines[0])
+	}
 }

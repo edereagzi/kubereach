@@ -17,6 +17,8 @@ type Service struct {
 	// ForwardIdle is how long a forward's pod connection outlives its last local connection.
 	ForwardIdle    time.Duration
 	RouteKeepalive time.Duration
+	// ResponseHeaderTimeout is how long an API server may take to start answering; a body that is flowing is never cut.
+	ResponseHeaderTimeout time.Duration
 
 	configPath string
 	clients    ClientFactory
@@ -33,25 +35,27 @@ type Service struct {
 
 // New creates the service; a nil clients factory loads clientsets from each Cluster's kubeconfig.
 func New(configPath string, clients ClientFactory) *Service {
-	if clients == nil {
-		clients = newKubeconfigClient
-	}
 	home, _ := os.UserHomeDir()
-	return &Service{
-		Emit:           func(string, any) {},
-		KnownHostsPath: filepath.Join(home, ".ssh", "known_hosts"),
-		ForwardIdle:    5 * time.Minute,
-		RouteKeepalive: 15 * time.Second,
-		configPath:     configPath,
-		clients:        clients,
-		routes:         map[string]*routeConn{},
-		forwards:       map[string]*forwardConn{},
-		logs:           map[string]*logConn{},
-		events:         map[string]*eventConn{},
-		shells:         map[string]*shellConn{},
-		kubes:          map[string]cachedKube{},
-		secrets:        map[string]string{},
+	s := &Service{
+		Emit:                  func(string, any) {},
+		KnownHostsPath:        filepath.Join(home, ".ssh", "known_hosts"),
+		ForwardIdle:           5 * time.Minute,
+		RouteKeepalive:        15 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		configPath:            configPath,
+		clients:               clients,
+		routes:                map[string]*routeConn{},
+		forwards:              map[string]*forwardConn{},
+		logs:                  map[string]*logConn{},
+		events:                map[string]*eventConn{},
+		shells:                map[string]*shellConn{},
+		kubes:                 map[string]cachedKube{},
+		secrets:               map[string]string{},
 	}
+	if s.clients == nil {
+		s.clients = s.kubeconfigClient
+	}
+	return s
 }
 
 func (s *Service) ConfigPath() string { return s.configPath }

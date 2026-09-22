@@ -138,7 +138,7 @@ func pod(ns, name, app string, phase corev1.PodPhase, ready bool, created time.T
 	}
 }
 
-// fixtureTimeout mirrors the request timeout the real client factory sets, short enough for a test to outlive it.
+// fixtureTimeout is a request timeout on the fixture config, short enough for a test to show streams outlive it.
 const fixtureTimeout = 300 * time.Millisecond
 
 type forwardFixture struct {

@@ -154,7 +154,7 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 			return LogStatus{}, err
 		}
 	}
-	// Streams share the Cluster's transport, without the request timeout that would cut a follow short.
+	// Streams share the Cluster's transport, without any request timeout a ClientFactory's config carries, which would cut a follow short.
 	cfg := rest.CopyConfig(k.config)
 	cfg.Timeout = 0
 	core, err := corev1client.NewForConfigAndClient(cfg, &http.Client{Transport: k.http.Transport})
@@ -407,7 +407,7 @@ func (s *Service) readContainerLogs(ctx context.Context, lc *logConn, pods corev
 		t := metav1.NewTime(cutoff)
 		opts.SinceTime = &t
 	}
-	body, err := pods.GetLogs(pod, opts).Stream(ctx)
+	body, err := pods.GetLogs(pod, opts).Stream(context.WithValue(ctx, noHeaderTimeout{}, true))
 	if err != nil {
 		return false, err
 	}

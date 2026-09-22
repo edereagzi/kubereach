@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -66,8 +67,9 @@ type kube struct {
 	cluster Cluster
 }
 
-// newKubeconfigClient uses client-go's standard loader, so exec plugins and OIDC behave as in kubectl.
-func newKubeconfigClient(c Cluster, dial DialFunc) (kubernetes.Interface, *rest.Config, error) {
+// kubeconfigClient uses client-go's standard loader, so exec plugins and OIDC behave as in kubectl.
+// Only the clientset speaks protobuf; the returned config stays JSON for metrics and SPDY.
+func (s *Service) kubeconfigClient(c Cluster, dial DialFunc) (kubernetes.Interface, *rest.Config, error) {
 	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: c.Kubeconfig},
 		&clientcmd.ConfigOverrides{CurrentContext: c.Context},
@@ -75,10 +77,57 @@ func newKubeconfigClient(c Cluster, dial DialFunc) (kubernetes.Interface, *rest.
 	if err != nil {
 		return nil, nil, err
 	}
-	cfg.Timeout = 15 * time.Second
 	cfg.Dial = dial
-	client, err := kubernetes.NewForConfig(cfg)
+	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper { return headerTimeout{rt, s.ResponseHeaderTimeout} })
+	proto := rest.CopyConfig(cfg)
+	proto.ContentType = "application/vnd.kubernetes.protobuf"
+	proto.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	client, err := kubernetes.NewForConfig(proto)
 	return client, cfg, err
+}
+
+// headerTimeout fails a request whose response headers are late, unlike http.Client.Timeout which also cuts a slow body or a watch.
+type headerTimeout struct {
+	rt http.RoundTripper
+	d  time.Duration
+}
+
+// noHeaderTimeout marks a request whose headers may legitimately wait, such as a log follow the kubelet answers with its first line.
+type noHeaderTimeout struct{}
+
+func (h headerTimeout) RoundTrip(req *http.Request) (*http.Response, error) {
+	if h.d <= 0 || req.Context().Value(noHeaderTimeout{}) != nil {
+		return h.rt.RoundTrip(req)
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	timer := time.AfterFunc(h.d, cancel)
+	resp, err := h.rt.RoundTrip(req.WithContext(ctx))
+	if !timer.Stop() {
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		cancel()
+		return nil, fmt.Errorf("%s %s: no response within %v", req.Method, req.URL.Redacted(), h.d)
+	}
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = cancelOnClose{resp.Body, cancel}
+	return resp, nil
+}
+
+// WrappedRoundTripper lets client-go find the TLS config and dialer underneath, which the SPDY upgrader needs.
+func (h headerTimeout) WrappedRoundTripper() http.RoundTripper { return h.rt }
+
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	defer c.cancel()
+	return c.ReadCloser.Close()
 }
 
 // ImportKubeconfigs adds one Cluster per context not yet configured and returns the added ones.
