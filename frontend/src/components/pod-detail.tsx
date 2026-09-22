@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, ResourceUsage } from "@bindings/internal/service";
 import { useStartLogs } from "@/components/logs";
-import type { Target } from "@/components/targets";
+import { portsLabel, type Target } from "@/components/targets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,26 +51,43 @@ export const restartsLabel = (n: number) => `${n} restart${n === 1 ? "" : "s"}`;
 const cpuLabel = (m: number) => `${m}m`;
 const memoryLabel = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)}Gi` : `${Math.round(b / (1 << 20))}Mi`);
 
-// UsageLabel is "120m/500m 24% · 320Mi/1Gi 31%": what the pod uses against its limit, red when a limit is nearly reached.
-// A pod without a limit shows usage alone; the tooltip carries the requests.
-export function UsageLabel({ usage, limits, requests, className }: { usage: ResourceUsage; limits?: ResourceUsage; requests?: ResourceUsage; className?: string }) {
-  const part = (name: string, label: (n: number) => string, used: number, limit = 0, request = 0) => {
+// A pod this close to a limit is about to be throttled or killed, so it reads as a fault on a row and counts as a problem.
+const pressureThreshold = 90;
+
+// usagePressure is the resource nearest its limit once it is close enough to matter, as "mem 94%"; nothing while there is room, or without a limit.
+export function usagePressure(usage?: ResourceUsage, limits?: ResourceUsage) {
+  if (!usage) return undefined;
+  const worst = [
+    { name: "cpu", pct: limits?.cpu ? Math.round((usage.cpu / limits.cpu) * 100) : 0 },
+    { name: "mem", pct: limits?.memory ? Math.round((usage.memory / limits.memory) * 100) : 0 },
+  ].reduce((a, b) => (b.pct > a.pct ? b : a));
+  return worst.pct >= pressureThreshold ? `${worst.name} ${worst.pct}%` : undefined;
+}
+
+// UsageMeters answers "is it starving": one short bar and a percentage per resource, red once a limit is nearly reached.
+// A pod without a limit has no ratio and shows the bare usage instead; the tooltip carries the absolute numbers.
+export function UsageMeters({ usage, limits, requests }: { usage: ResourceUsage; limits?: ResourceUsage; requests?: ResourceUsage }) {
+  const meter = (name: string, label: (n: number) => string, used: number, limit = 0, request = 0) => {
     const pct = limit ? Math.round((used / limit) * 100) : null;
+    const hot = pct !== null && pct >= pressureThreshold;
     return (
       <span
-        className={cn("shrink-0", pct !== null && pct >= 90 && "text-destructive")}
+        className={cn("flex items-center gap-1.5", hot ? "text-destructive" : "text-muted-foreground")}
         title={`${name} ${label(used)} used, ${request ? `${label(request)} requested` : "no request"}, ${limit ? `${label(limit)} limit` : "no limit"}`}
       >
-        {label(used)}
-        {limit ? `/${label(limit)}` : ""}
-        {pct !== null && ` ${pct}%`}
+        {pct !== null && (
+          <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
+            <span className={cn("block h-full rounded-full", hot ? "bg-destructive" : "bg-foreground/40")} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </span>
+        )}
+        <span className="w-10 text-right">{pct !== null ? `${pct}%` : label(used)}</span>
       </span>
     );
   };
   return (
-    <span className={cn("flex shrink-0 gap-2 font-mono text-xs tabular-nums", className)}>
-      {part("cpu", cpuLabel, usage.cpu, limits?.cpu, requests?.cpu)}
-      {part("memory", memoryLabel, usage.memory, limits?.memory, requests?.memory)}
+    <span className="flex shrink-0 gap-3 font-mono text-xs tabular-nums">
+      {meter("cpu", cpuLabel, usage.cpu, limits?.cpu, requests?.cpu)}
+      {meter("memory", memoryLabel, usage.memory, limits?.memory, requests?.memory)}
     </span>
   );
 }
@@ -99,9 +116,13 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
               <ArrowsClockwiseIcon className={cn(pod.isFetching && "animate-spin")} />
             </Button>
           </DialogTitle>
-          <DialogDescription className="flex flex-wrap gap-x-2">
-            {d ? [d.phase, d.node && `on ${d.node}`, d.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ") : "Loading…"}
-            {usage && <UsageLabel usage={usage.usage} limits={target.limits} requests={target.requests} />}
+          <DialogDescription className="flex flex-wrap items-center gap-x-3">
+            {d
+              ? [d.phase, d.node && `on ${d.node}`, target.ports.length > 0 && portsLabel(target.ports), d.events?.[0] && `last event ${ago(d.events[0].time)}`]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Loading…"}
+            {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
           </DialogDescription>
         </DialogHeader>
         {pod.error && <p className="text-xs text-destructive">{String(pod.error)}</p>}

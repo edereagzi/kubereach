@@ -6,7 +6,7 @@ import { RolloutState, State, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { streamFor, useStartLogs } from "@/components/logs";
-import { PodDetail, ReasonBadge, UsageLabel, restartsLabel } from "@/components/pod-detail";
+import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDialog } from "@/components/yaml-view";
 import { KindBadge, logKind, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
@@ -30,15 +30,17 @@ const matches = (words: string[], group: string, t: Target) => {
   return words.every((w) => hay.includes(w));
 };
 
-// Passage states a pod goes through on its way up or out; any other reason, and a stuck rollout, is a problem.
+// Passage states a pod goes through on its way up or out; any other reason, a pod against a limit, and a stuck rollout are problems.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating"]);
-const isProblem = (t: Target) =>
-  t.kind === "pod" ? !!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")) : t.workload?.rollout?.state === RolloutState.RolloutStuck;
+const isProblem = (t: Target, pressure?: string) =>
+  t.kind === "pod" ? !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, ""))) : t.workload?.rollout?.state === RolloutState.RolloutStuck;
 
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
   const { groups, error: listError, pending } = useTargets(cluster, true);
+  const metrics = useQuery(podMetricsQuery(cluster.id)).data;
+  const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
   const [editing, setEditing] = useState(false);
   const [problems, setProblems] = useState(false);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
@@ -85,7 +87,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   }
 
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t)) && matches(words, g.label, t)) }));
+  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t, pressure(t))) && matches(words, g.label, t)) }));
   const byNamespace = new Map<string, TargetGroup[]>();
   for (const ns of namespaces.data ?? []) byNamespace.set(ns, []);
   for (const g of shown) {
@@ -138,7 +140,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods or stuck rollouts." : "This scope has no services, workloads, pods, configmaps or secrets."}
+                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit or stuck rollouts." : "This scope has no services, workloads, pods, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -149,7 +151,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           const reference = kinds.filter((g) => folded(g.label));
           const open = words.length > 0 || !!unfolded[ns];
           const line = (t: Target) => (
-            <TargetLine key={t.value} cluster={cluster} target={t} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} onKind={() => setNeedle(t.kind)} />
+            <TargetLine key={t.value} cluster={cluster} target={t} pressure={pressure(t)} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} onKind={() => setNeedle(t.kind)} />
           );
           return (
             <section key={ns}>
@@ -178,14 +180,17 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   );
 }
 
+// A row is identity and what is wrong. A service's ports and a rollout's readiness are bounded and stay;
+// a pod's containers and ports, a workload's images and a config object's keys are in the detail, where they are acted on.
+const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const meta = (t: Target) => {
   if (t.kind === "svc") return portsLabel(t.ports);
-  if (t.kind === "pod") return [t.containers.join(", "), portsLabel(t.ports)].filter(Boolean).join(" · ");
-  if (t.config) return [t.config.type, t.config.keys?.join(", ") || "no keys"].filter(Boolean).join(" · ");
+  if (t.kind === "pod") return "";
+  if (t.config) return [t.config.type, keysLabel(t.config.keys?.length ?? 0)].filter(Boolean).join(" · ");
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
-function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster: Cluster; target: Target; onForward: () => void; onInspect: () => void; onKind: () => void }) {
+function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }: { cluster: Cluster; target: Target; pressure?: string; onForward: () => void; onInspect: () => void; onKind: () => void }) {
   const { data } = useQuery(configQuery);
   const selectTab = useUIStore((s) => s.selectTab);
   const selectShell = useUIStore((s) => s.selectShell);
@@ -201,13 +206,12 @@ function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster
     ),
   );
   const startLogs = useStartLogs(cluster);
-  const usage = useQuery({ ...podMetricsQuery(cluster.id), enabled: target.kind === "pod" }).data?.get(podUsageKey(target.namespace, target.name));
   const verb = "h-6 px-2 text-xs";
   const quiet = cn(verb, "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100");
   const active = cn(verb, "text-primary hover:text-primary");
 
   return (
-    <div className="group grid h-8 grid-cols-[44px_minmax(160px,240px)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
+    <div className="group grid h-8 grid-cols-[44px_minmax(220px,26rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
       <button type="button" className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Show only ${target.kind}`} onClick={onKind}>
         <KindBadge kind={target.kind} className="hover:bg-muted-foreground/20" />
       </button>
@@ -223,8 +227,8 @@ function TargetLine({ cluster, target, onForward, onInspect, onKind }: { cluster
         {target.kind === "pod" && (
           <>
             <ReasonBadge reason={target.reason} className="cursor-pointer" onClick={onInspect} />
+            <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
             {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts)}</span>}
-            {usage && <UsageLabel usage={usage.usage} limits={target.limits} requests={target.requests} />}
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}

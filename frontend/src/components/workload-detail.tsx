@@ -15,12 +15,12 @@ import { cn, isZeroTime } from "@/lib/utils";
 // workloadReason is what a row's badge says: the rollout state, or that the CronJob is suspended.
 export const workloadReason = (w: KubeWorkload) => w.rollout?.state ?? (w.cronJob?.suspend ? "suspended" : undefined);
 
-// workloadLabel is the row's one-line summary: ready over desired or a CronJob's schedule and last run, then the image tags.
+// workloadLabel is the row's one-line summary: ready over desired, or a CronJob's schedule and last run. The images are in the detail.
 export function workloadLabel(w: KubeWorkload) {
   const state = w.rollout
     ? [`${w.rollout.ready}/${w.rollout.desired} ready`]
     : [w.cronJob?.schedule, w.cronJob && !isZeroTime(w.cronJob.lastScheduled) && `last run ${ago(w.cronJob.lastScheduled)}`];
-  return [...state, [...new Set(w.containers?.map((c) => c.tag))].join(", ")].filter(Boolean).join(" · ");
+  return state.filter(Boolean).join(" · ");
 }
 
 export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluster; workload: KubeWorkload; onClose: () => void }) {
