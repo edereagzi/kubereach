@@ -36,6 +36,9 @@ export const podsQuery = (clusterId: string) =>
     retry: false,
   });
 
+// metrics-server scrapes kubelets every 15s by default, so asking more often returns the same numbers.
+const metricsInterval = 15_000;
+
 // A Cluster without metrics-server yields an empty map, and the usage columns stay out.
 export const podUsageKey = (namespace: string, name: string) => `${namespace}/${name}`;
 const indexPodMetrics = (m: PodMetrics) => new Map((m.pods ?? []).map((p): [string, PodUsage] => [podUsageKey(p.namespace, p.name), p]));
@@ -44,6 +47,7 @@ export const podMetricsQuery = (clusterId: string) =>
     queryKey: ["cluster", clusterId, "pod-metrics"],
     queryFn: () => ClusterService.PodMetrics(clusterId),
     select: indexPodMetrics,
+    refetchInterval: metricsInterval,
     retry: false,
   });
 
@@ -112,6 +116,7 @@ export const nodeMetricsQuery = (clusterId: string) =>
     queryKey: ["cluster", clusterId, "node-metrics"],
     queryFn: () => ClusterService.NodeMetrics(clusterId),
     select: indexNodeMetrics,
+    refetchInterval: metricsInterval,
     retry: false,
   });
 
