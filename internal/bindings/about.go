@@ -55,7 +55,9 @@ func InstallMenu(app *application.App, showAbout func()) {
 	appMenu.AddRole(application.UnHide)
 	appMenu.AddSeparator()
 	appMenu.AddRole(application.Quit)
+	menu.AddRole(application.FileMenu)
 	menu.AddRole(application.EditMenu)
+	menu.AddRole(application.ViewMenu)
 	menu.AddRole(application.WindowMenu)
 	app.Menu.Set(menu)
 }
