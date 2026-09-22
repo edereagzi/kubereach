@@ -3,6 +3,7 @@ package service
 import (
 	"cmp"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
@@ -472,7 +473,7 @@ func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Clien
 		return nil, err
 	}
 	defer func() { _ = closer.Close() }()
-	hostKey, err := s.hostKeyCallback(routeID, addr)
+	hostKey, algorithms, err := s.hostKeyCallback(routeID, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -493,9 +494,10 @@ func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Clien
 	}
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, &ssh.ClientConfig{
-		User:            srv.User,
-		Auth:            []ssh.AuthMethod{auth},
-		HostKeyCallback: hostKey,
+		User:              srv.User,
+		Auth:              []ssh.AuthMethod{auth},
+		HostKeyCallback:   hostKey,
+		HostKeyAlgorithms: algorithms,
 	})
 	if !stop() {
 		if err == nil {
@@ -521,16 +523,18 @@ func isAuthFailure(err error) bool {
 
 // hostKeyCallback checks against the user's known_hosts; a missing file means every host is unknown.
 // An unknown host yields an unknownHostError for the user to decide on; a changed key is fatal.
-func (s *Service) hostKeyCallback(routeID, addr string) (ssh.HostKeyCallback, error) {
+// The algorithms are those of the keys known_hosts holds for addr, nil when it holds none: left to the client defaults,
+// the server may present a key type that is not recorded, and the check would read it as a changed key.
+func (s *Service) hostKeyCallback(routeID, addr string) (ssh.HostKeyCallback, []string, error) {
 	var files []string
 	if _, err := os.Stat(s.KnownHostsPath); err == nil {
 		files = append(files, s.KnownHostsPath)
 	}
 	known, err := knownhosts.New(files...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+	callback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		err := known(hostname, remote, key)
 		var keyErr *knownhosts.KeyError
 		if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
@@ -543,7 +547,35 @@ func (s *Service) hostKeyCallback(routeID, addr string) (ssh.HostKeyCallback, er
 			return fatalError{err}
 		}
 		return nil
-	}, nil
+	}
+	return callback, knownAlgorithms(known, addr), nil
+}
+
+var placeholderHostKey, _ = ssh.NewPublicKey(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public())
+
+// knownAlgorithms asks known_hosts about a key it cannot hold; the refusal lists the keys it does hold for addr.
+func knownAlgorithms(known ssh.HostKeyCallback, addr string) []string {
+	var keyErr *knownhosts.KeyError
+	if !errors.As(known(addr, &net.TCPAddr{}, placeholderHostKey), &keyErr) {
+		return nil
+	}
+	var algorithms []string
+	for _, k := range keyErr.Want {
+		for _, a := range hostKeyAlgorithms(k.Key.Type()) {
+			if !slices.Contains(algorithms, a) {
+				algorithms = append(algorithms, a)
+			}
+		}
+	}
+	return algorithms
+}
+
+// hostKeyAlgorithms maps a key type to the signature algorithms that present it; an RSA key signs with several.
+func hostKeyAlgorithms(keyType string) []string {
+	if keyType == ssh.KeyAlgoRSA {
+		return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+	}
+	return []string{keyType}
 }
 
 // trustHostKey appends the key to known_hosts, creating the file if needed.

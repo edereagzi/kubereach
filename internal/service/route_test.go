@@ -2,7 +2,9 @@ package service_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/pem"
 	"errors"
@@ -67,6 +69,11 @@ func startSSHServer(t *testing.T, authorized ssh.PublicKey) *testSSH {
 
 // startSSHServerWithPassword also accepts the given password when it is non-empty.
 func startSSHServerWithPassword(t *testing.T, authorized ssh.PublicKey, password string) *testSSH {
+	return startSSHServerWith(t, authorized, password)
+}
+
+// startSSHServerWith also presents the extra host keys, after its own ed25519 one.
+func startSSHServerWith(t *testing.T, authorized ssh.PublicKey, password string, extra ...gliderssh.Signer) *testSSH {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -79,7 +86,7 @@ func startSSHServerWithPassword(t *testing.T, authorized ssh.PublicKey, password
 	}
 	s := &testSSH{addr: l.Addr().String(), hostKey: hostPub}
 	srv := &gliderssh.Server{
-		HostSigners: []gliderssh.Signer{hostSigner},
+		HostSigners: append([]gliderssh.Signer{hostSigner}, extra...),
 		PublicKeyHandler: func(_ gliderssh.Context, key gliderssh.PublicKey) bool {
 			return gliderssh.KeysEqual(key, authorized)
 		},
@@ -645,6 +652,28 @@ func TestRoute_UnknownHostKeyRejectedAbortsWithoutRetry(t *testing.T) {
 	if _, err := f.svc.CheckReachability(context.Background(), f.cluster); !errors.Is(err, service.ErrRouteDown) {
 		t.Errorf("after rejection: got %v, want ErrRouteDown", err)
 	}
+}
+
+// OpenSSH often records only a host's ed25519 key; a server that also offers ECDSA must still be recognised.
+func TestRoute_KnownKeyTypeIsNegotiated(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaSigner, err := ssh.NewSignerFromKey(ecdsaKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	both := startSSHServerWith(t, pub, "", ecdsaSigner)
+	f.trust(t, both)
+	f.route.Servers = []service.SSHServer{both.server("me", f.route.Servers[0].KeyFile)}
+	if _, err := f.svc.SaveRoute(f.route); err != nil {
+		t.Fatal(err)
+	}
+
+	f.connect(t)
 }
 
 func TestRoute_ChangedHostKeyIsRefused(t *testing.T) {
