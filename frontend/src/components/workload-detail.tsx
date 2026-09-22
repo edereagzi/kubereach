@@ -4,6 +4,7 @@ import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, Section } from "@/components/pod-detail";
 import { workloadKind } from "@/components/targets";
+import { WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
             </Button>
           </DialogTitle>
           <DialogDescription>{[w.kind, workloadLabel(w), d?.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ")}</DialogDescription>
+          <WorkloadActions cluster={cluster} workload={w} />
         </DialogHeader>
         {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
         <DetailTabs cluster={cluster} kind={workloadKind[w.kind] ?? "deploy"} namespace={w.namespace} name={w.name}>

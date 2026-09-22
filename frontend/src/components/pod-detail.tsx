@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, ResourceUsage } from "@bindings/internal/service";
+import { DeletePodAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
 import { portsLabel, type Target } from "@/components/targets";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +125,9 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
               : "Loading…"}
             {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
           </DialogDescription>
+          <div>
+            <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
+          </div>
         </DialogHeader>
         {pod.error && <p className="text-xs text-destructive">{String(pod.error)}</p>}
         <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>

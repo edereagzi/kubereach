@@ -114,3 +114,19 @@ func (c *ClusterService) PodMetrics(ctx context.Context, clusterID string) (serv
 func (c *ClusterService) NodeMetrics(ctx context.Context, clusterID string) (service.NodeMetrics, error) {
 	return c.svc.NodeMetrics(ctx, clusterID)
 }
+
+func (c *ClusterService) RestartWorkload(ctx context.Context, clusterID string, kind service.WorkloadKind, namespace, name string) error {
+	return c.svc.RestartWorkload(ctx, clusterID, kind, namespace, name)
+}
+
+func (c *ClusterService) DeletePod(ctx context.Context, clusterID, namespace, name string) error {
+	return c.svc.DeletePod(ctx, clusterID, namespace, name)
+}
+
+func (c *ClusterService) ScaleWorkload(ctx context.Context, clusterID string, kind service.WorkloadKind, namespace, name string, replicas int32) error {
+	return c.svc.ScaleWorkload(ctx, clusterID, kind, namespace, name, replicas)
+}
+
+func (c *ClusterService) RollbackDeployment(ctx context.Context, clusterID, namespace, name string) error {
+	return c.svc.RollbackDeployment(ctx, clusterID, namespace, name)
+}

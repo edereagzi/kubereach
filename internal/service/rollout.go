@@ -171,7 +171,7 @@ func (s *Service) DescribeWorkload(ctx context.Context, clusterID string, kind W
 
 func deploymentWorkload(d *appsv1.Deployment) KubeWorkload {
 	st := d.Status
-	r := &Rollout{Desired: replicas(d.Spec.Replicas), Updated: st.UpdatedReplicas, Ready: st.ReadyReplicas, Available: st.AvailableReplicas, Revision: d.Annotations["deployment.kubernetes.io/revision"]}
+	r := &Rollout{Desired: replicas(d.Spec.Replicas), Updated: st.UpdatedReplicas, Ready: st.ReadyReplicas, Available: st.AvailableReplicas, Revision: d.Annotations[revisionAnnotation]}
 	stuck := false
 	for _, c := range st.Conditions {
 		if c.Type == appsv1.DeploymentProgressing {

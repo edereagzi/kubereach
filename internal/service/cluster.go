@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var ErrForbidden = errors.New("cluster-wide listing is forbidden")
+var ErrForbidden = errors.New("forbidden")
 
 // ClientFactory builds a clientset and its REST config for a Cluster; dial is nil for direct access.
 // Tests substitute the fake clientset here and point the config at an in-test API server.

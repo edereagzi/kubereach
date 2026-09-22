@@ -17,6 +17,10 @@ export function Delete(clusterID: string): $CancellablePromise<void> {
     return $Call.ByID(2664650794, clusterID);
 }
 
+export function DeletePod(clusterID: string, $namespace: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(3476169333, clusterID, $namespace, name);
+}
+
 export function DescribeIngress(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.IngressDiagnosis> {
     return $Call.ByID(631144839, clusterID, $namespace, name);
 }
@@ -94,6 +98,18 @@ export function NodeMetrics(clusterID: string): $CancellablePromise<service$0.No
 
 export function PodMetrics(clusterID: string): $CancellablePromise<service$0.PodMetrics> {
     return $Call.ByID(1371814305, clusterID);
+}
+
+export function RestartWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(55346933, clusterID, kind, $namespace, name);
+}
+
+export function RollbackDeployment(clusterID: string, $namespace: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(1589258054, clusterID, $namespace, name);
+}
+
+export function ScaleWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string, replicas: number): $CancellablePromise<void> {
+    return $Call.ByID(176363600, clusterID, kind, $namespace, name, replicas);
 }
 
 export function SetNamespaces(clusterID: string, namespaces: string[] | null): $CancellablePromise<void> {
