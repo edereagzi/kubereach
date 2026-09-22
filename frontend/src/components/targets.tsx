@@ -32,6 +32,7 @@ export type Target = {
   // Pods only: what is wrong, how often it restarted, and what its containers ask for.
   reason?: string;
   restarts?: number;
+  lastRestart?: string;
   requests?: ResourceUsage;
   limits?: ResourceUsage;
   // Workloads only: rollout state, or the CronJob's schedule.
@@ -76,7 +77,7 @@ export function useTargets(cluster: Cluster, overview = false) {
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, requests: p.requests, limits: p.limits })) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits })) },
   ];
   if (overview) {
     groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i.namespace, i.name), ingress: i })), error: ingresses.error });
@@ -97,7 +98,7 @@ export function KindBadge({ kind, className, title }: { kind: Kind | string; cla
   return (
     <span
       title={title}
-      className={cn("inline-flex h-[18px] w-11 shrink-0 items-center justify-center truncate rounded bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
+      className={cn("inline-flex h-[18px] w-12 shrink-0 items-center justify-center truncate rounded bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
     >
       {kind}
     </span>
@@ -141,7 +142,7 @@ export function TargetPicker({
       isItemEqualToValue={(a, b) => a?.value === b?.value}
     >
       {children}
-      <ComboboxContent className={cn(!inline && "w-96")}>
+      <ComboboxContent className={cn(!inline && "w-[40rem] min-w-(--anchor-width)")}>
         {!inline && (
           <ComboboxInput showTrigger={false} placeholder={placeholder} autoFocus>
             <MagnifyingGlassIcon className="order-first ml-2 size-4 text-muted-foreground" />
@@ -155,7 +156,7 @@ export function TargetPicker({
               <ComboboxCollection>
                 {(t: Target) => (
                   <ComboboxItem key={t.value} value={t}>
-                    <TargetRow target={t} meta={t.kind === "pod" ? t.containers.join(", ") : portsLabel(t.ports)} />
+                    <TargetRow target={t} meta={t.container ? undefined : t.kind === "pod" ? t.containers.join(", ") : portsLabel(t.ports)} />
                   </ComboboxItem>
                 )}
               </ComboboxCollection>

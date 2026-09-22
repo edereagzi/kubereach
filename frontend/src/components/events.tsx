@@ -32,6 +32,16 @@ const formatTime = (iso: string) => (isZeroTime(iso) ? "" : timeFormat.format(ne
 export const eventStreamFor = (streams: Record<string, EventStatus>, cluster: Cluster) =>
   Object.values(streams).find((st) => st.clusterId === cluster.id);
 
+// A new watch replaces the cluster's old one, so a quick remount must not let the old mount's Stop land after the new Start,
+// nor two Starts race; every Start and Stop goes through this one queue in call order.
+let watchQueue: Promise<unknown> = Promise.resolve();
+const queued = <T,>(run: () => Promise<T>) => {
+  const next = watchQueue.then(run);
+  watchQueue = next.catch(() => {});
+  return next;
+};
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 // The watch runs while the tab is open: it starts on mount and stops on unmount.
 export function ClusterEvents({ cluster }: { cluster: Cluster }) {
   const [error, setError] = useState<unknown>(null);
@@ -39,12 +49,15 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
   const stream = useUIStore((s) => eventStreamFor(s.eventStreams, cluster));
   const buffer = useUIStore((s) => (stream ? s.eventBuffers[stream.id] : undefined));
   useEffect(() => {
-    const started = EventService.Start(cluster.id).catch((e) => {
+    const started = queued(() => EventService.Start(cluster.id)).catch((e) => {
       setError(e);
       return null;
     });
     return () => {
-      started.then((st) => st && EventService.Stop(st.id));
+      void queued(async () => {
+        const st = await started;
+        if (st) await EventService.Stop(st.id);
+      });
     };
   }, [cluster.id]);
 
@@ -58,7 +71,7 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <StateDot status={stream} />
         <span className="text-sm text-muted-foreground">
-          {events.length} events · {warnings.length} warnings
+          {plural(events.length, "event")} · {plural(warnings.length, "warning")}
         </span>
         <Toggle variant="outline" size="sm" pressed={warningsOnly} onPressedChange={setWarningsOnly} className={cn(warningsOnly && "text-destructive")}>
           Warnings only
@@ -68,7 +81,7 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
       {shown.length > 0 ? (
         <EventList cluster={cluster} events={shown} />
       ) : (
-        <Empty className="border-0">
+        <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>{opening ? "Opening the event watch" : warningsOnly ? "No warnings" : "No events"}</EmptyTitle>
             <EmptyDescription>
@@ -92,7 +105,7 @@ function EventList({ cluster, events }: { cluster: Cluster; events: KubeEvent[] 
   const selectTab = useUIStore((s) => s.selectTab);
   const virtualizer = useVirtualizer({ count: events.length, getScrollElement: () => parentRef.current, estimateSize: () => 28, overscan: 20 });
   return (
-    <div ref={parentRef} className="mx-4 mb-4 min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 text-xs">
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-auto border-t py-1 text-xs">
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const e = events[item.index]!;
@@ -104,7 +117,7 @@ function EventList({ cluster, events }: { cluster: Cluster; events: KubeEvent[] 
               key={e.id}
               ref={virtualizer.measureElement}
               data-index={item.index}
-              className="absolute left-0 grid w-full grid-cols-[max-content_44px_minmax(160px,280px)_max-content_minmax(0,1fr)] items-start gap-3 px-2 py-1.5 leading-4 hover:bg-accent"
+              className="absolute left-0 grid w-full grid-cols-[max-content_48px_minmax(160px,280px)_max-content_minmax(0,1fr)] items-start gap-3 px-4 py-1.5 leading-4 hover:bg-muted/50"
               style={{ transform: `translateY(${item.start}px)` }}
             >
               <span className="font-mono text-muted-foreground" title={new Date(e.time).toLocaleString()}>

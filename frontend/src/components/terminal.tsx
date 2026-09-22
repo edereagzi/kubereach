@@ -20,13 +20,17 @@ import { cn } from "@/lib/utils";
 const xtermTheme = (dark: boolean) =>
   dark ? { background: "#13161c" } : { background: "#ffffff", foreground: "#0a0a0a", cursor: "#0a0a0a", selectionBackground: "#0a0a0a33" };
 
+// xterm measures its cell once on open, so the app's mono face must already be loaded by then.
+const fontFamily = "'Geist Mono Variable', monospace";
+void document.fonts.load(`12px ${fontFamily}`);
+
 // Terminals live outside React so output arriving before the view mounts is kept; xterm buffers writes until open().
 const terminals = new Map<string, Terminal>();
 useTheme.subscribe((s) => terminals.forEach((t) => (t.options.theme = xtermTheme(s.dark))));
 const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
-    term = new Terminal({ fontSize: 12, cursorBlink: true, scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
+    term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
     terminals.set(id, term);
   }
   return term;
@@ -58,24 +62,27 @@ export function OpenShell({
   variant = "outline",
   size = "sm",
   className,
+  onStarted,
 }: {
   cluster: Cluster;
   pods: ShellPod[];
   variant?: "outline" | "ghost";
   size?: "sm" | "xs";
   className?: string;
+  onStarted?: () => void;
 }) {
   const start = useStartShell(cluster.id);
   const items = pods.flatMap((p) =>
     (p.containers.length > 1 ? p.containers : [""]).map((container) => ({
       value: `${p.namespace}/${p.name}/${container}`,
-      label: container ? `${p.namespace}/${p.name} · ${container}` : `${p.namespace}/${p.name}`,
+      // One pod's list only needs its containers; the pod is already on the row or in the toolbar.
+      label: container && pods.length === 1 ? container : container ? `${p.namespace}/${p.name} · ${container}` : `${p.namespace}/${p.name}`,
       target: { namespace: p.namespace, pod: p.name, container },
     })),
   );
   if (items.length === 1) {
     return (
-      <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target)}>
+      <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
         {variant === "outline" && <TerminalIcon />}
         Shell
       </Button>
@@ -87,7 +94,7 @@ export function OpenShell({
       items={items}
       onValueChange={(key) => {
         const item = items.find((i) => i.value === key);
-        if (item) start.mutate(item.target);
+        if (item) start.mutate(item.target, { onSuccess: onStarted });
       }}
     >
       <SelectTrigger
@@ -99,7 +106,7 @@ export function OpenShell({
         {variant === "outline" && <TerminalIcon />}
         Shell
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent alignItemWithTrigger={false} align="end">
         {items.map((i) => (
           <SelectItem key={i.value} value={i.value}>
             {i.label}
@@ -134,7 +141,7 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
     }));
   const picker = (
     <TargetPicker groups={shellGroups} placeholder="Search pods" onPick={(t) => start.mutate({ namespace: t.namespace, pod: t.name, container: t.container ?? "" })}>
-      <ComboboxTrigger render={<Button variant="ghost" size="sm" className="mb-1 text-muted-foreground" />} disabled={start.isPending}>
+      <ComboboxTrigger render={<Button variant="ghost" size="sm" className="text-muted-foreground" />} disabled={start.isPending}>
         <PlusIcon /> New shell
       </ComboboxTrigger>
     </TargetPicker>
@@ -146,7 +153,7 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
         {error && <p className="px-4 pb-2 text-xs text-destructive">{String(error)}</p>}
-        <Empty className="border-0">
+        <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>No shell open</EmptyTitle>
             <EmptyDescription>Pick a pod, or one container of a pod, to open a terminal into it.</EmptyDescription>
@@ -158,15 +165,15 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-end gap-0.5 px-4 pt-2.5">
+      <div className="flex h-11 items-center gap-1 border-b px-4">
         {sessions.map((s) => {
           const on = s.id === activeShellId;
           return (
             <div
               key={s.id}
               className={cn(
-                "-mb-px flex h-8 items-center gap-2 rounded-t-md border border-b-0 pr-1 pl-2.5 text-sm",
-                on ? "relative z-10 bg-background text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+                "group flex h-7 items-center gap-2 rounded-md pr-1 pl-2.5 text-sm",
+                on ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
             >
               <button type="button" className="flex items-center gap-2 outline-none focus-visible:underline" title={statusLabel(s)} onClick={() => selectShell(s.id)}>
@@ -174,14 +181,14 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
                 {s.target.pod}
                 <span className="text-xs text-muted-foreground">{ended(s) ? "ended" : s.target.container}</span>
               </button>
-              <Button variant="ghost" size="icon-xs" title="Close" onClick={() => close(s)}>
+              <Button variant="ghost" size="icon-xs" title="Close" className={cn(!on && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")} onClick={() => close(s)}>
                 <XIcon />
               </Button>
             </div>
           );
         })}
         {picker}
-        {error && <span className="mb-1 truncate text-xs text-destructive">{String(error)}</span>}
+        {error && <span className="truncate text-xs text-destructive">{String(error)}</span>}
       </div>
       <TerminalView key={active.id} session={active} />
     </div>
@@ -219,7 +226,7 @@ function TerminalView({ session }: { session: ShellStatus }) {
   }, [session.id]);
 
   return (
-    <div className="relative mx-4 mb-4 min-h-0 flex-1 overflow-hidden rounded-md rounded-tl-none border p-1">
+    <div className="relative min-h-0 flex-1 overflow-hidden py-2 pl-4 pr-1">
       <div ref={ref} className="h-full" />
       {done && (
         <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", session.state === State.StateError ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>

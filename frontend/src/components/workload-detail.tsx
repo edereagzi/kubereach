@@ -2,8 +2,10 @@ import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
-import { ago, Events, ReasonBadge, Section } from "@/components/pod-detail";
-import { workloadKind } from "@/components/targets";
+import { ago, Events, ReasonBadge, restartsLabel, Section } from "@/components/pod-detail";
+import { workloadKind, type Target } from "@/components/targets";
+import { TargetVerbs } from "@/components/target-verbs";
+import { useUIStore } from "@/store";
 import { WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
@@ -24,11 +26,13 @@ export function workloadLabel(w: KubeWorkload) {
   return state.filter(Boolean).join(" · ");
 }
 
-export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluster; workload: KubeWorkload; onClose: () => void }) {
+export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster: Cluster; target: Target; workload: KubeWorkload; onClose: () => void }) {
   const q = useQuery(workloadQuery(cluster.id, workload.kind, workload.namespace, workload.name));
   const d = q.data;
   const w = d?.workload ?? workload;
   const r = w.rollout;
+  const kind = workloadKind[w.kind] ?? "deploy";
+  const requestInspect = useUIStore((s) => s.requestInspect);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[calc(100vh-4rem)] flex-col sm:max-w-3xl">
@@ -43,10 +47,13 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
             </Button>
           </DialogTitle>
           <DialogDescription>{[w.kind, workloadLabel(w), d?.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ")}</DialogDescription>
-          <WorkloadActions cluster={cluster} workload={w} />
+          <div className="flex gap-1.5">
+            <TargetVerbs cluster={cluster} target={target} onLeave={onClose} />
+            <WorkloadActions cluster={cluster} workload={w} />
+          </div>
         </DialogHeader>
         {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
-        <DetailTabs cluster={cluster} kind={workloadKind[w.kind] ?? "deploy"} namespace={w.namespace} name={w.name}>
+        <DetailTabs cluster={cluster} kind={kind} namespace={w.namespace} name={w.name}>
           {r && (
             <Section title="Rollout">
               <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
@@ -62,6 +69,26 @@ export function WorkloadDetail({ cluster, workload, onClose }: { cluster: Cluste
                 <dt className="text-muted-foreground">Revision</dt>
                 <dd className="font-mono">{r.revision || "—"}</dd>
               </dl>
+            </Section>
+          )}
+          {!!d?.pods?.length && (
+            <Section title="Pods">
+              <ul className="flex flex-col gap-0.5 text-xs">
+                {d.pods.map((p) => (
+                  <li key={p.name} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="truncate text-left hover:underline"
+                      title={`Why is ${p.name} in this state?`}
+                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: p.namespace, name: p.name })}
+                    >
+                      {p.name}
+                    </button>
+                    <ReasonBadge reason={p.reason} />
+                    {p.restarts > 0 && <span className="text-muted-foreground">{restartsLabel(p.restarts, p.lastRestart)}</span>}
+                  </li>
+                ))}
+              </ul>
             </Section>
           )}
           {!!w.containers?.length && (

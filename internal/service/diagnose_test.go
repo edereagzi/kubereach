@@ -89,8 +89,8 @@ func TestDescribePod_CrashLooping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pods) != 1 || pods[0].Reason != "CrashLoopBackOff" || pods[0].Restarts != 5 {
-		t.Errorf("pod row = %+v, want reason CrashLoopBackOff with 5 restarts", pods)
+	if len(pods) != 1 || pods[0].Reason != "CrashLoopBackOff" || pods[0].Restarts != 5 || !pods[0].LastRestart.Equal(diagEpoch.Add(3*time.Second)) {
+		t.Errorf("pod row = %+v, want reason CrashLoopBackOff with 5 restarts, the last when the previous run ended", pods)
 	}
 }
 

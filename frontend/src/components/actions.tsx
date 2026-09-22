@@ -126,7 +126,8 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
           </label>
         </WriteAction>
       )}
-      {w.kind === WorkloadKind.WorkloadDeployment && (
+      {/* The first revision has nothing before it to go back to. */}
+      {w.kind === WorkloadKind.WorkloadDeployment && Number(w.rollout.revision) > 1 && (
         <WriteAction
           cluster={cluster}
           label="Roll back"

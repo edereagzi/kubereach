@@ -18,7 +18,7 @@ func node(name string, conditions ...corev1.NodeCondition) *corev1.Node {
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"node-role.kubernetes.io/worker": ""}},
 		Status: corev1.NodeStatus{
 			NodeInfo:    corev1.NodeSystemInfo{KubeletVersion: "v1.30.2"},
-			Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4"), corev1.ResourceMemory: resource.MustParse("8Gi")},
+			Allocatable: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("4"), corev1.ResourceMemory: resource.MustParse("8Gi"), corev1.ResourcePods: resource.MustParse("110")},
 			Conditions:  conditions,
 		},
 	}
@@ -61,13 +61,13 @@ func TestListNodes_ReadyAndUnderPressure(t *testing.T) {
 			Name: "node-a", Roles: []string{"worker"}, Version: "v1.30.2",
 			Allocatable: service.ResourceUsage{CPU: 4000, Memory: 8 << 30},
 			Requested:   service.ResourceUsage{CPU: 750, Memory: 1536 << 20},
-			Pods:        2,
+			Pods:        2, PodCapacity: 110,
 		},
 		{
 			Name: "node-b", Roles: []string{"worker"}, Version: "v1.30.2", Problem: "MemoryPressure",
 			Allocatable: service.ResourceUsage{CPU: 4000, Memory: 8 << 30},
 			Requested:   service.ResourceUsage{CPU: 1000, Memory: 4 << 30},
-			Pods:        1,
+			Pods:        1, PodCapacity: 110,
 		},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -111,7 +111,7 @@ func TestListNodes_ForbiddenPodsLeaveTotalsUnknown(t *testing.T) {
 	want := []service.KubeNode{{
 		Name: "node-a", Roles: []string{"worker"}, Version: "v1.30.2",
 		Allocatable: service.ResourceUsage{CPU: 4000, Memory: 8 << 30},
-		Unknown:     true,
+		PodCapacity: 110, Unknown: true,
 	}}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("nodes mismatch (-want +got):\n%s", diff)

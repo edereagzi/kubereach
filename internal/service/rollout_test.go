@@ -31,7 +31,8 @@ func TestDescribeWorkload_Deployments(t *testing.T) {
 	ev := event("default", "worker", "Warning", "BackOff", "not this kind", 1, diagEpoch)
 	ev.InvolvedObject.Kind = "Deployment"
 	ev.Name, ev.Reason, ev.Message = "worker.scaled", "ScalingReplicaSet", "Scaled up replica set worker-9f2 to 1"
-	svc, cs, id := newFakeService(t, healthy, rolling, stuck, ev, event("default", "worker", "Warning", "BackOff", "a pod, not the deployment", 1, diagEpoch))
+	svc, cs, id := newFakeService(t, healthy, rolling, stuck, ev, event("default", "worker", "Warning", "BackOff", "a pod, not the deployment", 1, diagEpoch),
+		pod("default", "worker-9f2-a", "worker", corev1.PodRunning, true, diagEpoch), pod("default", "api-7d9-a", "api", corev1.PodRunning, true, diagEpoch))
 	ctx := context.Background()
 
 	got, err := svc.ListWorkloads(ctx, id)
@@ -59,7 +60,8 @@ func TestDescribeWorkload_Deployments(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantEvents := []service.KubeEvent{{ID: "default/worker.scaled", Kind: "Deployment", Namespace: "default", Name: "worker", Type: "Warning", Reason: "ScalingReplicaSet", Message: "Scaled up replica set worker-9f2 to 1", Count: 1, Time: diagEpoch}}
-	if diff := cmp.Diff(service.WorkloadDiagnosis{Workload: want[2], Events: wantEvents}, d); diff != "" {
+	wantPods := []service.KubePod{{Namespace: "default", Name: "worker-9f2-a", Containers: []string{"main"}, Ports: []service.NamedPort{{Name: "http", Port: 8080}}}}
+	if diff := cmp.Diff(service.WorkloadDiagnosis{Workload: want[2], Pods: wantPods, Events: wantEvents}, d); diff != "" {
 		t.Errorf("diagnosis (-want +got):\n%s", diff)
 	}
 

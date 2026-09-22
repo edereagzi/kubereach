@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { RolloutState, State, type Cluster } from "@bindings/internal/service";
+import { RolloutState, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
-import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDialog } from "@/components/yaml-view";
-import { KindBadge, logKind, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
-import { OpenShell } from "@/components/terminal";
+import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
+import { TargetVerbs } from "@/components/target-verbs";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,6 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Toggle } from "@/components/ui/toggle";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey } from "@/queries";
 import { useUIStore } from "@/store";
-import { cn } from "@/lib/utils";
 
 // The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
 // Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
@@ -56,6 +54,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const [forwarding, setForwarding] = useState<Target | null>(null);
   const [inspecting, setInspecting] = useState<Target | null>(null);
   const search = useRef<HTMLInputElement>(null);
+  const forwardFrom = (t: Target) => {
+    setInspecting(null);
+    setForwarding(t);
+  };
   const explicit = cluster.namespaces ?? [];
   const inspectRequest = useUIStore((s) => s.inspectRequest);
   const requestInspect = useUIStore((s) => s.requestInspect);
@@ -85,7 +87,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const error = namespaces.error ?? listError;
   if (error) {
     return (
-      <Empty className="border-0">
+      <Empty className="justify-start border-0 pt-12">
         <EmptyHeader>
           <EmptyTitle>Cluster could not be listed</EmptyTitle>
           <EmptyDescription>{String(error)}</EmptyDescription>
@@ -113,8 +115,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {forwarding && (
         <AddForward cluster={cluster} saved={forwardsFor(config?.forwards, cluster)} initial={forwarding} onClose={() => setForwarding(null)} />
       )}
-      {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.workload && <WorkloadDetail cluster={cluster} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
+      {inspecting?.workload && <WorkloadDetail cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.kind === "svc" && <YamlDialog cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
@@ -145,7 +147,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         ))}
       <div className="min-h-0 flex-1 overflow-auto pb-4">
         {total === 0 && !pending && (
-          <Empty className="border-0">
+          <Empty className="justify-start border-0 pt-12">
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
@@ -160,7 +162,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           const reference = kinds.filter((g) => folded(g.label));
           const open = words.length > 0 || !!unfolded[ns];
           const line = (t: Target) => (
-            <TargetLine key={t.value} cluster={cluster} target={t} pressure={pressure(t)} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} onKind={() => setNeedle(t.kind)} />
+            <TargetLine key={t.value} cluster={cluster} target={t} pressure={pressure(t)} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} />
           );
           return (
             <section key={ns}>
@@ -172,7 +174,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
               {reference.length > 0 && words.length === 0 && (
                 <button
                   type="button"
-                  className="grid h-8 w-full grid-cols-[44px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
+                  className="grid h-8 w-full grid-cols-[48px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
                   aria-expanded={open}
                   onClick={() => setUnfolded((u) => ({ ...u, [ns]: !open }))}
                 >
@@ -200,31 +202,10 @@ const meta = (t: Target) => {
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
-function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }: { cluster: Cluster; target: Target; pressure?: string; onForward: () => void; onInspect: () => void; onKind: () => void }) {
-  const { data } = useQuery(configQuery);
-  const selectTab = useUIStore((s) => s.selectTab);
-  const selectShell = useUIStore((s) => s.selectShell);
-  const forwarded = forwardsFor(data?.forwards, cluster).some(
-    (f) => targetValue(f.target.kind === "service" ? "svc" : "pod", f.target.namespace, f.target.name) === target.value,
-  );
-  const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
-  const following =
-    !!stream && stream.source.kind === logKind[target.kind] && stream.source.namespace === target.namespace && stream.source.name === target.name;
-  const shell = useUIStore((s) =>
-    Object.values(s.shellSessions).find(
-      (x) => x.target.clusterId === cluster.id && x.target.namespace === target.namespace && x.target.pod === target.name && x.state !== State.StateStopped && x.state !== State.StateError,
-    ),
-  );
-  const startLogs = useStartLogs(cluster);
-  const verb = "h-6 px-2 text-xs";
-  const quiet = cn(verb, "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100");
-  const active = cn(verb, "text-primary hover:text-primary");
-
+function TargetLine({ cluster, target, pressure, onForward, onInspect }: { cluster: Cluster; target: Target; pressure?: string; onForward: () => void; onInspect: () => void }) {
   return (
-    <div className="group grid h-8 grid-cols-[44px_minmax(220px,26rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
-      <button type="button" className="rounded outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Show only ${target.kind}`} onClick={onKind}>
-        <KindBadge kind={target.kind} className="hover:bg-muted-foreground/20" />
-      </button>
+    <div className="group grid h-8 grid-cols-[48px_minmax(220px,26rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
+      <KindBadge kind={target.kind} />
       <button
         type="button"
         className="truncate text-left hover:underline"
@@ -238,7 +219,7 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }:
           <>
             <ReasonBadge reason={target.reason} className="cursor-pointer" onClick={onInspect} />
             <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
-            {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts)}</span>}
+            {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts, target.lastRestart)}</span>}
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
@@ -246,42 +227,7 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }:
         <span className="truncate">{meta(target)}</span>
       </span>
       <span className="flex justify-end gap-0.5">
-        {(target.kind === "svc" || target.kind === "pod") &&
-          (forwarded ? (
-            <Button variant="ghost" size="xs" className={active} onClick={() => selectTab("forwards")}>
-              Forwarding
-            </Button>
-          ) : (
-            <Button variant="ghost" size="xs" className={quiet} onClick={onForward}>
-              Forward
-            </Button>
-          ))}
-        {logKind[target.kind] &&
-          (following ? (
-            <Button variant="ghost" size="xs" className={active} onClick={() => selectTab("logs")}>
-              {stream.source.previous ? "Previous logs" : "Following logs"}
-            </Button>
-          ) : (
-            <Button variant="ghost" size="xs" className={quiet} disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
-              Logs
-            </Button>
-          ))}
-        {target.kind === "pod" &&
-          (shell ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              className={active}
-              onClick={() => {
-                selectShell(shell.id);
-                selectTab("shell");
-              }}
-            >
-              Shell open
-            </Button>
-          ) : (
-            <OpenShell cluster={cluster} pods={[target]} variant="ghost" size="xs" className={quiet} />
-          ))}
+        <TargetVerbs cluster={cluster} target={target} onForward={onForward} row />
       </span>
     </div>
   );

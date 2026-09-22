@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -47,6 +48,8 @@ type KubePod struct {
 	// Reason is what is wrong with the pod, empty when nothing is; see PodReason.
 	Reason   string `json:"reason,omitempty"`
 	Restarts int32  `json:"restarts"`
+	// LastRestart is when a container last ended before its current run, zero when none has.
+	LastRestart time.Time `json:"lastRestart"`
 	// Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
 	Requests ResourceUsage `json:"requests"`
 	Limits   ResourceUsage `json:"limits"`
@@ -217,6 +220,22 @@ func (s *Service) ListServices(ctx context.Context, clusterID string) ([]KubeSer
 	return out, nil
 }
 
+func kubePod(pod *corev1.Pod) KubePod {
+	kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(pod), Restarts: podRestarts(pod)}
+	kp.Requests, kp.Limits = podResources(pod.Spec)
+	for _, c := range pod.Spec.Containers {
+		for _, p := range c.Ports {
+			kp.Ports = append(kp.Ports, NamedPort{Name: p.Name, Port: p.ContainerPort})
+		}
+	}
+	for _, st := range pod.Status.ContainerStatuses {
+		if t := st.LastTerminationState.Terminated; t != nil && t.FinishedAt.After(kp.LastRestart) {
+			kp.LastRestart = t.FinishedAt.Time
+		}
+	}
+	return kp
+}
+
 // ListPods lists pods in scope with their container ports.
 func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, error) {
 	k, err := s.clusterClient(clusterID)
@@ -230,14 +249,7 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 			return nil, wrapForbidden(err)
 		}
 		for _, pod := range list.Items {
-			kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(&pod), Restarts: podRestarts(&pod)}
-			kp.Requests, kp.Limits = podResources(pod.Spec)
-			for _, c := range pod.Spec.Containers {
-				for _, p := range c.Ports {
-					kp.Ports = append(kp.Ports, NamedPort{Name: p.Name, Port: p.ContainerPort})
-				}
-			}
-			out = append(out, kp)
+			out = append(out, kubePod(&pod))
 		}
 	}
 	slices.SortFunc(out, func(a, b KubePod) int {

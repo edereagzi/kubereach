@@ -1,10 +1,11 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
-import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, ResourceUsage } from "@bindings/internal/service";
+import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, PodCondition, ResourceUsage } from "@bindings/internal/service";
 import { DeletePodAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
 import { portsLabel, type Target } from "@/components/targets";
+import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -47,7 +48,8 @@ const stateLabel = (st: ContainerState) => {
   return parts.filter(Boolean).join(" · ");
 };
 
-export const restartsLabel = (n: number) => `${n} restart${n === 1 ? "" : "s"}`;
+// A restart weeks ago is history rather than a fault, so a row says when the last one was.
+export const restartsLabel = (n: number, last?: string) => [`${n} restart${n === 1 ? "" : "s"}`, n > 0 && last && ago(last)].filter(Boolean).join(", ");
 
 export const cpuLabel = (m: number) => `${m}m`;
 export const memoryLabel = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)}Gi` : `${Math.round(b / (1 << 20))}Mi`);
@@ -68,7 +70,7 @@ export function usagePressure(usage?: ResourceUsage, limits?: ResourceUsage) {
 // UsageMeters answers "is it starving": one short bar and a percentage per resource, red once a limit is nearly reached.
 // A pod without a limit has no ratio and shows the bare usage instead; the tooltip carries the absolute numbers.
 export function UsageMeters({ usage, limits, requests }: { usage: ResourceUsage; limits?: ResourceUsage; requests?: ResourceUsage }) {
-  const meter = (name: string, label: (n: number) => string, used: number, limit = 0, request = 0) => {
+  const meter = (name: string, short: string, label: (n: number) => string, used: number, limit = 0, request = 0) => {
     const pct = limit ? Math.round((used / limit) * 100) : null;
     const hot = pct !== null && pct >= pressureThreshold;
     return (
@@ -76,19 +78,20 @@ export function UsageMeters({ usage, limits, requests }: { usage: ResourceUsage;
         className={cn("flex items-center gap-1.5", hot ? "text-destructive" : "text-muted-foreground")}
         title={`${name} ${label(used)} used, ${request ? `${label(request)} requested` : "no request"}, ${limit ? `${label(limit)} limit` : "no limit"}`}
       >
+        <span>{short}</span>
         {pct !== null && (
           <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
             <span className={cn("block h-full rounded-full", hot ? "bg-destructive" : "bg-foreground/40")} style={{ width: `${Math.min(pct, 100)}%` }} />
           </span>
         )}
-        <span className="w-10 text-right">{pct !== null ? `${pct}%` : label(used)}</span>
+        <span className={cn(pct !== null && "w-10 text-right")}>{pct !== null ? `${pct}%` : label(used)}</span>
       </span>
     );
   };
   return (
     <span className="flex shrink-0 gap-3 font-mono text-xs tabular-nums">
-      {meter("cpu", cpuLabel, usage.cpu, limits?.cpu, requests?.cpu)}
-      {meter("memory", memoryLabel, usage.memory, limits?.memory, requests?.memory)}
+      {meter("cpu", "cpu", cpuLabel, usage.cpu, limits?.cpu, requests?.cpu)}
+      {meter("memory", "mem", memoryLabel, usage.memory, limits?.memory, requests?.memory)}
     </span>
   );
 }
@@ -98,7 +101,7 @@ const resources = (r?: { [_ in string]?: string } | null) =>
     .map(([k, v]) => `${k} ${v}`)
     .join(", ") || "—";
 
-export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; target: Target; onClose: () => void }) {
+export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cluster; target: Target; onForward: () => void; onClose: () => void }) {
   const pod = useQuery(podQuery(cluster.id, target.namespace, target.name));
   const metrics = useQuery(podMetricsQuery(cluster.id));
   const usage = metrics.data?.get(podUsageKey(target.namespace, target.name));
@@ -125,8 +128,11 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
               : "Loading…"}
             {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
           </DialogDescription>
-          <div>
-            <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
+          <div className="flex gap-1.5">
+            <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
+            <span className="ml-auto">
+              <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
+            </span>
           </div>
         </DialogHeader>
         {pod.error && <p className="text-xs text-destructive">{String(pod.error)}</p>}
@@ -145,17 +151,7 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
                 ))}
               </Section>
               <Section title="Conditions">
-                <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
-                  {d.conditions?.map((c) => (
-                    <div key={c.type} className="contents">
-                      <dt className="font-medium">{c.type}</dt>
-                      <dd className={cn("font-mono", c.status !== "True" && "text-destructive")}>{c.status}</dd>
-                      <dd className="truncate text-muted-foreground" title={c.message}>
-                        {[c.reason, c.message].filter(Boolean).join(": ")}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                <Conditions conditions={d.conditions ?? []} />
               </Section>
               <Section title="Events">
                 {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
@@ -165,6 +161,30 @@ export function PodDetail({ cluster, target, onClose }: { cluster: Cluster; targ
         </DetailTabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// A healthy pod's conditions are all True and say nothing, so they fold behind one line; any other status is shown open.
+function Conditions({ conditions }: { conditions: PodCondition[] }) {
+  const list = (
+    <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+      {conditions.map((c) => (
+        <div key={c.type} className="contents">
+          <dt className="font-medium">{c.type}</dt>
+          <dd className={cn("font-mono", c.status !== "True" && "text-destructive")}>{c.status}</dd>
+          <dd className="truncate text-muted-foreground" title={c.message}>
+            {[c.reason, c.message].filter(Boolean).join(": ")}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+  if (conditions.some((c) => c.status !== "True")) return list;
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-muted-foreground select-none hover:text-foreground">All {conditions.length} are True</summary>
+      <div className="pt-1.5">{list}</div>
+    </details>
   );
 }
 

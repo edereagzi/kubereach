@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, ArrowSquareOutIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
+import { Browser } from "@wailsio/runtime";
 import { ForwardService } from "@bindings/internal/bindings";
 import { State, TargetKind, type Cluster, type ForwardStatus, type PortForward } from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
@@ -30,7 +31,9 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
   const statuses = useUIStore((s) => s.forwardStatuses);
   const [adding, setAdding] = useState(false);
   const saved = forwardsFor(data?.forwards, cluster);
-  const connected = saved.filter((f) => statuses[f.id]?.state === State.StateConnected).length;
+  // An idle forward is healthy: its port is bound and it connects on first use, so only "on" and "failing" are counted.
+  const on = saved.filter((f) => f.enabled).length;
+  const failing = saved.filter((f) => f.enabled && statuses[f.id]?.state === State.StateError).length;
   const groups = new Map<string, PortForward[]>();
   for (const f of saved) groups.set(forwardKey(f), [...(groups.get(forwardKey(f)) ?? []), f]);
 
@@ -38,7 +41,7 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
     return (
       <>
         {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
-        <Empty className="border-0">
+        <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>No port forwards</EmptyTitle>
             <EmptyDescription>Add a service or pod to get a stable local port for each of its ports.</EmptyDescription>
@@ -61,7 +64,8 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
           <PlusIcon /> Add forward
         </Button>
         <span className="ml-auto text-xs text-muted-foreground">
-          {connected} of {saved.length} connected
+          {on} of {saved.length} on
+          {failing > 0 && <span className="text-destructive"> · {failing} failing</span>}
         </span>
       </div>
       {[...groups].map(([key, forwards]) => (
@@ -75,7 +79,6 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
           ))}
         </section>
       ))}
-      <p className="px-4 pt-4 text-xs text-muted-foreground">Local ports never change on their own. Change one from the row menu.</p>
     </div>
   );
 }
@@ -115,6 +118,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
   });
   const remove = useMutation({ mutationFn: () => ForwardService.Delete(forward.id), onSuccess: invalidateConfig });
   const address = `localhost:${forward.localPort}`;
+  const url = `${forward.remotePort === 443 || forward.remotePort === 8443 ? "https" : "http"}://${address}`;
   const error = setEnabled.error ?? remove.error ?? save.error;
   const busy = portInUse(error);
   const failed = !!error || status?.state === State.StateError;
@@ -152,6 +156,11 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
             <ArrowRightIcon className="size-3 text-muted-foreground" />
             {forward.remotePort}
             <CopyButton text={address} title="Copy address" />
+            {forward.enabled && (
+              <Button variant="ghost" size="icon-xs" title={`Open ${url} in the browser`} className="text-muted-foreground" onClick={() => Browser.OpenURL(url)}>
+                <ArrowSquareOutIcon />
+              </Button>
+            )}
           </>
         )}
       </span>
@@ -176,7 +185,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
       />
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon-xs" title="More" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100" />}
+          render={<Button variant="ghost" size="icon-xs" title="More" className="text-muted-foreground" />}
         >
           <DotsThreeIcon weight="bold" />
         </DropdownMenuTrigger>
@@ -242,7 +251,7 @@ export function AddForward({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add forward</DialogTitle>
           <DialogDescription>Each ticked port gets its own local port, kept until you delete the forward.</DialogDescription>

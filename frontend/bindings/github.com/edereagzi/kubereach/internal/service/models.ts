@@ -231,6 +231,11 @@ export interface KubeNode {
     "pods": number;
 
     /**
+     * PodCapacity is how many pods the node accepts, zero when it does not say.
+     */
+    "podCapacity": number;
+
+    /**
      * Unknown marks totals that are a failed read rather than an idle node: the pods could not be listed, so
      * Requested and Pods say nothing and the tab shows no number rather than a wrong one.
      */
@@ -248,6 +253,11 @@ export interface KubePod {
      */
     "reason"?: string;
     "restarts": number;
+
+    /**
+     * LastRestart is when a container last ended before its current run, zero when none has.
+     */
+    "lastRestart": string;
 
     /**
      * Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
@@ -604,6 +614,11 @@ export interface WorkloadContainer {
 
 export interface WorkloadDiagnosis {
     "workload": KubeWorkload;
+
+    /**
+     * Pods are the pods its selector matches; a CronJob's pods belong to its Jobs and are not listed.
+     */
+    "pods": KubePod[] | null;
 
     /**
      * Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.

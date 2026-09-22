@@ -72,6 +72,8 @@ type CronJobState struct {
 
 type WorkloadDiagnosis struct {
 	Workload KubeWorkload `json:"workload"`
+	// Pods are the pods its selector matches; a CronJob's pods belong to its Jobs and are not listed.
+	Pods []KubePod `json:"pods"`
 	// Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.
 	Events      []KubeEvent `json:"events"`
 	EventsError string      `json:"eventsError,omitempty"`
@@ -134,25 +136,26 @@ func (s *Service) DescribeWorkload(ctx context.Context, clusterID string, kind W
 	var d WorkloadDiagnosis
 	var meta metav1.Object
 	var eventKind string
+	var selector *metav1.LabelSelector
 	switch kind {
 	case WorkloadDeployment:
 		obj, err := k.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return WorkloadDiagnosis{}, wrapForbidden(err)
 		}
-		d.Workload, meta, eventKind = deploymentWorkload(obj), obj, "Deployment"
+		d.Workload, meta, eventKind, selector = deploymentWorkload(obj), obj, "Deployment", obj.Spec.Selector
 	case WorkloadStatefulSet:
 		obj, err := k.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return WorkloadDiagnosis{}, wrapForbidden(err)
 		}
-		d.Workload, meta, eventKind = statefulSetWorkload(obj), obj, "StatefulSet"
+		d.Workload, meta, eventKind, selector = statefulSetWorkload(obj), obj, "StatefulSet", obj.Spec.Selector
 	case WorkloadDaemonSet:
 		obj, err := k.client.AppsV1().DaemonSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return WorkloadDiagnosis{}, wrapForbidden(err)
 		}
-		d.Workload, meta, eventKind = daemonSetWorkload(obj), obj, "DaemonSet"
+		d.Workload, meta, eventKind, selector = daemonSetWorkload(obj), obj, "DaemonSet", obj.Spec.Selector
 	case WorkloadCronJob:
 		obj, err := k.client.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
@@ -161,6 +164,19 @@ func (s *Service) DescribeWorkload(ctx context.Context, clusterID string, kind W
 		d.Workload, meta, eventKind = cronJobWorkload(obj), obj, "CronJob"
 	default:
 		return WorkloadDiagnosis{}, fmt.Errorf("unknown workload kind %q", kind)
+	}
+	if selector != nil {
+		sel, err := metav1.LabelSelectorAsSelector(selector)
+		if err != nil {
+			return WorkloadDiagnosis{}, err
+		}
+		list, err := k.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
+		if err != nil {
+			return WorkloadDiagnosis{}, wrapForbidden(err)
+		}
+		for _, pod := range list.Items {
+			d.Pods = append(d.Pods, kubePod(&pod))
+		}
 	}
 	d.Events, err = objectEvents(ctx, k, eventKind, namespace, name, string(meta.GetUID()))
 	if err != nil {

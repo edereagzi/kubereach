@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
 import { LogSourceKind, type Cluster, type LogLine, type LogStatus } from "@bindings/internal/service";
 import { statusLabel, StateDot } from "@/components/routes";
@@ -9,9 +9,9 @@ import { KindBadge, logKind, TargetPicker, useTargets, type Kind, type Target } 
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { ComboboxTrigger } from "@/components/ui/combobox";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Toggle } from "@/components/ui/toggle";
 import { podsQuery } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
@@ -22,15 +22,41 @@ const podColors = ["text-sky-600", "text-emerald-600", "text-amber-600", "text-r
 const podColor = (pod: string) => podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hour12: false });
 const formatTime = (iso: string) => (isZeroTime(iso) ? "" : timeFormat.format(new Date(iso)));
-const lineText = (l: LogLine, showPod: boolean) => [formatTime(l.time), showPod && l.pod, l.container, l.text].filter((s) => s !== false).join("  ");
-// Structured lines colour by their level field; the key names cover the common loggers.
-const level = (l: LogLine) => (l.fields?.level ?? l.fields?.lvl ?? l.fields?.severity ?? "").toLowerCase();
-const levelClass = (l: LogLine) => {
-  const v = level(l);
+// A pod of a workload is told apart by its random suffix; the full name is in the title.
+const podSuffix = (pod: string) => pod.slice(pod.lastIndexOf("-") + 1);
+// Structured lines colour by their level field; the key names cover the common loggers, the numbers are pino's.
+const pinoLevels: Record<string, string> = { "10": "trace", "20": "debug", "30": "info", "40": "warn", "50": "error", "60": "fatal" };
+const level = (l: LogLine) => {
+  const v = (l.fields?.level ?? l.fields?.lvl ?? l.fields?.severity ?? "").toLowerCase();
+  return pinoLevels[v] ?? v;
+};
+const levelClass = (v: string) => {
   if (v.startsWith("err") || v === "fatal" || v === "panic" || v === "critical") return "text-red-600 dark:text-red-400";
   if (v.startsWith("warn")) return "text-amber-600 dark:text-amber-400";
-  return "";
+  if (v === "debug" || v === "trace") return "text-muted-foreground/70";
+  return "text-muted-foreground";
 };
+// Fields the row already shows elsewhere, or that every container repeats, stay in the expanded view only.
+const shownElsewhere = new Set(["level", "lvl", "severity", "msg", "message", "time", "ts", "timestamp", "pid"]);
+const inlineFields = (l: LogLine) =>
+  Object.entries(l.fields ?? {}).filter(([k, v]) => !shownElsewhere.has(k) && !(k === "hostname" && v === l.pod));
+
+type Columns = { showPod: boolean; showContainer: boolean };
+type Segment = { text: string; className?: string; title?: string };
+// A row is drawn as plain text with real spaces between its parts, so a selection copies exactly what is on screen.
+const segments = (l: LogLine, { showPod, showContainer }: Columns): Segment[] => {
+  const out: Segment[] = [{ text: formatTime(l.time), className: "text-muted-foreground/70" }];
+  if (showPod) out.push({ text: podSuffix(l.pod), className: podColor(l.pod), title: l.pod });
+  if (showContainer) out.push({ text: l.container, className: "text-muted-foreground" });
+  if (!l.fields) return [...out, { text: l.text }];
+  const lvl = level(l);
+  if (lvl) out.push({ text: lvl.slice(0, 5).padEnd(5), className: levelClass(lvl) });
+  const msg = l.fields.msg ?? l.fields.message;
+  if (msg !== undefined) out.push({ text: msg, className: /^(err|warn|fatal|panic|critical)/.test(lvl) ? levelClass(lvl) : undefined });
+  for (const [k, v] of inlineFields(l)) out.push({ text: `${k}=${v}`, className: "text-muted-foreground" });
+  return out;
+};
+const lineText = (l: LogLine, cols: Columns) => segments(l, cols).map((s) => s.text).join("  ");
 
 export const streamFor = (streams: Record<string, LogStatus>, cluster: Cluster) =>
   Object.values(streams).find((st) => st.source.clusterId === cluster.id);
@@ -73,7 +99,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
 
   const picker = (
     <TargetPicker groups={loggable} value={current} onPick={(t) => start.mutate(t)} placeholder="Search workloads and pods">
-      <ComboboxTrigger render={<Button variant="outline" size="sm" className="max-w-96" />}>
+      <ComboboxTrigger render={<Button variant="outline" size="sm" className="max-w-96 min-w-0 shrink" />}>
         {stream ? (
           <>
             <StateDot status={stream} />
@@ -81,7 +107,11 @@ export function Logs({ cluster }: { cluster: Cluster }) {
             <span className="truncate">
               {stream.source.namespace}/{stream.source.name}
             </span>
-            {stream.source.kind !== LogSourceKind.LogSourcePod && <span className="text-muted-foreground">· {stream.pods?.length ?? 0} pods</span>}
+            {stream.source.kind !== LogSourceKind.LogSourcePod && (
+              <span className="text-muted-foreground">
+                · {stream.pods?.length ?? 0} {stream.pods?.length === 1 ? "pod" : "pods"}
+              </span>
+            )}
             {stream.source.container && <span className="text-muted-foreground">· {stream.source.container}</span>}
             {stream.source.previous && <span className="text-muted-foreground">· previous run</span>}
           </>
@@ -97,7 +127,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
         {error && <p className="px-4 pb-2 text-xs text-destructive">{String(error)}</p>}
-        <Empty className="border-0">
+        <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>Nothing followed yet</EmptyTitle>
             <EmptyDescription>Pick a workload to follow all of its pods, or a single pod.</EmptyDescription>
@@ -119,7 +149,7 @@ function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; pick
   const patch = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+      <div className="flex items-center gap-2 px-4 py-2.5">
         {picker}
         <LogToolbar stream={stream} view={view} patch={patch} />
         {shell}
@@ -139,29 +169,33 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
       <Button variant="ghost" size="icon-sm" title="Stop following" disabled={stop.isPending} onClick={() => stop.mutate()}>
         <XIcon />
       </Button>
-      {containers.length > 1 &&
-        containers.map((c) => {
-          const hidden = view.hidden.includes(c);
-          return (
-            <Toggle
-              key={c}
-              variant="outline"
-              size="sm"
-              pressed={!hidden}
-              onPressedChange={(on) => patch({ hidden: on ? view.hidden.filter((h) => h !== c) : [...view.hidden, c] })}
-              title={hidden ? `Show ${c}` : `Hide ${c}`}
-              className={cn("font-mono text-xs", hidden && "text-muted-foreground line-through")}
-            >
-              {c}
-            </Toggle>
-          );
-        })}
-      <InputGroup className="h-7 w-auto min-w-48 flex-1">
+      {/* One menu rather than a toggle per container, so a pod with several keeps the toolbar on one line. */}
+      {containers.length > 1 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="shrink-0" />}>
+            {view.hidden.length === 0 ? "All containers" : `${containers.length - view.hidden.length} of ${containers.length} containers`}
+            <CaretDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {containers.map((c) => (
+              <DropdownMenuCheckboxItem
+                key={c}
+                className="font-mono text-xs"
+                checked={!view.hidden.includes(c)}
+                onCheckedChange={(on) => patch({ hidden: on ? view.hidden.filter((h) => h !== c) : [...view.hidden, c] })}
+              >
+                {c}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      <InputGroup className="h-7 w-auto min-w-40 flex-1">
         <InputGroupInput
           placeholder="Filter lines, or field=value"
           value={view.query}
           onChange={(e) => patch({ query: e.target.value })}
-          className="font-mono text-xs"
+          className="font-mono text-xs placeholder:font-sans placeholder:text-sm"
         />
         <InputGroupAddon>
           <MagnifyingGlassIcon />
@@ -215,6 +249,7 @@ function compile({ query, regex }: ViewState): { matcher: ((l: LogLine) => boole
 function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
   const buffer = useUIStore((s) => s.logBuffers[stream.id]);
   const showPod = stream.source.kind !== LogSourceKind.LogSourcePod;
+  const showContainer = (stream.containers?.length ?? 0) > 1;
   const lines = buffer?.lines ?? [];
   const { matcher, error } = useMemo(() => compile(view), [view.query, view.regex]);
   // The buffer is appended in place, so version is its change signal.
@@ -228,13 +263,13 @@ function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
   return (
     <>
       {error && <p className="px-4 pb-1 text-xs text-destructive">{error}</p>}
-      <LogList lines={filtered} total={lines.length} version={version} showPod={showPod} />
+      <LogList lines={filtered} total={lines.length} version={version} showPod={showPod} showContainer={showContainer} />
     </>
   );
 }
 
-// Rows never wrap, so a collapsed row is one fixed line; an expanded row is measured.
-function LogList({ lines, total, version, showPod }: { lines: LogLine[]; total: number; version: number; showPod: boolean }) {
+// Rows never wrap, but a message can carry its own newlines, so every row is measured rather than assumed one line.
+function LogList({ lines, total, version, showPod, showContainer }: { lines: LogLine[]; total: number; version: number; showPod: boolean; showContainer: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
   const seen = useRef(0);
@@ -249,20 +284,22 @@ function LogList({ lines, total, version, showPod }: { lines: LogLine[]; total: 
   });
 
   // Jumping straight to scrollHeight lands exactly at the bottom, so the scroll handler never mistakes it for a scroll up.
+  // Rows grow once measured, so the total height is a change signal too.
+  const totalSize = virtualizer.getTotalSize();
   useEffect(() => {
     if (!following) return;
     const el = parentRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     seen.current = lines.length;
-  }, [lines.length, version, following]);
+  }, [lines.length, version, following, totalSize]);
   const behind = Math.max(0, lines.length - seen.current);
 
   return (
-    <div className="relative mx-4 mb-4 flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col border-t">
       <div
         ref={parentRef}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
         onScroll={(e) => {
           const el = e.currentTarget;
           const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
@@ -279,7 +316,7 @@ function LogList({ lines, total, version, showPod }: { lines: LogLine[]; total: 
         onCopy={(e) => {
           if (!allSelected.current) return;
           e.preventDefault();
-          e.clipboardData.setData("text/plain", lines.map((l) => lineText(l, showPod)).join("\n"));
+          e.clipboardData.setData("text/plain", lines.map((l) => lineText(l, { showPod, showContainer })).join("\n"));
         }}
       >
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -287,6 +324,7 @@ function LogList({ lines, total, version, showPod }: { lines: LogLine[]; total: 
             const line = lines[item.index]!;
             const open = expanded.has(line);
             const fields = line.fields ? Object.entries(line.fields) : [];
+            const width = Math.max(0, ...fields.map(([k]) => k.length));
             return (
               <div
                 key={item.key}
@@ -296,30 +334,48 @@ function LogList({ lines, total, version, showPod }: { lines: LogLine[]; total: 
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <div
-                  className={cn("flex h-5 gap-2 px-2 leading-5 whitespace-pre", fields.length > 0 && "cursor-pointer", levelClass(line))}
-                  onClick={() => {
-                    if (fields.length === 0) return;
-                    // Reading a line means staying on it; new batches must not scroll it away.
-                    setFollowing(false);
-                    setExpanded((s) => {
-                      const next = new Set(s);
-                      if (next.has(line)) next.delete(line);
-                      else next.add(line);
-                      return next;
-                    });
-                  }}
+                  className="group relative min-h-5 px-4 leading-5 whitespace-pre hover:bg-muted/50"
                 >
-                  <span className="text-muted-foreground">{formatTime(line.time)}</span>
-                  {showPod && <span className={podColor(line.pod)}>{line.pod}</span>}
-                  <span className="text-muted-foreground">{line.container}</span>
-                  <span>{line.text}</span>
+                  {/* Only the caret opens the fields, so clicking and dragging over lines is left to text selection. */}
+                  {fields.length > 0 && (
+                    <button
+                      type="button"
+                      title={open ? "Hide fields" : "Show fields"}
+                      aria-expanded={open}
+                      className={cn(
+                        "absolute top-0 left-0.5 flex h-5 w-3.5 items-center justify-center text-muted-foreground select-none hover:text-foreground focus-visible:opacity-100",
+                        !open && "opacity-0 group-hover:opacity-100",
+                      )}
+                      onClick={() => {
+                        // Reading a line means staying on it; new batches must not scroll it away.
+                        setFollowing(false);
+                        setExpanded((s) => {
+                          const next = new Set(s);
+                          if (next.has(line)) next.delete(line);
+                          else next.add(line);
+                          return next;
+                        });
+                      }}
+                    >
+                      <CaretRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
+                    </button>
+                  )}
+                  {segments(line, { showPod, showContainer }).map((seg, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && "  "}
+                      <span className={seg.className} title={seg.title}>
+                        {seg.text}
+                      </span>
+                    </Fragment>
+                  ))}
                 </div>
                 {open && (
-                  <div className="grid grid-cols-[max-content_1fr] gap-x-4 border-b px-2 pt-0.5 pb-1.5 leading-5 whitespace-pre text-muted-foreground">
+                  <div className="border-b px-4 pt-0.5 pb-1.5 leading-5 whitespace-pre text-muted-foreground">
                     {fields.map(([k, v]) => (
-                      <div key={k} className="contents">
-                        <span className="text-foreground">{k}</span>
-                        <span>{v}</span>
+                      <div key={k}>
+                        <span className="text-foreground">{k.padEnd(width)}</span>
+                        {"  "}
+                        {v}
                       </div>
                     ))}
                   </div>

@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, CubeIcon, PlusIcon, TrashIcon, WarningIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CubeIcon, DotsThreeIcon, PlusIcon, WarningIcon } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
@@ -12,7 +12,17 @@ import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
 import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -251,6 +261,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
     onSuccess: () => queryClient.invalidateQueries(),
   });
   const selectCluster = useUIStore((s) => s.selectCluster);
+  const [removing, setRemoving] = useState(false);
   const remove = useMutation({
     mutationFn: () => ClusterService.Delete(cluster.id),
     onSuccess: () => {
@@ -262,9 +273,11 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
     <div className="flex h-14 items-center gap-3 px-4">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate text-base font-semibold">{cluster.name}</span>
-        <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.kubeconfig}>
-          {cluster.context}
-        </span>
+        {cluster.context !== cluster.name && (
+          <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.kubeconfig}>
+            {cluster.context}
+          </span>
+        )}
       </div>
       <Select value={cluster.route} items={options} onValueChange={(id) => setRoute.mutate(id ?? "")}>
         <SelectTrigger size="sm" title={statusLabel(routeStatus)}>
@@ -296,10 +309,39 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
         />
         {status === "pending" ? "Checking…" : status === "error" ? "Unreachable" : version || "Reachable"}
       </span>
-      {remove.error && <span className="max-w-48 truncate text-xs text-destructive">{String(remove.error)}</span>}
-      <Button variant="ghost" size="icon-sm" title="Remove cluster" disabled={remove.isPending} onClick={() => remove.mutate()}>
-        <TrashIcon />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="More" />}>
+          <DotsThreeIcon weight="bold" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              remove.reset();
+              setRemoving(true);
+            }}
+          >
+            Remove cluster…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AlertDialog open={removing} onOpenChange={(o) => !remove.isPending && setRemoving(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {cluster.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kubereach forgets this cluster and deletes its port forwards; open logs and shells close. The cluster and your kubeconfig stay as they are.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {remove.error && <p className="text-xs text-destructive">{String(remove.error)}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+            <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
+              Remove cluster
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

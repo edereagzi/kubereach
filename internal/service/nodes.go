@@ -22,6 +22,8 @@ type KubeNode struct {
 	Allocatable ResourceUsage `json:"allocatable"`
 	Requested   ResourceUsage `json:"requested"`
 	Pods        int           `json:"pods"`
+	// PodCapacity is how many pods the node accepts, zero when it does not say.
+	PodCapacity int64 `json:"podCapacity"`
 	// Unknown marks totals that are a failed read rather than an idle node: the pods could not be listed, so
 	// Requested and Pods say nothing and the tab shows no number rather than a wrong one.
 	Unknown bool `json:"unknown,omitempty"`
@@ -146,6 +148,7 @@ func nodeObject(n *corev1.Node) KubeNode {
 		Version:     n.Status.NodeInfo.KubeletVersion,
 		Problem:     NodeReason(n),
 		Allocatable: resourceUsage(n.Status.Allocatable),
+		PodCapacity: n.Status.Allocatable.Pods().Value(),
 	}
 }
 

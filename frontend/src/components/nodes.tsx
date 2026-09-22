@@ -69,7 +69,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
 
   if (nodes.error) {
     return (
-      <Empty className="border-0">
+      <Empty className="justify-start border-0 pt-12">
         <EmptyHeader>
           <EmptyTitle>{isForbidden(nodes.error) ? "Nodes are forbidden for this role" : "Nodes could not be listed"}</EmptyTitle>
           <EmptyDescription>{isForbidden(nodes.error) ? "The rest of the Cluster is unaffected." : String(nodes.error)}</EmptyDescription>
@@ -80,7 +80,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   if (nodes.isPending) return null;
   if (nodes.data?.length === 0) {
     return (
-      <Empty className="border-0">
+      <Empty className="justify-start border-0 pt-12">
         <EmptyHeader>
           <EmptyTitle>No nodes</EmptyTitle>
           <EmptyDescription>This Cluster reports no nodes.</EmptyDescription>
@@ -92,7 +92,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
       {inspecting && <NodeDetail cluster={cluster} node={inspecting} onClose={() => setInspecting(null)} />}
-      <Table className="w-auto min-w-[52rem]">
+      <Table className="min-w-[52rem]">
         <TableHeader>
           <TableRow>
             <TableHead>Node</TableHead>
@@ -100,7 +100,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
             <TableHead>Version</TableHead>
             <TableHead title="Used and requested, against the node's allocatable CPU">CPU used / requested</TableHead>
             <TableHead title="Used and requested, against the node's allocatable memory">Memory used / requested</TableHead>
-            <TableHead className="text-right">Pods</TableHead>
+            <TableHead className="text-right" title="Running on the node, of the pods it accepts">Pods</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -127,7 +127,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
                   <Meter name="memory" label={memoryLabel} used={used?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground" title={n.unknown ? "The Cluster's pods could not be listed" : undefined}>
-                  {n.unknown ? "—" : n.pods}
+                  {n.unknown ? "—" : n.podCapacity ? `${n.pods} / ${n.podCapacity}` : n.pods}
                 </TableCell>
               </TableRow>
             );
