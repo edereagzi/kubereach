@@ -26,7 +26,7 @@ const maxEvents = 5_000;
 
 type EventBuffer = { events: KubeEvent[]; version: number };
 
-type ClusterTab = "overview" | "events" | "forwards" | "logs" | "shell";
+type ClusterTab = "overview" | "nodes" | "events" | "forwards" | "logs" | "shell";
 
 // An object another tab asks the Overview to open the detail of.
 export type InspectRequest = { clusterId: string; kind: Kind; namespace: string; name: string };

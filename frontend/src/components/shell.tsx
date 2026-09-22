@@ -5,6 +5,7 @@ import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
 import { ClusterOverview } from "@/components/cluster-overview";
+import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
 import { Logs, streamFor } from "@/components/logs";
@@ -171,6 +172,10 @@ function ClusterTabs() {
       <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as typeof activeTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-9 w-full justify-start gap-5 border-b px-4">
           <TabsTrigger value="overview" className="flex-none px-0">Overview</TabsTrigger>
+          <TabsTrigger value="nodes" className="flex-none px-0">
+            Nodes
+            <NodeProblems cluster={cluster} />
+          </TabsTrigger>
           <TabsTrigger value="events" className="flex-none px-0">
             Events
             <EventsLive cluster={cluster} />
@@ -190,6 +195,9 @@ function ClusterTabs() {
         </TabsList>
         <TabsContent value="overview" className="flex min-h-0 flex-col">
           <ClusterOverview key={cluster.id} cluster={cluster} />
+        </TabsContent>
+        <TabsContent value="nodes" className="flex min-h-0 flex-col">
+          <ClusterNodes key={cluster.id} cluster={cluster} />
         </TabsContent>
         <TabsContent value="events" className="flex min-h-0 flex-col">
           <ClusterEvents key={cluster.id} cluster={cluster} />

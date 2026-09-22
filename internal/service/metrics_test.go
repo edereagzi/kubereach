@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
@@ -26,7 +27,7 @@ const nodeMetricsJSON = `{"kind":"NodeMetricsList","apiVersion":"metrics.k8s.io/
   {"metadata":{"name":"node-a"},"usage":{"cpu":"1500m","memory":"4Gi"}}]}`
 
 // newMetricsService lists with the fake clientset and reads metrics.k8s.io from an in-test API server; a nil handler has no metrics API group.
-func newMetricsService(t *testing.T, handler http.HandlerFunc) (*service.Service, string) {
+func newMetricsService(t *testing.T, handler http.HandlerFunc, objects ...runtime.Object) (*service.Service, string) {
 	t.Helper()
 	mux := http.NewServeMux()
 	if handler != nil {
@@ -34,7 +35,7 @@ func newMetricsService(t *testing.T, handler http.HandlerFunc) (*service.Service
 	}
 	api := httptest.NewServer(mux)
 	t.Cleanup(api.Close)
-	cs := fake.NewClientset()
+	cs := fake.NewClientset(objects...)
 	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		return cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout}, nil
 	})

@@ -19,6 +19,7 @@ const objectKind: Record<Kind, ObjectKind> = {
   cm: ObjectKind.ObjectConfigMap,
   secret: ObjectKind.ObjectSecret,
   ing: ObjectKind.ObjectIngress,
+  node: ObjectKind.ObjectNode,
 };
 
 type YamlProps = { cluster: Cluster; kind: Kind; namespace: string; name: string };

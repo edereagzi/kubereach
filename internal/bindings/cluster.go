@@ -95,6 +95,14 @@ func (c *ClusterService) DescribeIngress(ctx context.Context, clusterID, namespa
 	return c.svc.DescribeIngress(ctx, clusterID, namespace, name)
 }
 
+func (c *ClusterService) ListNodes(ctx context.Context, clusterID string) ([]service.KubeNode, error) {
+	return c.svc.ListNodes(ctx, clusterID)
+}
+
+func (c *ClusterService) DescribeNode(ctx context.Context, clusterID, name string) (service.NodeDiagnosis, error) {
+	return c.svc.DescribeNode(ctx, clusterID, name)
+}
+
 func (c *ClusterService) GetYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string, reveal bool) (string, error) {
 	return c.svc.GetYAML(ctx, clusterID, kind, namespace, name, reveal)
 }

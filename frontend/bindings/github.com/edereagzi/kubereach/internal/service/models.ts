@@ -213,6 +213,30 @@ export interface KubeIngress {
     "problem"?: string;
 }
 
+/**
+ * KubeNode is one node of the Cluster: what it is, what is wrong with it, and how much of it is spoken for.
+ * Requested and Pods count the pods the scheduler still holds it responsible for.
+ */
+export interface KubeNode {
+    "name": string;
+    "roles"?: string[] | null;
+    "version": string;
+
+    /**
+     * Problem is the one thing wrong with the node, empty when nothing is; see NodeReason.
+     */
+    "problem"?: string;
+    "allocatable": ResourceUsage;
+    "requested": ResourceUsage;
+    "pods": number;
+
+    /**
+     * Unknown marks totals that are a failed read rather than an idle node: the pods could not be listed, so
+     * Requested and Pods say nothing and the tab shows no number rather than a wrong one.
+     */
+    "unknown"?: boolean;
+}
+
 export interface KubePod {
     "namespace": string;
     "name": string;
@@ -319,9 +343,53 @@ export interface NamedPort {
     "port": number;
 }
 
+export interface NodeCondition {
+    "type": string;
+    "status": string;
+    "reason"?: string;
+    "message"?: string;
+}
+
+/**
+ * NodeDiagnosis answers what is eating the node: its conditions, its pods ranked by what they use, and its events.
+ */
+export interface NodeDiagnosis {
+    "node": KubeNode;
+    "conditions": NodeCondition[] | null;
+    "pods": NodePod[] | null;
+
+    /**
+     * UsageAvailable is false when the Cluster has no metrics.k8s.io; every Usage is then zero because nothing measured it,
+     * not because nothing is running, and the pods are in name order rather than ranked.
+     */
+    "usageAvailable": boolean;
+
+    /**
+     * PodsError is set when the node's pods could not be listed; the conditions and events still stand.
+     */
+    "podsError"?: string;
+
+    /**
+     * Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.
+     */
+    "events": KubeEvent[] | null;
+    "eventsError"?: string;
+}
+
 export interface NodeMetrics {
     "available": boolean;
     "nodes": NodeUsage[] | null;
+}
+
+/**
+ * NodePod is one pod the node is running, with what it uses now and what it reserved.
+ */
+export interface NodePod {
+    "namespace": string;
+    "name": string;
+    "reason"?: string;
+    "usage": ResourceUsage;
+    "requests": ResourceUsage;
 }
 
 export interface NodeUsage {
@@ -347,6 +415,7 @@ export enum ObjectKind {
     ObjectConfigMap = "configmap",
     ObjectSecret = "secret",
     ObjectIngress = "ingress",
+    ObjectNode = "node",
 };
 
 export interface PodCondition {

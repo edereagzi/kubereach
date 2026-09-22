@@ -21,6 +21,10 @@ export function DescribeIngress(clusterID: string, $namespace: string, name: str
     return $Call.ByID(631144839, clusterID, $namespace, name);
 }
 
+export function DescribeNode(clusterID: string, name: string): $CancellablePromise<service$0.NodeDiagnosis> {
+    return $Call.ByID(2966604308, clusterID, name);
+}
+
 export function DescribePod(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.PodDiagnosis> {
     return $Call.ByID(4197865875, clusterID, $namespace, name);
 }
@@ -62,6 +66,10 @@ export function ListIngresses(clusterID: string): $CancellablePromise<service$0.
 
 export function ListNamespaces(clusterID: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(3507898021, clusterID);
+}
+
+export function ListNodes(clusterID: string): $CancellablePromise<service$0.KubeNode[] | null> {
+    return $Call.ByID(179921454, clusterID);
 }
 
 export function ListPods(clusterID: string): $CancellablePromise<service$0.KubePod[] | null> {

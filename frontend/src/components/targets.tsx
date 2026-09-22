@@ -16,7 +16,7 @@ import {
 import { configMapsQuery, ingressesQuery, podsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "pod" | "cm" | "secret";
+export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "pod" | "cm" | "secret" | "node";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {

@@ -48,8 +48,8 @@ const stateLabel = (st: ContainerState) => {
 
 export const restartsLabel = (n: number) => `${n} restart${n === 1 ? "" : "s"}`;
 
-const cpuLabel = (m: number) => `${m}m`;
-const memoryLabel = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)}Gi` : `${Math.round(b / (1 << 20))}Mi`);
+export const cpuLabel = (m: number) => `${m}m`;
+export const memoryLabel = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)}Gi` : `${Math.round(b / (1 << 20))}Mi`);
 
 // A pod this close to a limit is about to be throttled or killed, so it reads as a fault on a row and counts as a problem.
 const pressureThreshold = 90;

@@ -24,6 +24,7 @@ const (
 	ObjectConfigMap   ObjectKind = "configmap"
 	ObjectSecret      ObjectKind = "secret"
 	ObjectIngress     ObjectKind = "ingress"
+	ObjectNode        ObjectKind = "node"
 )
 
 const (
@@ -59,6 +60,8 @@ func (s *Service) GetYAML(ctx context.Context, clusterID string, kind ObjectKind
 		obj, err = k.client.CoreV1().Secrets(namespace).Get(ctx, name, get)
 	case ObjectIngress:
 		obj, err = k.client.NetworkingV1().Ingresses(namespace).Get(ctx, name, get)
+	case ObjectNode:
+		obj, err = k.client.CoreV1().Nodes().Get(ctx, name, get)
 	default:
 		return "", fmt.Errorf("unknown object kind %q", kind)
 	}

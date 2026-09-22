@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import type { ObjectKind, PodMetrics, PodUsage, WorkloadKind } from "@bindings/internal/service";
+import type { NodeMetrics, ObjectKind, PodMetrics, PodUsage, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
@@ -95,6 +95,30 @@ export const ingressQuery = (clusterId: string, namespace: string, name: string)
   queryOptions({
     queryKey: ["cluster", clusterId, "ingress", namespace, name],
     queryFn: () => ClusterService.DescribeIngress(clusterId, namespace, name),
+    retry: false,
+  });
+
+export const nodesQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "nodes"],
+    queryFn: async () => (await ClusterService.ListNodes(clusterId)) ?? [],
+    retry: false,
+  });
+
+// A Cluster without metrics-server yields an empty map, and the used part of every node bar stays out.
+const indexNodeMetrics = (m: NodeMetrics) => new Map((m.nodes ?? []).map((n): [string, ResourceUsage] => [n.name, n.usage]));
+export const nodeMetricsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "node-metrics"],
+    queryFn: () => ClusterService.NodeMetrics(clusterId),
+    select: indexNodeMetrics,
+    retry: false,
+  });
+
+export const nodeQuery = (clusterId: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "node", name],
+    queryFn: () => ClusterService.DescribeNode(clusterId, name),
     retry: false,
   });
 
