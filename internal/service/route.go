@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -388,16 +389,20 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 			backoff = time.Second
 			rc.setClients(clients)
 			s.setRouteState(rc, StateConnected, nil)
-			closed := make(chan error, 1)
+			live, stop := context.WithCancel(ctx)
+			closed := make(chan error, 2)
 			go func() { closed <- clients.last().Wait() }()
+			go func() { closed <- keepAlive(live, clients.last(), s.RouteKeepalive) }()
 			select {
 			case <-ctx.Done():
+				stop()
 				rc.setClients(nil)
 				clients.Close()
 				s.setRouteState(rc, StateStopped, nil)
 				return
 			case err = <-closed:
 			}
+			stop()
 			rc.setClients(nil)
 			clients.Close()
 			if err == nil {
@@ -437,6 +442,33 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 		case <-time.After(backoff):
 		}
 		backoff = min(backoff*2, 30*time.Second)
+	}
+}
+
+const keepaliveMisses = 3
+
+// keepAlive counts unanswered probes rather than elapsed time, so a laptop waking from sleep is probed before
+// its link is judged dead.
+func keepAlive(ctx context.Context, client *ssh.Client, interval time.Duration) error {
+	var unanswered atomic.Int32
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+		}
+		if unanswered.Load() >= keepaliveMisses {
+			return fmt.Errorf("%d keepalives went unanswered", keepaliveMisses)
+		}
+		unanswered.Add(1)
+		go func() {
+			// OpenSSH answers keepalive@openssh.com with a refusal; any reply proves the link.
+			if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err == nil {
+				unanswered.Store(0)
+			}
+		}()
 	}
 }
 
@@ -483,11 +515,7 @@ func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Clien
 	if via == nil {
 		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	} else {
-		stop := context.AfterFunc(ctx, func() { _ = via.Close() })
-		conn, err = via.Dial("tcp", addr)
-		if !stop() {
-			return nil, ctx.Err()
-		}
+		conn, err = via.DialContext(ctx, "tcp", addr)
 	}
 	if err != nil {
 		return nil, err
@@ -620,12 +648,12 @@ func (s *Service) routeDialer(routeID string) (DialFunc, error) {
 	if rc == nil || rc.sshClient() == nil {
 		return nil, ErrRouteDown
 	}
-	return func(_ context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		client := rc.sshClient()
 		if client == nil {
 			return nil, ErrRouteDown
 		}
-		return client.Dial(network, addr)
+		return client.DialContext(ctx, network, addr)
 	}, nil
 }
 

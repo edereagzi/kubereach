@@ -430,7 +430,7 @@ func forwardDialer(ctx context.Context, cfg *rest.Config, namespace, pod string)
 	return &spdyDialer{ctx: ctx, upgrader: upgrader, client: &http.Client{Transport: rt}, url: u.String()}, nil
 }
 
-// spdyDialer is client-go's SPDY dialer with the forward's context on the request, so Stop interrupts a stalled dial.
+// spdyDialer is client-go's SPDY dialer with the forward's context on the request, so Stop interrupts a stalled connect.
 type spdyDialer struct {
 	ctx      context.Context
 	upgrader spdy.Upgrader
@@ -527,12 +527,17 @@ func (s *Service) forwardConnection(ctx context.Context, fc *forwardConn) (https
 		}
 	}
 	fc.mu.Unlock()
-	pod, podPort, conn, err := s.dialForward(ctx, fc.status.Forward)
+	pod, podPort, conn, err := s.dialForwardBounded(ctx, fc.status.Forward)
 	if err != nil {
 		s.updateForward(fc, func(st *ForwardStatus) { st.Pod, st.State, st.Error = "", StateError, err.Error() })
 		return nil, 0, 0, err
 	}
 	fc.mu.Lock()
+	if fc.closed {
+		fc.mu.Unlock()
+		_ = conn.Close()
+		return nil, 0, 0, errors.New("forward was turned off")
+	}
 	fc.conn, fc.podPort = conn, podPort
 	_, id := attach()
 	fc.mu.Unlock()
@@ -542,6 +547,39 @@ func (s *Service) forwardConnection(ctx context.Context, fc *forwardConn) (https
 	}()
 	s.updateForward(fc, func(st *ForwardStatus) { st.Pod, st.State, st.Error = pod, StateConnected, "" })
 	return conn, podPort, id, nil
+}
+
+const forwardDialTimeout = 30 * time.Second
+
+// dialForwardBounded gives up on the dial without waiting for it: the SPDY upgrade reads its response
+// without watching the context.
+func (s *Service) dialForwardBounded(ctx context.Context, pf PortForward) (string, int, httpstream.Connection, error) {
+	ctx, cancel := context.WithTimeout(ctx, forwardDialTimeout)
+	defer cancel()
+	type dialed struct {
+		pod     string
+		podPort int
+		conn    httpstream.Connection
+		err     error
+	}
+	result := make(chan dialed)
+	go func() {
+		var d dialed
+		d.pod, d.podPort, d.conn, d.err = s.dialForward(ctx, pf)
+		select {
+		case result <- d:
+		case <-ctx.Done():
+			if d.conn != nil {
+				_ = d.conn.Close()
+			}
+		}
+	}()
+	select {
+	case d := <-result:
+		return d.pod, d.podPort, d.conn, d.err
+	case <-ctx.Done():
+		return "", 0, nil, fmt.Errorf("dial pod: %w", ctx.Err())
+	}
 }
 
 // dialForward resolves the backing pod the way kubectl does and opens a port-forward connection to it through the Route.

@@ -40,6 +40,7 @@ type testAPI struct {
 	feeds  map[string]chan string
 	gone   map[string]bool
 	seeded int
+	stall  chan struct{}
 	// shells are the commands the exec subresource can start; execs and resizes record what it was asked.
 	shells  map[string]bool
 	execs   []string
@@ -70,6 +71,12 @@ func (a *testAPI) podHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pod := parts[6]
+	a.mu.Lock()
+	stall := a.stall
+	a.mu.Unlock()
+	if stall != nil {
+		<-stall
+	}
 	if _, err := httpstream.Handshake(r, w, []string{"portforward.k8s.io"}); err != nil {
 		return
 	}
@@ -545,6 +552,30 @@ func TestForward_LazyConnectionDropsAfterIdleAndFollowsReplacedPod(t *testing.T)
 	f.waitState(t, service.StateIdle)
 	if dialFails(pf.LocalPort) {
 		t.Error("local port closed after the pod went away")
+	}
+}
+
+func TestForward_TurnedOffWhileDialStallsClosesWaitingConnection(t *testing.T) {
+	f := newForwardFixture(t, pod("default", "api-0", "api", corev1.PodRunning, true, time.Now()))
+	stall := make(chan struct{})
+	t.Cleanup(func() { close(stall) })
+	f.api.mu.Lock()
+	f.api.stall = stall
+	f.api.mu.Unlock()
+	pf := f.save(t, service.TargetPod, "api-0", 8080, 0)
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", pf.LocalPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	time.Sleep(200 * time.Millisecond)
+	if err := f.svc.SetForwardEnabled(pf.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Errorf("waiting connection read = %v, want it closed once the forward is off", err)
 	}
 }
 

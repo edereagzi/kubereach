@@ -15,7 +15,8 @@ type Service struct {
 	// KnownHostsPath is the file SSH host keys are checked against and approved keys are appended to.
 	KnownHostsPath string
 	// ForwardIdle is how long a forward's pod connection outlives its last local connection.
-	ForwardIdle time.Duration
+	ForwardIdle    time.Duration
+	RouteKeepalive time.Duration
 
 	configPath string
 	clients    ClientFactory
@@ -39,6 +40,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		Emit:           func(string, any) {},
 		KnownHostsPath: filepath.Join(home, ".ssh", "known_hosts"),
 		ForwardIdle:    5 * time.Minute,
+		RouteKeepalive: 15 * time.Second,
 		configPath:     configPath,
 		clients:        clients,
 		routes:         map[string]*routeConn{},

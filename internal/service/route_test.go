@@ -26,6 +26,9 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 // testSSH is an in-process SSH server that allows direct-tcpip forwarding and records where to.
@@ -34,7 +37,39 @@ type testSSH struct {
 	hostKey  ssh.PublicKey
 	mu       sync.Mutex
 	forwards []string
-	conns    []net.Conn
+	conns    []*stallConn
+	hold     chan struct{}
+}
+
+// stallConn plays a link that died silently.
+type stallConn struct {
+	net.Conn
+	mu      sync.Mutex
+	stalled bool
+	closed  chan struct{}
+}
+
+func (c *stallConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.mu.Lock()
+	stalled := c.stalled
+	c.mu.Unlock()
+	if stalled {
+		<-c.closed
+		return 0, net.ErrClosed
+	}
+	return n, err
+}
+
+func (c *stallConn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	select {
+	case <-c.closed:
+	default:
+		close(c.closed)
+	}
+	return c.Conn.Close()
 }
 
 // server describes this test server as an SSH Server; empty keyFile means agent auth.
@@ -95,15 +130,20 @@ func startSSHServerWith(t *testing.T, authorized ssh.PublicKey, password string,
 		},
 		LocalPortForwardingCallback: func(_ gliderssh.Context, host string, port uint32) bool {
 			s.mu.Lock()
-			defer s.mu.Unlock()
 			s.forwards = append(s.forwards, net.JoinHostPort(host, fmt.Sprint(port)))
+			hold := s.hold
+			s.mu.Unlock()
+			if hold != nil {
+				<-hold
+			}
 			return true
 		},
 		ConnCallback: func(_ gliderssh.Context, conn net.Conn) net.Conn {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			s.conns = append(s.conns, conn)
-			return conn
+			sc := &stallConn{Conn: conn, closed: make(chan struct{})}
+			s.conns = append(s.conns, sc)
+			return sc
 		},
 		ChannelHandlers: map[string]gliderssh.ChannelHandler{"direct-tcpip": gliderssh.DirectTCPIPHandler},
 	}
@@ -120,6 +160,25 @@ func (s *testSSH) dropConnections() {
 		_ = c.Close()
 	}
 	s.conns = nil
+}
+
+func (s *testSSH) stall() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.conns {
+		c.mu.Lock()
+		c.stalled = true
+		c.mu.Unlock()
+	}
+	s.conns = nil
+}
+
+func (s *testSSH) holdForwards(t *testing.T) {
+	hold := make(chan struct{})
+	t.Cleanup(func() { close(hold) })
+	s.mu.Lock()
+	s.hold = hold
+	s.mu.Unlock()
 }
 
 func (s *testSSH) forwardedTo() []string {
@@ -441,6 +500,57 @@ func TestRoute_ReconnectsAfterDrop(t *testing.T) {
 
 	if _, err := f.svc.CheckReachability(context.Background(), f.cluster); err != nil {
 		t.Fatalf("after reconnect: %v", err)
+	}
+}
+
+func TestRoute_ReconnectsWhenKeepalivesGoUnanswered(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	f.svc.RouteKeepalive = 50 * time.Millisecond
+	f.connect(t)
+
+	f.ssh.stall()
+	if ev := f.waitState(t, service.StateReconnecting); !strings.Contains(ev.Error, "keepalive") {
+		t.Errorf("reconnecting reason = %q, want the missed keepalives", ev.Error)
+	}
+	f.waitState(t, service.StateConnected)
+	if _, err := f.svc.CheckReachability(context.Background(), f.cluster); err != nil {
+		t.Fatalf("after reconnect: %v", err)
+	}
+}
+
+func TestRoute_DialReturnsWhenItsContextIsCancelled(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	dials := make(chan service.DialFunc, 1)
+	svc := service.New(f.configPath, func(_ service.Cluster, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+		dials <- dial
+		return fake.NewClientset(), &rest.Config{}, nil
+	})
+	svc.KnownHostsPath = f.svc.KnownHostsPath
+	svc.Emit = f.svc.Emit
+	f.svc = svc
+	f.connect(t)
+	if _, err := svc.CheckReachability(context.Background(), f.cluster); err != nil {
+		t.Fatal(err)
+	}
+	dial := <-dials
+
+	f.ssh.holdForwards(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := dial(ctx, "tcp", strings.TrimPrefix(f.api.URL, "http://"))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("dial = %v, want the context's deadline", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("dial through the Route ignored its context")
 	}
 }
 
