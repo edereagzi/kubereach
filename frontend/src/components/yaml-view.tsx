@@ -18,6 +18,7 @@ const objectKind: Record<Kind, ObjectKind> = {
   pod: ObjectKind.ObjectPod,
   cm: ObjectKind.ObjectConfigMap,
   secret: ObjectKind.ObjectSecret,
+  ing: ObjectKind.ObjectIngress,
 };
 
 type YamlProps = { cluster: Cluster; kind: Kind; namespace: string; name: string };

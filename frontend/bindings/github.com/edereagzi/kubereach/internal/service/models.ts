@@ -128,6 +128,45 @@ export interface ImportPreview {
     "missingPaths": string[] | null;
 }
 
+export interface IngressDiagnosis {
+    "ingress": KubeIngress;
+    "paths": IngressPath[] | null;
+}
+
+/**
+ * IngressPath is one rule of an Ingress followed to the pods that serve it. Host and Path are empty for the default backend.
+ */
+export interface IngressPath {
+    "host"?: string;
+    "path"?: string;
+    "service"?: string;
+
+    /**
+     * Port is the backend port by name or number, as the Ingress names it.
+     */
+    "port"?: string;
+    "pods"?: IngressPod[] | null;
+
+    /**
+     * Problem says where the chain stops: no such Service, a port it does not expose, nothing behind it, or nothing ready.
+     */
+    "problem"?: string;
+
+    /**
+     * Unknown marks a stop that is a failed read rather than a broken chain, so it does not read as a fault.
+     */
+    "unknown"?: boolean;
+}
+
+/**
+ * IngressPod is one pod an EndpointSlice points at.
+ */
+export interface IngressPod {
+    "namespace": string;
+    "name": string;
+    "ready": boolean;
+}
+
 /**
  * KubeConfigObject is a ConfigMap or a Secret. Lists carry the keys only; Data is filled by GetConfigMap and GetSecret,
  * so a Secret's values leave the Cluster only when one is opened. Nothing here is logged or written to disk.
@@ -161,6 +200,17 @@ export interface KubeEvent {
     "message": string;
     "count": number;
     "time": string;
+}
+
+/**
+ * KubeIngress is an Ingress in scope. Hosts is every rule host once, so a row can show the first and count the rest;
+ * Problem is what is wrong with the chain behind it, which is what a row badges. The paths themselves are in DescribeIngress.
+ */
+export interface KubeIngress {
+    "namespace": string;
+    "name": string;
+    "hosts"?: string[] | null;
+    "problem"?: string;
 }
 
 export interface KubePod {
@@ -296,6 +346,7 @@ export enum ObjectKind {
     ObjectService = "service",
     ObjectConfigMap = "configmap",
     ObjectSecret = "secret",
+    ObjectIngress = "ingress",
 };
 
 export interface PodCondition {

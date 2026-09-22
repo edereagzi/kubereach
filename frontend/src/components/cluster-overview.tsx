@@ -5,6 +5,7 @@ import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, State, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
+import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { streamFor, useStartLogs } from "@/components/logs";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
@@ -23,17 +24,24 @@ import { cn } from "@/lib/utils";
 // The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
 // Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
 const folded = (group: string) => group === "ConfigMaps" || group === "Secrets";
-const counts = (kinds: TargetGroup[]) => kinds.map((g) => `${g.items.length} ${g.label.toLowerCase().replace(/s$/, g.items.length === 1 ? "" : "s")}`).join(" · ");
+// "ingresses" loses two letters where "services" loses one.
+const singular = (word: string) => (word.endsWith("sses") ? word.slice(0, -2) : word.slice(0, -1));
+const counts = (kinds: TargetGroup[]) =>
+  kinds.map((g) => `${g.items.length} ${g.items.length === 1 ? singular(g.label.toLowerCase()) : g.label.toLowerCase()}`).join(" · ");
 
+// An Ingress is searched by its hosts too: during an incident the URL is what you have, not the object's name.
 const matches = (words: string[], group: string, t: Target) => {
-  const hay = `${t.kind} ${t.workload?.kind ?? ""} ${group} ${t.label}`.toLowerCase();
+  const hay = `${t.kind} ${t.workload?.kind ?? ""} ${group} ${t.label} ${t.ingress?.hosts?.join(" ") ?? ""}`.toLowerCase();
   return words.every((w) => hay.includes(w));
 };
 
 // Passage states a pod goes through on its way up or out; any other reason, a pod against a limit, and a stuck rollout are problems.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating"]);
-const isProblem = (t: Target, pressure?: string) =>
-  t.kind === "pod" ? !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, ""))) : t.workload?.rollout?.state === RolloutState.RolloutStuck;
+const isProblem = (t: Target, pressure?: string) => {
+  if (t.kind === "pod") return !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")));
+  if (t.ingress) return !!t.ingress.problem;
+  return t.workload?.rollout?.state === RolloutState.RolloutStuck;
+};
 
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
@@ -108,6 +116,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.workload && <WorkloadDetail cluster={cluster} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.kind === "svc" && <YamlDialog cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
@@ -119,7 +128,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <kbd className="rounded border px-1 font-sans text-[10px] text-muted-foreground">/</kbd>
           </InputGroupAddon>
         </InputGroup>
-        <Toggle variant="outline" size="sm" pressed={problems} onPressedChange={setProblems} title="Only pods and workloads that are not healthy">
+        <Toggle variant="outline" size="sm" pressed={problems} onPressedChange={setProblems} title="Only pods, workloads and ingresses that are not healthy">
           Problems
         </Toggle>
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
@@ -140,7 +149,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit or stuck rollouts." : "This scope has no services, workloads, pods, configmaps or secrets."}
+                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts or Ingresses that reach no pod." : "This scope has no services, workloads, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -186,6 +195,7 @@ const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const meta = (t: Target) => {
   if (t.kind === "svc") return portsLabel(t.ports);
   if (t.kind === "pod") return "";
+  if (t.ingress) return hostsLabel(t.ingress.hosts);
   if (t.config) return [t.config.type, keysLabel(t.config.keys?.length ?? 0)].filter(Boolean).join(" · ");
   return t.workload ? workloadLabel(t.workload) : "";
 };
@@ -218,7 +228,7 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }:
       <button
         type="button"
         className="truncate text-left hover:underline"
-        title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : `Why is ${target.name} in this state?`}
+        title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : target.ingress ? `What does ${target.name} reach?` : `Why is ${target.name} in this state?`}
         onClick={onInspect}
       >
         {target.name}
@@ -232,6 +242,7 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect, onKind }:
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
+        {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
         <span className="truncate">{meta(target)}</span>
       </span>
       <span className="flex justify-end gap-0.5">

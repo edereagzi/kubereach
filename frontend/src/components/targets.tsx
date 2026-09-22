@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeWorkload, type NamedPort, type ResourceUsage } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubeWorkload, type NamedPort, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -13,10 +13,10 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { configMapsQuery, podsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
+import { configMapsQuery, ingressesQuery, podsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "deploy" | "sts" | "ds" | "cron" | "pod" | "cm" | "secret";
+export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "pod" | "cm" | "secret";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -38,6 +38,8 @@ export type Target = {
   workload?: KubeWorkload;
   // ConfigMaps and Secrets only: the keys, never the values.
   config?: KubeConfigObject;
+  // Ingresses only: the hosts; the paths and the pods behind them come with the detail.
+  ingress?: KubeIngress;
 };
 
 // error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
@@ -53,13 +55,14 @@ export const logKind: Partial<Record<Kind, LogSourceKind>> = {
 export const forwardKind = (kind: Kind) => (kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod);
 export const targetValue = (kind: Kind, namespace: string, name: string) => `${kind}:${namespace}/${name}`;
 
-// withConfig adds ConfigMaps and Secrets, which only the Overview lists; a role that cannot read them still gets the rest.
-export function useTargets(cluster: Cluster, withConfig = false) {
+// overview adds Ingresses, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
+export function useTargets(cluster: Cluster, overview = false) {
   const services = useQuery(servicesQuery(cluster.id));
   const workloads = useQuery(workloadsQuery(cluster.id));
   const pods = useQuery(podsQuery(cluster.id));
-  const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: withConfig });
-  const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: withConfig });
+  const ingresses = useQuery({ ...ingressesQuery(cluster.id), enabled: overview });
+  const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
+  const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
   const make = (kind: Kind, namespace: string, name: string, ports: NamedPort[] = [], containers: string[] = []): Target => ({
     value: targetValue(kind, namespace, name),
     label: `${namespace}/${name}`,
@@ -69,12 +72,14 @@ export function useTargets(cluster: Cluster, withConfig = false) {
     ports,
     containers,
   });
+  // Listed the way a request travels and an incident is traced: in at the Ingress, out at the pod.
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
     { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, requests: p.requests, limits: p.limits })) },
   ];
-  if (withConfig) {
+  if (overview) {
+    groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i.namespace, i.name), ingress: i })), error: ingresses.error });
     groups.push(
       { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => ({ ...make("cm", c.namespace, c.name), config: c })), error: configMaps.error },
       { label: "Secrets", items: (secrets.data ?? []).map((c) => ({ ...make("secret", c.namespace, c.name), config: c })), error: secrets.error },
@@ -83,7 +88,7 @@ export function useTargets(cluster: Cluster, withConfig = false) {
   return {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
-    pending: services.isPending || workloads.isPending || pods.isPending || (withConfig && (configMaps.isPending || secrets.isPending)),
+    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || configMaps.isPending || secrets.isPending)),
   };
 }
 

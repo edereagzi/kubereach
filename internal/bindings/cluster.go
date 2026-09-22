@@ -87,6 +87,14 @@ func (c *ClusterService) GetSecret(ctx context.Context, clusterID, namespace, na
 	return c.svc.GetSecret(ctx, clusterID, namespace, name)
 }
 
+func (c *ClusterService) ListIngresses(ctx context.Context, clusterID string) ([]service.KubeIngress, error) {
+	return c.svc.ListIngresses(ctx, clusterID)
+}
+
+func (c *ClusterService) DescribeIngress(ctx context.Context, clusterID, namespace, name string) (service.IngressDiagnosis, error) {
+	return c.svc.DescribeIngress(ctx, clusterID, namespace, name)
+}
+
 func (c *ClusterService) GetYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string, reveal bool) (string, error) {
 	return c.svc.GetYAML(ctx, clusterID, kind, namespace, name, reveal)
 }

@@ -84,6 +84,20 @@ export const configObjectQuery = (clusterId: string, kind: "cm" | "secret", name
     gcTime: kind === "secret" ? 0 : undefined,
   });
 
+export const ingressesQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "ingresses"],
+    queryFn: async () => (await ClusterService.ListIngresses(clusterId)) ?? [],
+    retry: false,
+  });
+
+export const ingressQuery = (clusterId: string, namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "ingress", namespace, name],
+    queryFn: () => ClusterService.DescribeIngress(clusterId, namespace, name),
+    retry: false,
+  });
+
 export const workloadsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "workloads"],
