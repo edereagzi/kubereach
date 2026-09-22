@@ -95,7 +95,7 @@ func (s *Service) metricsClient(clusterID string) (kube, metricsv1beta1.MetricsV
 	if err != nil {
 		return kube{}, nil, err
 	}
-	m, err := metricsv1beta1.NewForConfig(k.config)
+	m, err := metricsv1beta1.NewForConfigAndClient(k.config, k.http)
 	return k, m, err
 }
 

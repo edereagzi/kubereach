@@ -640,21 +640,28 @@ func (s *Service) setRouteState(rc *routeConn, state State, err error) {
 	s.Emit(EventRouteState, status)
 }
 
-// routeDialer returns a dial function that always uses the Route's live SSH connection.
-func (s *Service) routeDialer(routeID string) (DialFunc, error) {
-	s.mu.Lock()
-	rc := s.routes[routeID]
-	s.mu.Unlock()
-	if rc == nil || rc.sshClient() == nil {
-		return nil, ErrRouteDown
+// routeSSH is the Route's live SSH connection, nil when it is down; callers hold s.mu.
+func (s *Service) routeSSH(routeID string) *ssh.Client {
+	if rc := s.routes[routeID]; rc != nil {
+		return rc.sshClient()
 	}
+	return nil
+}
+
+func (s *Service) routeDial(routeID string) DialFunc {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		client := rc.sshClient()
+		s.mu.Lock()
+		rc := s.routes[routeID]
+		s.mu.Unlock()
+		var client *ssh.Client
+		if rc != nil {
+			client = rc.sshClient()
+		}
 		if client == nil {
 			return nil, ErrRouteDown
 		}
 		return client.DialContext(ctx, network, addr)
-	}, nil
+	}
 }
 
 func findRoute(cfg Config, routeID string) (int, error) {

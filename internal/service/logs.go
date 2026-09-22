@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -153,10 +154,10 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 			return LogStatus{}, err
 		}
 	}
-	// Streams go through the REST config like port-forward does, without the request timeout that would cut a follow short.
+	// Streams share the Cluster's transport, without the request timeout that would cut a follow short.
 	cfg := rest.CopyConfig(k.config)
 	cfg.Timeout = 0
-	core, err := corev1client.NewForConfig(cfg)
+	core, err := corev1client.NewForConfigAndClient(cfg, &http.Client{Transport: k.http.Transport})
 	if err != nil {
 		return LogStatus{}, err
 	}

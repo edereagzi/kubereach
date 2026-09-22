@@ -289,3 +289,39 @@ func TestDeleteCluster_DropsItsForwards(t *testing.T) {
 		t.Fatal("deleting an unknown cluster succeeded")
 	}
 }
+
+func TestClusterClient_BuiltOnceUntilTheClusterOrItsKubeconfigChanges(t *testing.T) {
+	builds := 0
+	cs := fake.NewClientset()
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+		builds++
+		return cs, nil, nil
+	})
+	kubeconfig := writeKubeconfig(t)
+	clusters, err := svc.ImportKubeconfigs([]string{kubeconfig})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := clusters[0].ID
+	reach := func(want int) {
+		t.Helper()
+		if _, err := svc.CheckReachability(context.Background(), id); err != nil {
+			t.Fatal(err)
+		}
+		if builds != want {
+			t.Fatalf("builds = %d, want %d", builds, want)
+		}
+	}
+
+	reach(1)
+	reach(1)
+	if err := svc.SetNamespaces(id, []string{"team-a"}); err != nil {
+		t.Fatal(err)
+	}
+	reach(2)
+	if err := os.WriteFile(kubeconfig, []byte(twoContextKubeconfig+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reach(3)
+	reach(3)
+}

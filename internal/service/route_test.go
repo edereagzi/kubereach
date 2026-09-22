@@ -898,3 +898,39 @@ func TestRoute_AnswerHostKeyWithoutPromptIsRefused(t *testing.T) {
 		t.Error("answer with no pending prompt was accepted")
 	}
 }
+
+func TestRoute_ClientOutlivesARouteRestart(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	builds := 0
+	svc := service.New(f.configPath, func(_ service.Cluster, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+		builds++
+		cfg := &rest.Config{Host: f.api.URL, Dial: dial}
+		cs, err := kubernetes.NewForConfig(cfg)
+		return cs, cfg, err
+	})
+	svc.KnownHostsPath = f.svc.KnownHostsPath
+	svc.Emit = f.svc.Emit
+	f.svc = svc
+
+	if _, err := svc.CheckReachability(context.Background(), f.cluster); !errors.Is(err, service.ErrRouteDown) {
+		t.Fatalf("before connecting: %v, want the Route down", err)
+	}
+	f.connect(t)
+	if _, err := svc.CheckReachability(context.Background(), f.cluster); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.StopRoute(f.route.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CheckReachability(context.Background(), f.cluster); !errors.Is(err, service.ErrRouteDown) {
+		t.Fatalf("after stopping: %v, want the Route down", err)
+	}
+	f.connect(t)
+	if _, err := svc.CheckReachability(context.Background(), f.cluster); err != nil {
+		t.Fatalf("after reconnecting: %v", err)
+	}
+	if builds != 1 {
+		t.Errorf("builds = %d, want 1", builds)
+	}
+}

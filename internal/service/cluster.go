@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"maps"
 	"net"
+	"net/http"
+	"os"
+	"reflect"
 	"slices"
 	"time"
 
@@ -55,10 +58,11 @@ type KubePod struct {
 	Limits   ResourceUsage `json:"limits"`
 }
 
-// kube is one Cluster's clientset and REST config, built per call so dialing always uses the Route's live connection.
+// kube's clientset and REST config share one HTTP client.
 type kube struct {
 	client  kubernetes.Interface
 	config  *rest.Config
+	http    *http.Client
 	cluster Cluster
 }
 
@@ -108,7 +112,7 @@ func (s *Service) ImportKubeconfigs(paths []string) ([]Cluster, error) {
 	return added, s.saveConfig(cfg)
 }
 
-// DeleteCluster stops the Cluster's log streams, event streams and shells, releases and forgets its Saved Forwards, then forgets the Cluster.
+// DeleteCluster stops the Cluster's log streams, event streams and shells, drops its client, releases and forgets its Saved Forwards, then forgets the Cluster.
 func (s *Service) DeleteCluster(clusterID string) error {
 	s.mu.Lock()
 	var logs, events, shells []string
@@ -141,7 +145,7 @@ func (s *Service) DeleteCluster(clusterID string) error {
 	for _, id := range shells {
 		_ = s.StopShell(id)
 	}
-	return s.editForwards(func(cfg *Config) ([]PortForward, error) {
+	err := s.editForwards(func(cfg *Config) ([]PortForward, error) {
 		i, err := findCluster(*cfg, clusterID)
 		if err != nil {
 			return nil, err
@@ -158,6 +162,16 @@ func (s *Service) DeleteCluster(clusterID string) error {
 		})
 		return gone, nil
 	})
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if k, ok := s.kubes[clusterID]; ok {
+		k.release()
+		delete(s.kubes, clusterID)
+	}
+	s.mu.Unlock()
+	return nil
 }
 
 // CheckReachability returns the API server version, or an error if it cannot be reached.
@@ -282,11 +296,12 @@ func (s *Service) SetNamespaces(clusterID string, namespaces []string) error {
 	return s.saveConfig(cfg)
 }
 
-// ponytail: builds a fresh clientset per call; the dial function always reaches the Route's live SSH connection.
+// clusterClient reuses the Cluster's client until its definition or kubeconfig file changes.
+// A Route's live connection is resolved at dial time, so a restarted Route needs no rebuild.
 func (s *Service) clusterClient(clusterID string) (kube, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	cfg, err := loadConfig(s.configPath)
-	s.mu.Unlock()
 	if err != nil {
 		return kube{}, err
 	}
@@ -294,19 +309,60 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 	if err != nil {
 		return kube{}, err
 	}
-	k := kube{cluster: cfg.Clusters[i]}
+	c := cfg.Clusters[i]
 	var dial DialFunc
-	if k.cluster.RouteID != "" {
-		dial, err = s.routeDialer(k.cluster.RouteID)
-		if err != nil {
-			return kube{}, err
+	if c.RouteID != "" {
+		if s.routeSSH(c.RouteID) == nil {
+			return kube{}, ErrRouteDown
 		}
+		dial = s.routeDial(c.RouteID)
 	}
-	k.client, k.config, err = s.clients(k.cluster, dial)
-	if err != nil {
+	var stamp kubeconfigStamp
+	if fi, err := os.Stat(c.Kubeconfig); err == nil {
+		stamp = kubeconfigStamp{fi.ModTime().UnixNano(), fi.Size()}
+	}
+	if old, ok := s.kubes[clusterID]; ok {
+		if old.stamp == stamp && reflect.DeepEqual(old.cluster, c) {
+			return old.kube, nil
+		}
+		old.release()
+		delete(s.kubes, clusterID)
+	}
+	k := kube{cluster: c}
+	if k.client, k.config, err = s.clients(c, dial); err != nil {
 		return kube{}, err
 	}
+	if k.http, err = sharedHTTPClient(k.client, k.config); err != nil {
+		return kube{}, err
+	}
+	s.kubes[clusterID] = cachedKube{kube: k, stamp: stamp}
 	return k, nil
+}
+
+type kubeconfigStamp struct{ mod, size int64 }
+
+type cachedKube struct {
+	kube
+	stamp kubeconfigStamp
+}
+
+// sharedHTTPClient is the transport the clientset already holds, so every other client of the Cluster reuses its connections.
+func sharedHTTPClient(client kubernetes.Interface, config *rest.Config) (*http.Client, error) {
+	if cs, ok := client.(*kubernetes.Clientset); ok {
+		if rc, ok := cs.CoreV1().RESTClient().(*rest.RESTClient); ok && rc.Client != nil {
+			return rc.Client, nil
+		}
+	}
+	if config == nil {
+		return nil, nil
+	}
+	return rest.HTTPClientFor(config)
+}
+
+func (k kube) release() {
+	if k.http != nil {
+		k.http.CloseIdleConnections()
+	}
 }
 
 func findCluster(cfg Config, clusterID string) (int, error) {
