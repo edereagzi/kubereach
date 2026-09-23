@@ -637,6 +637,13 @@ func (s *Service) setRouteState(rc *routeConn, state State, err error) {
 	}
 	status := rc.status
 	rc.mu.Unlock()
+	s.mu.Lock()
+	for _, k := range s.kubes {
+		if k.cluster.RouteID == status.RouteID {
+			k.watch.reset()
+		}
+	}
+	s.mu.Unlock()
 	s.Emit(EventRouteState, status)
 }
 

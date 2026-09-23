@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
 import { ForwardService, LogService, RouteService, ShellService } from "@bindings/internal/bindings";
 import { writeShellOutput } from "@/components/terminal";
+import { configQuery } from "@/queries";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
 import "@/theme";
@@ -27,7 +28,12 @@ const {
 Events.On("route:state", ({ data }) => {
   setRouteStatus(data);
   removeHostKeyPrompt(data.routeId);
-  queryClient.invalidateQueries({ queryKey: ["cluster"] });
+  for (const cluster of queryClient.getQueryData(configQuery.queryKey)?.clusters ?? []) {
+    if (cluster.route === data.routeId) queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+  }
+});
+Events.On("cluster:changed", ({ data }) => {
+  for (const kind of data.kinds ?? []) queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
 });
 Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));

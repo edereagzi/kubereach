@@ -10,7 +10,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func ingressPath(host, path, svc string, port int32) networkingv1.IngressRule {
@@ -49,12 +53,13 @@ func TestIngress_RulesResolveThroughServiceToPods(t *testing.T) {
 			},
 		},
 	}
-	svc, cs, id := newFakeService(t,
+	objects := []runtime.Object{
 		ing,
 		&networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Namespace: "apps", Name: "bare"}},
 		k8sService("default", "api", 8080),
 		endpointSlice("default", "api", map[string]bool{"api-0": true, "api-1": false}),
-	)
+	}
+	svc, _, id := newFakeService(t, objects...)
 	ctx := context.Background()
 
 	got, err := svc.ListIngresses(ctx, id)
@@ -87,6 +92,7 @@ func TestIngress_RulesResolveThroughServiceToPods(t *testing.T) {
 	}
 
 	// A role that cannot read EndpointSlices sees where the chain stops, not an RBAC message in a badge.
+	svc, cs, id := newFakeService(t, objects...)
 	forbid(cs, "list", "endpointslices", false)
 	blocked, err := svc.DescribeIngress(ctx, id, "default", "web")
 	if err != nil {
@@ -160,5 +166,42 @@ func TestDescribeIngress_ServiceWithoutReadyEndpoints(t *testing.T) {
 	}
 	if listed[0].Problem != "2 paths broken" {
 		t.Errorf("row problem = %q; want a count of the broken paths", listed[0].Problem)
+	}
+}
+
+func TestListIngresses_AForbiddenNamespaceStopsOnlyItsOwnChains(t *testing.T) {
+	web := func(ns string) *networkingv1.Ingress {
+		return &networkingv1.Ingress{
+			ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "web"},
+			Spec:       networkingv1.IngressSpec{Rules: []networkingv1.IngressRule{ingressPath("a.example", "/", "api", 80)}},
+		}
+	}
+	svc, cs, id := newFakeService(t,
+		web("default"), k8sService("default", "api", 80),
+		web("payments"), k8sService("payments", "api", 80), endpointSlice("payments", "api", map[string]bool{"api-0": true}),
+	)
+	if err := svc.SetNamespaces(id, []string{"default", "payments"}); err != nil {
+		t.Fatal(err)
+	}
+	cs.PrependReactor("list", "endpointslices", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if a.GetNamespace() != "default" {
+			return false, nil, nil
+		}
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "endpointslices"}, "", errors.New("rbac"))
+	})
+
+	d, err := svc.DescribeIngress(context.Background(), id, "default", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Paths[0].Unknown {
+		t.Errorf("default path = %+v; want stopped at forbidden EndpointSlices", d.Paths[0])
+	}
+	d, err = svc.DescribeIngress(context.Background(), id, "payments", "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Paths[0].Problem != "" || len(d.Paths[0].Pods) != 1 {
+		t.Errorf("payments path = %+v; want api-0 behind it", d.Paths[0])
 	}
 }

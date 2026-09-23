@@ -21,6 +21,14 @@ export interface Cluster {
     "namespaces": string[] | null;
 }
 
+/**
+ * ClusterChange names the lists of a Cluster that changed or began or stopped failing; a kind is the list's query key, such as "pods" or "nodes".
+ */
+export interface ClusterChange {
+    "clusterId": string;
+    "kinds": string[] | null;
+}
+
 export interface Config {
     "version": number;
     "routes": Route[] | null;

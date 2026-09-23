@@ -390,7 +390,7 @@ func TestKubeconfigClient_SlowBodyFlowsButLateHeadersFail(t *testing.T) {
 
 	lateHeaders.Store(true)
 	start := time.Now()
-	if _, err := svc.ListPods(context.Background(), id); err == nil {
+	if _, err := svc.ListNamespaces(context.Background(), id); err == nil {
 		t.Fatal("headers arriving after the timeout did not fail the request")
 	}
 	if waited := time.Since(start); waited > 500*time.Millisecond {

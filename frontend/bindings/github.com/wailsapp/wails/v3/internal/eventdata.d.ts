@@ -12,6 +12,7 @@ import type * as service$0 from "../../../../edereagzi/kubereach/internal/servic
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "cluster:changed": service$0.ClusterChange;
             "config:changed": void;
             "events:batch": service$0.EventBatch;
             "events:state": service$0.EventStatus;

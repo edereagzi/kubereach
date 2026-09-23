@@ -3,6 +3,7 @@ package service
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -85,41 +85,42 @@ func (s *Service) ListWorkloads(ctx context.Context, clusterID string) ([]KubeWo
 	if err != nil {
 		return nil, err
 	}
-	var out []KubeWorkload
-	for _, ns := range k.scope() {
-		apps := k.client.AppsV1()
-		deployments, err := apps.Deployments(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for i := range deployments.Items {
-			out = append(out, deploymentWorkload(&deployments.Items[i]))
-		}
-		statefulSets, err := apps.StatefulSets(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for i := range statefulSets.Items {
-			out = append(out, statefulSetWorkload(&statefulSets.Items[i]))
-		}
-		daemonSets, err := apps.DaemonSets(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for i := range daemonSets.Items {
-			out = append(out, daemonSetWorkload(&daemonSets.Items[i]))
-		}
-		// A role that reads apps but not batch still gets its Deployments; the CronJobs are simply absent.
-		cronJobs, err := k.client.BatchV1().CronJobs(ns).List(ctx, metav1.ListOptions{})
-		if err != nil && !apierrors.IsForbidden(err) {
+	kinds, scope := []string{"workloads"}, k.scope()
+	apps := k.client.AppsV1()
+	deployments, err := cached(ctx, k, "deployments", kinds, scope, &appsv1.Deployment{}, func(ns string) listWatcher[*appsv1.DeploymentList] { return apps.Deployments(ns) })
+	if err != nil {
+		return nil, err
+	}
+	statefulSets, err := cached(ctx, k, "statefulsets", kinds, scope, &appsv1.StatefulSet{}, func(ns string) listWatcher[*appsv1.StatefulSetList] { return apps.StatefulSets(ns) })
+	if err != nil {
+		return nil, err
+	}
+	daemonSets, err := cached(ctx, k, "daemonsets", kinds, scope, &appsv1.DaemonSet{}, func(ns string) listWatcher[*appsv1.DaemonSetList] { return apps.DaemonSets(ns) })
+	if err != nil {
+		return nil, err
+	}
+	// A role that reads apps but not batch still gets its Deployments; the CronJobs of a namespace it may not read are
+	// simply absent, so each namespace is watched on its own.
+	var cronJobs []*batchv1.CronJob
+	for _, ns := range scope {
+		got, err := cached(ctx, k, "cronjobs/"+ns, kinds, []string{ns}, &batchv1.CronJob{}, func(ns string) listWatcher[*batchv1.CronJobList] { return k.client.BatchV1().CronJobs(ns) })
+		if err != nil && !errors.Is(err, ErrForbidden) {
 			return nil, err
 		}
-		if err != nil {
-			continue
-		}
-		for i := range cronJobs.Items {
-			out = append(out, cronJobWorkload(&cronJobs.Items[i]))
-		}
+		cronJobs = append(cronJobs, got...)
+	}
+	var out []KubeWorkload
+	for _, d := range deployments {
+		out = append(out, deploymentWorkload(d))
+	}
+	for _, ss := range statefulSets {
+		out = append(out, statefulSetWorkload(ss))
+	}
+	for _, ds := range daemonSets {
+		out = append(out, daemonSetWorkload(ds))
+	}
+	for _, cj := range cronJobs {
+		out = append(out, cronJobWorkload(cj))
 	}
 	slices.SortFunc(out, func(a, b KubeWorkload) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Kind, b.Kind))

@@ -9,6 +9,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
+func init() {
+	application.RegisterEvent[service.ClusterChange](service.EventClusterChanged)
+}
+
 type ClusterService struct {
 	svc *service.Service
 }

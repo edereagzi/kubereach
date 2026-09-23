@@ -66,22 +66,28 @@ func (s *Service) ListNodes(ctx context.Context, clusterID string) ([]KubeNode, 
 	if err != nil {
 		return nil, err
 	}
-	list, err := k.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	nodes, err := cachedNodes(ctx, k)
 	if err != nil {
-		return nil, wrapForbidden(err)
+		return nil, err
 	}
-	// A node carries every namespace's pods, so this one list ignores the Cluster's namespace scope: a total that counted
+	// A node carries every namespace's pods, so its totals ignore the Cluster's namespace scope: a total that counted
 	// only the scoped namespaces would not be the node's load. A role that may read nodes but not every pod still gets its
 	// nodes, with the totals marked unknown; it is the pods that were refused, not the nodes.
-	pods, podsErr := k.client.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
-	out := make([]KubeNode, 0, len(list.Items))
-	for i := range list.Items {
-		n := nodeObject(&list.Items[i])
+	var pods []*corev1.Pod
+	var podsErr error
+	if len(k.cluster.Namespaces) == 0 {
+		pods, podsErr = scopedPods(ctx, k)
+	} else {
+		pods, podsErr = nodePods(ctx, k)
+	}
+	out := make([]KubeNode, 0, len(nodes))
+	for _, node := range nodes {
+		n := nodeObject(node)
 		if podsErr != nil {
 			n.Unknown = true
 		}
-		for j := 0; podsErr == nil && j < len(pods.Items); j++ {
-			if pod := &pods.Items[j]; pod.Spec.NodeName == n.Name && !podIsTerminated(pod) {
+		for _, pod := range pods {
+			if pod.Spec.NodeName == n.Name && !podIsTerminated(pod) {
 				n.holds(pod.Spec)
 			}
 		}

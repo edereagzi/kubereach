@@ -126,13 +126,14 @@ func TestListWorkloads_StatefulSetDaemonSetCronJob(t *testing.T) {
 		t.Errorf("OnDelete statefulset = %+v, %v; want complete, nothing rolls by itself", d.Workload.Rollout, err)
 	}
 
-	forbid(cs, "list", "cronjobs", false)
-	if got, err = svc.ListWorkloads(context.Background(), id); err != nil || len(got) != 2 {
-		t.Errorf("forbidden cronjobs: workloads = %+v, %v; want the other two", got, err)
-	}
-
 	d, err := svc.DescribeWorkload(context.Background(), id, service.WorkloadCronJob, "default", "backup")
 	if err != nil || d.Workload.CronJob == nil || !d.Workload.CronJob.LastScheduled.Equal(diagEpoch) {
 		t.Errorf("cronjob diagnosis = %+v, %v", d, err)
+	}
+
+	svc, cs, id = newFakeService(t, ss, ds, cj)
+	forbid(cs, "list", "cronjobs", false)
+	if got, err = svc.ListWorkloads(context.Background(), id); err != nil || len(got) != 2 {
+		t.Errorf("forbidden cronjobs: workloads = %+v, %v; want the other two", got, err)
 	}
 }

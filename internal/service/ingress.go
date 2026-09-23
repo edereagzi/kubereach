@@ -12,6 +12,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // KubeIngress is an Ingress in scope. Hosts is every rule host once, so a row can show the first and count the rest;
@@ -50,24 +51,22 @@ type IngressDiagnosis struct {
 }
 
 // ListIngresses lists Ingresses in scope, each already followed to its pods so a row can say what is wrong with it.
-// The two bulk reads that costs are small beside the pods and config objects the same screen already lists.
+// The Services and EndpointSlices behind them are watched too, so a row follows its backends.
 func (s *Service) ListIngresses(ctx context.Context, clusterID string) ([]KubeIngress, error) {
 	k, err := s.clusterClient(clusterID)
 	if err != nil {
 		return nil, err
 	}
-	behind := newBackends(k)
-	var out []KubeIngress
-	for _, ns := range k.scope() {
-		list, err := k.client.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for i := range list.Items {
-			o := ingressObject(&list.Items[i])
-			o.Problem = worstProblem(behind.follow(ctx, &list.Items[i]))
-			out = append(out, o)
-		}
+	ings, err := cached(ctx, k, "ingresses", []string{"ingresses"}, k.scope(), &networkingv1.Ingress{}, func(ns string) listWatcher[*networkingv1.IngressList] { return k.client.NetworkingV1().Ingresses(ns) })
+	if err != nil {
+		return nil, err
+	}
+	behind := newBackends(ctx, k)
+	out := make([]KubeIngress, 0, len(ings))
+	for _, ing := range ings {
+		o := ingressObject(ing)
+		o.Problem = worstProblem(behind.follow(ing))
+		out = append(out, o)
 	}
 	slices.SortFunc(out, func(a, b KubeIngress) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
@@ -86,7 +85,7 @@ func (s *Service) DescribeIngress(ctx context.Context, clusterID, namespace, nam
 	if err != nil {
 		return IngressDiagnosis{}, wrapForbidden(err)
 	}
-	d := IngressDiagnosis{Ingress: ingressObject(ing), Paths: newBackends(k).follow(ctx, ing)}
+	d := IngressDiagnosis{Ingress: ingressObject(ing), Paths: newBackends(ctx, k).follow(ing)}
 	d.Ingress.Problem = worstProblem(d.Paths)
 	return d, nil
 }
@@ -121,18 +120,13 @@ func worstProblem(paths []IngressPath) string {
 	return first
 }
 
-// backends answers what is behind a Service, reading a namespace's Services and EndpointSlices once for every path that
-// asks. Two bulk lists per namespace cost less than the get and list each backend would need on its own.
+// backends answers what is behind a Service from the watched Services and EndpointSlices of the Cluster's scope.
 type backends struct {
-	k      kube
-	loaded map[string]*namespaceBackends
-}
-
-type namespaceBackends struct {
-	ports  map[string][]NamedPort
-	pods   map[string][]IngressPod
-	svcErr error
-	epErr  error
+	ports map[types.NamespacedName][]NamedPort
+	pods  map[types.NamespacedName][]IngressPod
+	// svcErr and epErr are keyed by scope namespace, which is empty when the scope is every namespace.
+	svcErr map[string]error
+	epErr  map[string]error
 }
 
 // serviceBackend is one Service's pods, or why the chain stops at it.
@@ -144,96 +138,35 @@ type serviceBackend struct {
 	unknown bool
 }
 
-func newBackends(k kube) *backends {
-	return &backends{k: k, loaded: map[string]*namespaceBackends{}}
-}
-
-func (b *backends) follow(ctx context.Context, ing *networkingv1.Ingress) []IngressPath {
-	var out []IngressPath
-	for _, r := range ing.Spec.Rules {
-		if r.HTTP == nil {
+func newBackends(ctx context.Context, k kube) *backends {
+	b := &backends{ports: map[types.NamespacedName][]NamedPort{}, pods: map[types.NamespacedName][]IngressPod{}, svcErr: map[string]error{}, epErr: map[string]error{}}
+	var eps []*discoveryv1.EndpointSlice
+	for _, ns := range k.scope() {
+		svcs, err := cachedServices(ctx, k, ns)
+		if err != nil {
+			b.svcErr[ns] = err
 			continue
 		}
-		for _, p := range r.HTTP.Paths {
-			out = append(out, b.path(ctx, ing.Namespace, r.Host, p.Path, p.Backend))
+		for _, svc := range svcs {
+			b.ports[types.NamespacedName{Namespace: svc.Namespace, Name: svc.Name}] = servicePorts(svc)
 		}
-	}
-	if ing.Spec.DefaultBackend != nil {
-		out = append(out, b.path(ctx, ing.Namespace, "", "", *ing.Spec.DefaultBackend))
-	}
-	return out
-}
-
-func (b *backends) path(ctx context.Context, namespace, host, path string, backend networkingv1.IngressBackend) IngressPath {
-	p := IngressPath{Host: host, Path: path}
-	if backend.Service == nil {
-		p.Problem = "backend is not a Service"
-		return p
-	}
-	p.Service, p.Port = backend.Service.Name, backendPort(backend.Service.Port)
-	got := b.service(ctx, namespace, p.Service)
-	p.Pods, p.Problem, p.Unknown = got.pods, got.problem, got.unknown
-	// A port the Service does not expose is a definite fault, so it outranks endpoints that could not be read.
-	if got.found && (p.Problem == "" || p.Unknown) && !servesPort(got.ports, backend.Service.Port) {
-		p.Problem, p.Unknown = fmt.Sprintf("Service %s has no port %s", p.Service, p.Port), false
-	}
-	return p
-}
-
-func (b *backends) service(ctx context.Context, namespace, name string) serviceBackend {
-	ns, ok := b.loaded[namespace]
-	if !ok {
-		ns = b.load(ctx, namespace)
-		b.loaded[namespace] = ns
-	}
-	if ns.svcErr != nil {
-		return stoppedAt("Services", ns.svcErr)
-	}
-	ports, found := ns.ports[name]
-	if !found {
-		return serviceBackend{problem: fmt.Sprintf("no Service %s", name)}
-	}
-	got := serviceBackend{found: true, ports: ports}
-	if ns.epErr != nil {
-		got.problem, got.unknown = stoppedAt("EndpointSlices", ns.epErr).problem, true
-		return got
-	}
-	got.pods = ns.pods[name]
-	switch {
-	case len(got.pods) == 0:
-		got.problem = "no endpoints"
-	case !slices.ContainsFunc(got.pods, func(p IngressPod) bool { return p.Ready }):
-		got.problem = "no ready endpoints"
-	}
-	return got
-}
-
-func (b *backends) load(ctx context.Context, namespace string) *namespaceBackends {
-	out := &namespaceBackends{ports: map[string][]NamedPort{}, pods: map[string][]IngressPod{}}
-	svcs, err := b.k.client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		out.svcErr = err
-		return out
-	}
-	for _, svc := range svcs.Items {
-		ports := make([]NamedPort, 0, len(svc.Spec.Ports))
-		for _, p := range svc.Spec.Ports {
-			ports = append(ports, NamedPort{Name: p.Name, Port: p.Port})
+		got, err := cached(ctx, k, "endpointslices/"+ns, []string{"ingresses"}, []string{ns}, &discoveryv1.EndpointSlice{}, func(ns string) listWatcher[*discoveryv1.EndpointSliceList] {
+			return k.client.DiscoveryV1().EndpointSlices(ns)
+		})
+		if err != nil {
+			b.epErr[ns] = err
+			continue
 		}
-		out.ports[svc.Name] = ports
-	}
-	list, err := b.k.client.DiscoveryV1().EndpointSlices(namespace).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		out.epErr = err
-		return out
+		eps = append(eps, got...)
 	}
 	// A pod appears once per address family, so slices of one Service are merged by name.
-	byService := map[string]map[string]IngressPod{}
-	for _, sl := range list.Items {
-		svc := sl.Labels[discoveryv1.LabelServiceName]
-		if svc == "" {
+	byService := map[types.NamespacedName]map[string]IngressPod{}
+	for _, sl := range eps {
+		name := sl.Labels[discoveryv1.LabelServiceName]
+		if name == "" {
 			continue
 		}
+		svc := types.NamespacedName{Namespace: sl.Namespace, Name: name}
 		for _, e := range sl.Endpoints {
 			if e.TargetRef == nil || e.TargetRef.Kind != "Pod" {
 				continue
@@ -249,10 +182,66 @@ func (b *backends) load(ctx context.Context, namespace string) *namespaceBackend
 	}
 	for svc, pods := range byService {
 		for _, n := range slices.Sorted(maps.Keys(pods)) {
-			out.pods[svc] = append(out.pods[svc], pods[n])
+			b.pods[svc] = append(b.pods[svc], pods[n])
 		}
 	}
+	return b
+}
+
+func (b *backends) follow(ing *networkingv1.Ingress) []IngressPath {
+	var out []IngressPath
+	for _, r := range ing.Spec.Rules {
+		if r.HTTP == nil {
+			continue
+		}
+		for _, p := range r.HTTP.Paths {
+			out = append(out, b.path(ing.Namespace, r.Host, p.Path, p.Backend))
+		}
+	}
+	if ing.Spec.DefaultBackend != nil {
+		out = append(out, b.path(ing.Namespace, "", "", *ing.Spec.DefaultBackend))
+	}
 	return out
+}
+
+func (b *backends) path(namespace, host, path string, backend networkingv1.IngressBackend) IngressPath {
+	p := IngressPath{Host: host, Path: path}
+	if backend.Service == nil {
+		p.Problem = "backend is not a Service"
+		return p
+	}
+	p.Service, p.Port = backend.Service.Name, backendPort(backend.Service.Port)
+	got := b.service(namespace, p.Service)
+	p.Pods, p.Problem, p.Unknown = got.pods, got.problem, got.unknown
+	// A port the Service does not expose is a definite fault, so it outranks endpoints that could not be read.
+	if got.found && (p.Problem == "" || p.Unknown) && !servesPort(got.ports, backend.Service.Port) {
+		p.Problem, p.Unknown = fmt.Sprintf("Service %s has no port %s", p.Service, p.Port), false
+	}
+	return p
+}
+
+func (b *backends) service(namespace, name string) serviceBackend {
+	if err := cmp.Or(b.svcErr[namespace], b.svcErr[metav1.NamespaceAll]); err != nil {
+		return stoppedAt("Services", err)
+	}
+	key := types.NamespacedName{Namespace: namespace, Name: name}
+	ports, found := b.ports[key]
+	if !found {
+		return serviceBackend{problem: fmt.Sprintf("no Service %s", name)}
+	}
+	got := serviceBackend{found: true, ports: ports}
+	if err := cmp.Or(b.epErr[namespace], b.epErr[metav1.NamespaceAll]); err != nil {
+		got.problem, got.unknown = stoppedAt("EndpointSlices", err).problem, true
+		return got
+	}
+	got.pods = b.pods[key]
+	switch {
+	case len(got.pods) == 0:
+		got.problem = "no endpoints"
+	case !slices.ContainsFunc(got.pods, func(p IngressPod) bool { return p.Ready }):
+		got.problem = "no ready endpoints"
+	}
+	return got
 }
 
 // servesPort is whether the Service exposes the port the Ingress names, by name or by number.

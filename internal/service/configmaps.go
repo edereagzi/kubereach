@@ -24,17 +24,20 @@ type KubeConfigObject struct {
 }
 
 func (s *Service) ListConfigMaps(ctx context.Context, clusterID string) ([]KubeConfigObject, error) {
-	return s.listConfigObjects(ctx, clusterID, func(k kube, ns string) ([]KubeConfigObject, error) {
-		list, err := k.client.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		out := make([]KubeConfigObject, 0, len(list.Items))
-		for i := range list.Items {
-			out = append(out, configMapObject(&list.Items[i], false))
-		}
-		return out, nil
-	})
+	k, err := s.clusterClient(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	cms, err := cached(ctx, k, "configmaps", []string{"configmaps"}, k.scope(), &corev1.ConfigMap{}, func(ns string) listWatcher[*corev1.ConfigMapList] { return k.client.CoreV1().ConfigMaps(ns) })
+	if err != nil {
+		return nil, err
+	}
+	out := make([]KubeConfigObject, 0, len(cms))
+	for _, cm := range cms {
+		out = append(out, configMapObject(cm, false))
+	}
+	sortConfigObjects(out)
+	return out, nil
 }
 
 func (s *Service) ListSecrets(ctx context.Context, clusterID string) ([]KubeConfigObject, error) {
@@ -88,10 +91,14 @@ func (s *Service) listConfigObjects(ctx context.Context, clusterID string, list 
 		}
 		out = append(out, items...)
 	}
+	sortConfigObjects(out)
+	return out, nil
+}
+
+func sortConfigObjects(out []KubeConfigObject) {
 	slices.SortFunc(out, func(a, b KubeConfigObject) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
 	})
-	return out, nil
 }
 
 func configMapObject(cm *corev1.ConfigMap, withData bool) KubeConfigObject {

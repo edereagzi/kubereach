@@ -13,6 +13,7 @@ export {
 
 export type {
     Cluster,
+    ClusterChange,
     Config,
     ContainerDiagnosis,
     ContainerState,

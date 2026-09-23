@@ -65,6 +65,7 @@ type kube struct {
 	config  *rest.Config
 	http    *http.Client
 	cluster Cluster
+	watch   *watchCache
 }
 
 // kubeconfigClient uses client-go's standard loader, so exec plugins and OIDC behave as in kubectl.
@@ -265,22 +266,32 @@ func (s *Service) ListServices(ctx context.Context, clusterID string) ([]KubeSer
 	}
 	var out []KubeService
 	for _, ns := range k.scope() {
-		list, err := k.client.CoreV1().Services(ns).List(ctx, metav1.ListOptions{})
+		svcs, err := cachedServices(ctx, k, ns)
 		if err != nil {
-			return nil, wrapForbidden(err)
+			return nil, err
 		}
-		for _, svc := range list.Items {
-			ks := KubeService{Namespace: svc.Namespace, Name: svc.Name}
-			for _, p := range svc.Spec.Ports {
-				ks.Ports = append(ks.Ports, NamedPort{Name: p.Name, Port: p.Port})
-			}
-			out = append(out, ks)
+		for _, svc := range svcs {
+			out = append(out, KubeService{Namespace: svc.Namespace, Name: svc.Name, Ports: servicePorts(svc)})
 		}
 	}
 	slices.SortFunc(out, func(a, b KubeService) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
 	})
 	return out, nil
+}
+
+// cachedServices are one scope namespace's Services, which the Ingress rows are also judged by. Each namespace is watched
+// on its own so a namespace the role may not read fails only its own Ingresses.
+func cachedServices(ctx context.Context, k kube, ns string) ([]*corev1.Service, error) {
+	return cached(ctx, k, "services/"+ns, []string{"ingresses", "services"}, []string{ns}, &corev1.Service{}, func(ns string) listWatcher[*corev1.ServiceList] { return k.client.CoreV1().Services(ns) })
+}
+
+func servicePorts(svc *corev1.Service) []NamedPort {
+	var ports []NamedPort
+	for _, p := range svc.Spec.Ports {
+		ports = append(ports, NamedPort{Name: p.Name, Port: p.Port})
+	}
+	return ports
 }
 
 func kubePod(pod *corev1.Pod) KubePod {
@@ -305,15 +316,13 @@ func (s *Service) ListPods(ctx context.Context, clusterID string) ([]KubePod, er
 	if err != nil {
 		return nil, err
 	}
-	var out []KubePod
-	for _, ns := range k.scope() {
-		list, err := k.client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, wrapForbidden(err)
-		}
-		for _, pod := range list.Items {
-			out = append(out, kubePod(&pod))
-		}
+	pods, err := scopedPods(ctx, k)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]KubePod, 0, len(pods))
+	for _, pod := range pods {
+		out = append(out, kubePod(pod))
 	}
 	slices.SortFunc(out, func(a, b KubePod) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
@@ -384,6 +393,7 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 	if k.http, err = sharedHTTPClient(k.client, k.config); err != nil {
 		return kube{}, err
 	}
+	k.watch = newWatchCache(clusterID, func(name string, data any) { s.Emit(name, data) })
 	s.kubes[clusterID] = cachedKube{kube: k, stamp: stamp}
 	return k, nil
 }
@@ -409,6 +419,7 @@ func sharedHTTPClient(client kubernetes.Interface, config *rest.Config) (*http.C
 }
 
 func (k kube) release() {
+	k.watch.stop()
 	if k.http != nil {
 		k.http.CloseIdleConnections()
 	}
