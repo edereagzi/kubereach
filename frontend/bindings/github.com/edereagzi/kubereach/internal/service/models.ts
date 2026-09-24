@@ -176,15 +176,15 @@ export interface IngressPod {
 }
 
 /**
- * KubeConfigObject is a ConfigMap or a Secret. Lists carry the keys only; Data is filled by GetConfigMap and GetSecret,
- * so a Secret's values leave the Cluster only when one is opened. Nothing here is logged or written to disk.
+ * KubeConfigObject is a ConfigMap or a Secret. A ConfigMap row carries its keys and a Secret row its name only; Data, and a
+ * Secret's type and keys, are filled by GetConfigMap and GetSecret. Nothing here is logged or written to disk.
  */
 export interface KubeConfigObject {
     "namespace": string;
     "name": string;
 
     /**
-     * Type is the Secret's type; empty for a ConfigMap.
+     * Type is an opened Secret's type.
      */
     "type"?: string;
     "keys": string[] | null;

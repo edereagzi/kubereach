@@ -37,7 +37,7 @@ export type Target = {
   limits?: ResourceUsage;
   // Workloads only: rollout state, or the CronJob's schedule.
   workload?: KubeWorkload;
-  // ConfigMaps and Secrets only: the keys, never the values.
+  // ConfigMaps only: the keys, never the values. Secrets: nothing beyond the name.
   config?: KubeConfigObject;
   // Ingresses only: the hosts; the paths and the pods behind them come with the detail.
   ingress?: KubeIngress;

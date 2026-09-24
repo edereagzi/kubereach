@@ -196,9 +196,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const meta = (t: Target) => {
   if (t.kind === "svc") return portsLabel(t.ports);
-  if (t.kind === "pod") return "";
+  if (t.kind === "pod" || t.kind === "secret") return "";
   if (t.ingress) return hostsLabel(t.ingress.hosts);
-  if (t.config) return [t.config.type, keysLabel(t.config.keys?.length ?? 0)].filter(Boolean).join(" · ");
+  if (t.config) return keysLabel(t.config.keys?.length ?? 0);
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
