@@ -1,19 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  FolderOpenIcon,
-  PencilSimpleIcon,
-  PlayIcon,
-  PlusIcon,
-  StopIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
+import { ArrowDownIcon, ArrowUpIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { RouteService } from "@bindings/internal/bindings";
 import {
   AuthMethod,
   State,
+  type Cluster,
   type HostKeyPrompt,
   type Route,
   type RouteStatus,
@@ -21,7 +13,6 @@ import {
 } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -46,11 +39,6 @@ const stateColor: Record<State, string> = {
   [State.StateStopped]: "bg-muted-foreground",
   [State.StateError]: "bg-red-500",
 };
-
-const isUp = (s?: RouteStatus) =>
-  s?.state === State.StateConnecting ||
-  s?.state === State.StateConnected ||
-  s?.state === State.StateReconnecting;
 
 type Status = { state: State; error?: string };
 
@@ -72,110 +60,219 @@ export function StateDot({ status, hollow = false }: { status?: Status; hollow?:
   );
 }
 
-export function RouteList() {
-  const queryClient = useQueryClient();
+export const isUp = (s?: RouteStatus) => s?.state === State.StateConnecting || s?.state === State.StateConnected || s?.state === State.StateReconnecting;
+
+// Why a Route is not working: a Connect refused before it started, or the error it stopped on.
+export function useRouteProblem(routeId: string) {
+  return useUIStore((s) => s.connectErrors[routeId] ?? (s.routeStatuses[routeId]?.state === State.StateError ? s.routeStatuses[routeId]?.error : undefined));
+}
+
+// A mutation's own state only follows its latest call, so each Route's pending call is looked up among all of them.
+function usePendingRoutes() {
+  return useMutationState({
+    filters: { mutationKey: ["route"], status: "pending" },
+    select: (m) => (m.state.variables as { route: Route }).route.id,
+  });
+}
+
+function useStopRoute() {
+  return useMutation({ mutationKey: ["route"], mutationFn: ({ route }: { route: Route }) => RouteService.Stop(route.id) });
+}
+
+// RouteConnector runs every Connect the window asks for, so a Route's credential and host key prompts have one home.
+export function RouteConnector() {
   const { data } = useQuery(configQuery);
-  const routeStatuses = useUIStore((s) => s.routeStatuses);
+  const connectRequest = useUIStore((s) => s.connectRequest);
+  const requestConnect = useUIStore((s) => s.requestConnect);
+  const setConnectError = useUIStore((s) => s.setConnectError);
+  const connectErrors = useUIStore((s) => s.connectErrors);
   const hostKeyPrompt = useUIStore((s) => s.hostKeyPrompts[0]);
-  const [editing, setEditing] = useState<Route | null | undefined>();
   const [credential, setCredential] = useState<CredentialRequest | null>(null);
-  const routes = data?.routes ?? [];
+  const pending = usePendingRoutes();
 
   // A wrong secret is a plain error and keeps the dialog open; a missing one opens or re-targets it.
   const connect = useMutation({
     mutationKey: ["route"],
     mutationFn: ({ route, secret = "" }: { route: Route; secret?: string }) => RouteService.Connect(route.id, secret),
+    onMutate: ({ route }) => setConnectError(route.id, null),
     onSuccess: () => setCredential(null),
     onError: (error, { route }) => {
       const needed = credentialRequired(error);
       if (needed) setCredential({ route, ...needed });
+      else setConnectError(route.id, errorText(error));
     },
   });
-  const stop = useMutation({ mutationKey: ["route"], mutationFn: ({ route }: { route: Route }) => RouteService.Stop(route.id) });
-  // A mutation's own state only follows its latest call, so each Route's pending call is looked up among all of them.
-  const pending = useMutationState({
-    filters: { mutationKey: ["route"], status: "pending" },
-    select: (m) => (m.state.variables as { route: Route }).route.id,
-  });
-  const importSSHConfig = useMutation({
-    mutationFn: () => RouteService.ImportSSHConfig(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
-  });
-  const connectError = connect.error && !credentialRequired(connect.error) ? errorText(connect.error) : null;
-  const listError = (!credential && connectError) || (importSSHConfig.error ? errorText(importSSHConfig.error) : null);
+
+  useEffect(() => {
+    if (!connectRequest) return;
+    const route = data?.routes?.find((r) => r.id === connectRequest);
+    if (route) connect.mutate({ route });
+    requestConnect(null);
+  }, [connectRequest, data?.routes, connect.mutate, requestConnect]);
 
   return (
-    <div className="flex flex-col">
-      <div className="flex h-10 items-center gap-0.5 px-3 pt-2 text-xs font-medium text-muted-foreground">
-        <span className="flex-1 pl-1">Routes</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="Add route" />}>
-            <PlusIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setEditing(null)}>
-              <PlusIcon /> New route…
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={importSSHConfig.isPending} onClick={() => importSSHConfig.mutate()}>
-              <FolderOpenIcon /> Import from SSH config…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      {listError && <p className="px-4 pb-2 text-xs text-destructive">{listError}</p>}
-      <ul className="flex flex-col gap-px px-2 pb-2">
-        {routes.map((r) => {
-          const status = routeStatuses[r.id];
-          const up = isUp(status);
-          return (
-            <li key={r.id} className="group flex h-7 items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent">
-              <StateDot status={status} />
-              <span className="flex-1 truncate" title={statusLabel(status)}>
-                {r.name}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                title="Edit route"
-                className="opacity-0 group-hover:opacity-100"
-                onClick={() => setEditing(r)}
-              >
-                <PencilSimpleIcon />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                title={up ? "Stop" : "Connect"}
-                disabled={pending.includes(r.id)}
-                onClick={() => (up ? stop.mutate({ route: r }) : connect.mutate({ route: r }))}
-              >
-                {up ? <StopIcon /> : <PlayIcon />}
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
-      {editing !== undefined && <RouteDialog route={editing} onClose={() => setEditing(undefined)} />}
+    <>
       {credential && (
         <CredentialDialog
           key={credential.target}
           request={credential}
-          error={connectError}
+          error={connectErrors[credential.route.id] ?? null}
           pending={pending.includes(credential.route.id)}
           onSubmit={(secret) => connect.mutate({ route: credential.route, secret })}
           onClose={() => setCredential(null)}
         />
       )}
       {hostKeyPrompt && <HostKeyDialog prompt={hostKeyPrompt} />}
-    </div>
+    </>
   );
 }
 
-type CredentialRequest = { route: Route; code: "passphrase" | "password"; target: string };
+function ConnectButton({ route }: { route: Route }) {
+  const status = useUIStore((s) => s.routeStatuses[route.id]);
+  const requestConnect = useUIStore((s) => s.requestConnect);
+  const problem = useRouteProblem(route.id);
+  const pending = usePendingRoutes();
+  const stop = useStopRoute();
+  return (
+    <Button
+      variant={isUp(status) ? "ghost" : "outline"}
+      size="xs"
+      disabled={pending.includes(route.id)}
+      onClick={() => (isUp(status) ? stop.mutate({ route }) : requestConnect(route.id))}
+    >
+      {isUp(status) ? "Disconnect" : problem ? "Retry" : "Connect"}
+    </Button>
+  );
+}
+
+// RouteChip names the Route a Cluster is reached through and holds what can be done to it from the Cluster.
+export function RouteChip({ cluster }: { cluster: Cluster }) {
+  const { data } = useQuery(configQuery);
+  const status = useUIStore((s) => s.routeStatuses[cluster.route]);
+  const requestConnect = useUIStore((s) => s.requestConnect);
+  const openRoutes = useUIStore((s) => s.openRoutes);
+  const problem = useRouteProblem(cluster.route);
+  const pending = usePendingRoutes();
+  const stop = useStopRoute();
+  const [editing, setEditing] = useState(false);
+  const route = data?.routes?.find((r) => r.id === cluster.route);
+  if (!route) return null;
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          title={problem ?? statusLabel(status)}
+          className="inline-flex h-7 max-w-48 items-center gap-1.5 rounded-full border px-2.5 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-muted"
+        >
+          <StateDot status={status} />
+          <span className="truncate">via {route.name}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem
+            disabled={pending.includes(route.id)}
+            onClick={() => (isUp(status) ? stop.mutate({ route }) : requestConnect(route.id))}
+          >
+            {isUp(status) ? "Disconnect" : problem ? "Retry" : "Connect"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setEditing(true)}>Edit {route.name}…</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={openRoutes}>All routes</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {editing && <RouteDialog route={route} onClose={() => setEditing(false)} />}
+    </>
+  );
+}
+
+export function RoutesPage() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery(configQuery);
+  const [editing, setEditing] = useState<Route | null | undefined>();
+  const importSSHConfig = useMutation({
+    mutationFn: () => RouteService.ImportSSHConfig(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
+  });
+  const routes = data?.routes ?? [];
+  return (
+    <>
+      <div data-drag className="flex h-13 shrink-0 items-center gap-2 px-4 select-none">
+        <span className="flex-1 text-base font-semibold">Routes</span>
+        <Button variant="ghost" size="sm" disabled={importSSHConfig.isPending} onClick={() => importSSHConfig.mutate()}>
+          Import from SSH config…
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
+          <PlusIcon /> New route
+        </Button>
+      </div>
+      {importSSHConfig.error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(importSSHConfig.error)}</p>}
+      <div className="min-h-0 flex-1 overflow-auto border-t">
+        {routes.length === 0 ? (
+          <Empty className="border-0">
+            <EmptyHeader>
+              <EmptyTitle>No routes</EmptyTitle>
+              <EmptyDescription>A route reaches a cluster this machine cannot reach directly, through one or more SSH servers.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <ul className="divide-y">
+            {routes.map((r) => (
+              <RouteRow key={r.id} route={r} clusters={(data?.clusters ?? []).filter((c) => c.route === r.id)} onEdit={() => setEditing(r)} />
+            ))}
+          </ul>
+        )}
+      </div>
+      {editing !== undefined && <RouteDialog route={editing} onClose={() => setEditing(undefined)} />}
+    </>
+  );
+}
+
+function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster[]; onEdit: () => void }) {
+  const status = useUIStore((s) => s.routeStatuses[route.id]);
+  const selectCluster = useUIStore((s) => s.selectCluster);
+  const problem = useRouteProblem(route.id);
+  return (
+    <li className="group flex items-start gap-3 px-4 py-3">
+      <span className="flex h-5 items-center">
+        <StateDot status={status} />
+      </span>
+      <div className="grid min-w-0 flex-1 gap-0.5">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <span className="text-sm font-medium">{route.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {(route.servers ?? []).map((s) => (s.user ? `${s.user}@${s.host}` : s.host)).join(" → ")}
+          </span>
+        </div>
+        {problem && (
+          <p className="truncate text-xs text-destructive" title={problem}>
+            {problem}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {clusters.length === 0
+            ? "No cluster uses it"
+            : clusters.map((c, i) => (
+                <span key={c.id}>
+                  {i > 0 && ", "}
+                  <button type="button" className="text-foreground/80 underline-offset-2 outline-none hover:underline focus-visible:underline" onClick={() => selectCluster(c.id)}>
+                    {c.name}
+                  </button>
+                </span>
+              ))}
+        </p>
+      </div>
+      <Button variant="ghost" size="icon-xs" title={`Edit ${route.name}`} onClick={onEdit}>
+        <PencilSimpleIcon />
+      </Button>
+      <ConnectButton route={route} />
+    </li>
+  );
+}
+
+export type CredentialRequest = { route: Route; code: "passphrase" | "password"; target: string };
 
 const emptyServer: SSHServer = { host: "", port: 22, user: "", auth: AuthMethod.AuthAgent, keyFile: "" };
 
-function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => void }) {
+export function RouteDialog({ route, onClose, onSaved }: { route: Route | null; onClose: () => void; onSaved?: (route: Route) => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(route?.name ?? "");
   const [servers, setServers] = useState<SSHServer[]>(route?.servers?.length ? route.servers : [emptyServer]);
@@ -193,7 +290,10 @@ function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => v
   };
   const save = useMutation({
     mutationFn: () => RouteService.Save({ id: route?.id ?? "", name, servers }),
-    onSuccess: done,
+    onSuccess: (saved) => {
+      onSaved?.(saved);
+      return done();
+    },
   });
   const remove = useMutation({ mutationFn: () => RouteService.Delete(route!.id), onSuccess: done });
   const [deleting, setDeleting] = useState(false);
@@ -383,7 +483,7 @@ function ServerFields({
   );
 }
 
-function CredentialDialog({
+export function CredentialDialog({
   request: { code, target },
   error,
   pending,
@@ -430,7 +530,7 @@ function CredentialDialog({
   );
 }
 
-function HostKeyDialog({ prompt }: { prompt: HostKeyPrompt }) {
+export function HostKeyDialog({ prompt }: { prompt: HostKeyPrompt }) {
   const removeHostKeyPrompt = useUIStore((s) => s.removeHostKeyPrompt);
   const answer = useMutation({
     mutationFn: (accept: boolean) => RouteService.AnswerHostKey(prompt.routeId, accept),

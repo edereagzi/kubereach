@@ -100,6 +100,10 @@ export function PodMetrics(clusterID: string): $CancellablePromise<service$0.Pod
     return $Call.ByID(1371814305, clusterID);
 }
 
+export function Rename(clusterID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(721993139, clusterID, name);
+}
+
 export function RestartWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string): $CancellablePromise<void> {
     return $Call.ByID(55346933, clusterID, kind, $namespace, name);
 }

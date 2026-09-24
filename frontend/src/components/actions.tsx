@@ -78,7 +78,7 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
   const next = replicas === "" ? NaN : Number(replicas);
   const validNext = Number.isInteger(next) && next >= 0;
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       <WriteAction
         cluster={cluster}
         label="Restart"

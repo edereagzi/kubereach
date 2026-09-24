@@ -160,3 +160,11 @@
     @apply font-sans;
     }
 }
+/* Wails starts a window drag from an element whose computed --wails-draggable is drag; controls inside a drag region opt out. */
+[data-drag] {
+  --wails-draggable: drag;
+}
+[data-drag] :is(button, input, a, [role="tab"], [role="combobox"]) {
+  --wails-draggable: no-drag;
+}
+

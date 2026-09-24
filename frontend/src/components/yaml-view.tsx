@@ -5,7 +5,8 @@ import { ObjectKind, type Cluster } from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
 import type { Kind, Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { TargetVerbs } from "@/components/target-verbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { yamlQuery, errorText } from "@/queries";
 
@@ -110,19 +111,22 @@ function highlight(yaml: string) {
   return out;
 }
 
-// YamlDialog is the detail of an object that has nothing to explain beyond its manifest.
-export function YamlDialog({ cluster, target, onClose }: { cluster: Cluster; target: Target; onClose: () => void }) {
+// YamlDetail is the detail of an object that has nothing to explain beyond its manifest.
+export function YamlDetail({ cluster, target, onForward, onClose }: { cluster: Cluster; target: Target; onForward?: () => void; onClose: () => void }) {
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[calc(100vh-4rem)] flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="truncate pr-8">
-            {target.namespace}/{target.name}
-          </DialogTitle>
-          <DialogDescription>{objectKind[target.kind]}</DialogDescription>
-        </DialogHeader>
-        <YamlView cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name} />
-      </DialogContent>
-    </Dialog>
+    <Inspector onClose={onClose}>
+      <InspectorHeader>
+        <InspectorTitle className="truncate pr-8">
+          {target.namespace}/{target.name}
+        </InspectorTitle>
+        <InspectorDescription>{objectKind[target.kind]}</InspectorDescription>
+        {onForward && (
+          <div className="flex flex-wrap gap-1.5">
+            <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
+          </div>
+        )}
+      </InspectorHeader>
+      <YamlView cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name} />
+    </Inspector>
   );
 }

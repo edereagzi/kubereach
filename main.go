@@ -54,11 +54,16 @@ func main() {
 	}
 
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:          "Kubereach",
-		Width:          1200,
-		Height:         760,
+		Title:  "Kubereach",
+		Width:  1280,
+		Height: 800,
+		// Below this the sidebar and an open detail leave the list too narrow to read names in.
+		MinWidth:       960,
+		MinHeight:      600,
 		URL:            "/",
 		EnableFileDrop: true,
+		// The sidebar runs to the top edge and the traffic lights sit in it; the frontend marks its own drag regions.
+		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
 	})
 	window.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
 		app.Event.Emit("files:dropped", e.Context().DroppedFiles())

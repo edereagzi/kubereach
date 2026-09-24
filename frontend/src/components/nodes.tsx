@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle, useInspectorWalk } from "@/components/inspector";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DetailTabs } from "@/components/yaml-view";
@@ -66,6 +66,9 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   const nodes = useQuery(nodesQuery(cluster.id));
   const usage = useQuery(nodeMetricsQuery(cluster.id)).data;
   const [inspecting, setInspecting] = useState<KubeNode | null>(null);
+  const rows = useRef<KubeNode[]>([]);
+  rows.current = nodes.data ?? [];
+  useInspectorWalk(rows, inspecting, (n) => n.name, setInspecting);
 
   if (nodes.error) {
     return (
@@ -107,7 +110,11 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
           {(nodes.data ?? []).map((n) => {
             const used = usage?.get(n.name);
             return (
-              <TableRow key={n.name} className="hover:bg-accent">
+              <TableRow
+                key={n.name}
+                data-row={n.name}
+                className={cn("hover:bg-accent", n.name === inspecting?.name && "bg-accent shadow-[inset_2px_0_0_var(--primary)]")}
+              >
                 <TableCell className="max-w-80">
                   <span className="flex items-center gap-2">
                     <button type="button" className="truncate text-left font-medium hover:underline" title={`What is on ${n.name}?`} onClick={() => setInspecting(n)}>
@@ -148,69 +155,67 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
   const d = q.data;
   const n = d?.node ?? node;
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[calc(100vh-4rem)] flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-8">
-            <span className="truncate">{n.name}</span>
-            <ReasonBadge reason={n.problem} />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              title="Refresh"
-              disabled={refreshing}
-              onClick={() => {
-                void q.refetch();
-                void metrics.refetch();
-              }}
-            >
-              <ArrowsClockwiseIcon className={cn(refreshing && "animate-spin")} />
-            </Button>
-          </DialogTitle>
-          <DialogDescription className="flex flex-wrap items-center gap-x-3">
-            {[n.roles?.join(", "), n.version, !n.unknown && podsLabel(n.pods)].filter(Boolean).join(" · ")}
-            <Meter named name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
-            <Meter named name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
-          </DialogDescription>
-        </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
-        <DetailTabs cluster={cluster} kind="node" namespace="" name={n.name}>
-          {d && (
-            <>
-              <Section title={d.usageAvailable ? "Pods by usage" : "Pods"}>
-                {d.podsError ? (
-                  <p className="text-xs text-destructive">{d.podsError}</p>
-                ) : d.pods?.length ? (
-                  d.pods.map((p) => (
-                    <NodePodRow key={`${p.namespace}/${p.name}`} cluster={cluster} pod={p} allocatable={n.allocatable} measured={d.usageAvailable} onClose={onClose} />
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">This node runs no pods.</p>
-                )}
-              </Section>
-              <Section title="Conditions">
-                <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
-                  {d.conditions?.map((c) => (
-                    <div key={c.type} className="contents">
-                      <dt className="font-medium">{c.type}</dt>
-                      {/* Ready is the one condition a node should report true; every other one is a fault when it does. */}
-                      <dd className={cn("font-mono", (c.type === "Ready") !== (c.status === "True") && "text-destructive")}>{c.status}</dd>
-                      <dd className="truncate text-muted-foreground" title={c.message}>
-                        {[c.reason, c.message].filter(Boolean).join(": ")}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </Section>
-              <Section title="Events">
-                {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
-              </Section>
-            </>
-          )}
-          {!d && !q.error && <p className="text-xs text-muted-foreground">Loading…</p>}
-        </DetailTabs>
-      </DialogContent>
-    </Dialog>
+    <Inspector onClose={onClose}>
+      <InspectorHeader>
+        <InspectorTitle className="flex items-center gap-2 pr-8">
+          <span className="truncate">{n.name}</span>
+          <ReasonBadge reason={n.problem} />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Refresh"
+            disabled={refreshing}
+            onClick={() => {
+              void q.refetch();
+              void metrics.refetch();
+            }}
+          >
+            <ArrowsClockwiseIcon className={cn(refreshing && "animate-spin")} />
+          </Button>
+        </InspectorTitle>
+        <InspectorDescription className="flex flex-wrap items-center gap-x-3">
+          {[n.roles?.join(", "), n.version, !n.unknown && podsLabel(n.pods)].filter(Boolean).join(" · ")}
+          <Meter named name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
+          <Meter named name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
+        </InspectorDescription>
+      </InspectorHeader>
+      {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
+      <DetailTabs cluster={cluster} kind="node" namespace="" name={n.name}>
+        {d && (
+          <>
+            <Section title={d.usageAvailable ? "Pods by usage" : "Pods"}>
+              {d.podsError ? (
+                <p className="text-xs text-destructive">{d.podsError}</p>
+              ) : d.pods?.length ? (
+                d.pods.map((p) => (
+                  <NodePodRow key={`${p.namespace}/${p.name}`} cluster={cluster} pod={p} allocatable={n.allocatable} measured={d.usageAvailable} onClose={onClose} />
+                ))
+              ) : (
+                <p className="text-xs text-muted-foreground">This node runs no pods.</p>
+              )}
+            </Section>
+            <Section title="Conditions">
+              <dl className="grid grid-cols-[max-content_max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+                {d.conditions?.map((c) => (
+                  <div key={c.type} className="contents">
+                    <dt className="font-medium">{c.type}</dt>
+                    {/* Ready is the one condition a node should report true; every other one is a fault when it does. */}
+                    <dd className={cn("font-mono", (c.type === "Ready") !== (c.status === "True") && "text-destructive")}>{c.status}</dd>
+                    <dd className="truncate text-muted-foreground" title={c.message}>
+                      {[c.reason, c.message].filter(Boolean).join(": ")}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </Section>
+            <Section title="Events">
+              {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
+            </Section>
+          </>
+        )}
+        {!d && !q.error && <p className="text-xs text-muted-foreground">Loading…</p>}
+      </DetailTabs>
+    </Inspector>
   );
 }
 

@@ -120,7 +120,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
 
   const picker = (
     <TargetPicker groups={loggable} value={current} onPick={(t) => start.mutate(t)} placeholder="Search workloads and pods">
-      <ComboboxTrigger render={<Button variant="outline" size="sm" className="max-w-96 min-w-0 shrink" />}>
+      <ComboboxTrigger render={<Button variant="outline" size="sm" className="max-w-96 min-w-48 shrink" />}>
         {stream ? (
           <>
             <StateDot status={stream} />
@@ -170,7 +170,7 @@ function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; pick
   const patch = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         {picker}
         <LogToolbar stream={stream} view={view} patch={patch} />
         {shell}

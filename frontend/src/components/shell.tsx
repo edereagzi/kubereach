@@ -1,153 +1,47 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, CubeIcon, DotsThreeIcon, PlusIcon, WarningIcon } from "@phosphor-icons/react";
-import { Events } from "@wailsio/runtime";
-import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
-import type { Cluster } from "@bindings/internal/service";
+import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, WarningIcon } from "@phosphor-icons/react";
+import { ClusterService, RouteService } from "@bindings/internal/bindings";
+import { State, type Cluster } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ClusterOverview } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
+import { InspectorSlot } from "@/components/inspector";
 import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
-import { RouteList, statusLabel, StateDot } from "@/components/routes";
-import { SidebarFooter } from "@/components/sidebar-footer";
+import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, useRouteProblem } from "@/components/routes";
+import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { configQuery, reachabilityLabel, reachabilityQuery, errorText } from "@/queries";
-import { State } from "@bindings/internal/service";
-import { useUIStore } from "@/store";
+import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
+import { openShellCount, useUIStore, type DockTab, type MainTab } from "@/store";
 import { cn } from "@/lib/utils";
 
 export function Shell() {
-  const queryClient = useQueryClient();
-  const importKubeconfig = useMutation({
-    mutationFn: () => ClusterService.Import(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
-  });
-  // Dropped export files queue up for the import dialog; everything else is imported as a kubeconfig in one go.
-  const pushImportPreviews = useUIStore((s) => s.pushImportPreviews);
-  const importDropped = useMutation({
-    mutationFn: async (paths: string[]) => {
-      const previews = await Promise.all(paths.map((p) => ConfigService.InspectPath(p)));
-      pushImportPreviews(previews.filter((p) => !p.kubeconfig));
-      const kubeconfigs = previews.filter((p) => p.kubeconfig).map((p) => p.path);
-      return kubeconfigs.length > 0 ? ClusterService.ImportPaths(kubeconfigs) : null;
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
-  });
-  useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
-  const importError = importKubeconfig.error ?? importDropped.error;
-
+  const routesOpen = useUIStore((s) => s.routesOpen);
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-        <div className="flex h-10 items-center gap-0.5 px-3 pt-1 text-xs font-medium text-muted-foreground">
-          <span className="flex-1 pl-1">Clusters</span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Refresh reachability"
-            onClick={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}
-          >
-            <ArrowsClockwiseIcon />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Add cluster from kubeconfig"
-            disabled={importKubeconfig.isPending}
-            onClick={() => importKubeconfig.mutate()}
-          >
-            <PlusIcon />
-          </Button>
-        </div>
-        {importError && <p className="px-4 py-1 text-xs text-destructive">{errorText(importError)}</p>}
-        <div className="min-h-0 flex-1 overflow-auto">
-          <ClusterList />
-          <RouteList />
-        </div>
-        <SidebarFooter />
-      </aside>
-      <main className="flex min-w-0 flex-1 flex-col">
-        <ClusterTabs />
-      </main>
+      <Sidebar />
+      <main className="flex min-w-0 flex-1 flex-col">{routesOpen ? <RoutesPage /> : <ClusterTabs />}</main>
+      <RouteConnector />
     </div>
-  );
-}
-
-function ClusterList() {
-  const { data, error } = useQuery(configQuery);
-  const selectedClusterId = useUIStore((s) => s.selectedClusterId);
-  const selectCluster = useUIStore((s) => s.selectCluster);
-  const clusters = data?.clusters ?? [];
-
-  if (error) {
-    return (
-      <Empty className="border-0">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <WarningIcon />
-          </EmptyMedia>
-          <EmptyTitle>Configuration could not be loaded</EmptyTitle>
-          <EmptyDescription>{errorText(error)}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  if (clusters.length === 0) {
-    return (
-      <Empty className="border-0">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <CubeIcon />
-          </EmptyMedia>
-          <EmptyTitle>No clusters</EmptyTitle>
-          <EmptyDescription>Import a kubeconfig to add your first cluster.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  return (
-    <ul className="flex flex-col gap-px px-2">
-      {clusters.map((c) => (
-        <li key={c.id}>
-          <button
-            type="button"
-            onClick={() => selectCluster(c.id)}
-            className={cn(
-              "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-sidebar-accent",
-              c.id === selectedClusterId && "bg-primary/10 font-medium text-primary hover:bg-primary/15",
-            )}
-          >
-            <ReachabilityDot clusterId={c.id} />
-            <span className="truncate">{c.name}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// Unreachable is the normal state of a cluster whose Route is down, so it is a hollow ring rather than an error colour.
-function ReachabilityDot({ clusterId }: { clusterId: string }) {
-  const { status, error, data } = useQuery(reachabilityQuery(clusterId));
-  return (
-    <span
-      title={reachabilityLabel(status, error, data)}
-      className={cn(
-        "size-2 shrink-0 rounded-full",
-        status === "pending" && "animate-pulse bg-muted-foreground",
-        status === "success" && "bg-green-500",
-        status === "error" && "border-[1.5px] border-muted-foreground/70",
-      )}
-    />
   );
 }
 
@@ -156,25 +50,36 @@ function ClusterTabs() {
   const activeTab = useUIStore((s) => s.activeTab);
   const selectTab = useUIStore((s) => s.selectTab);
   const { data } = useQuery(configQuery);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
+  const routeState = useUIStore((s) => (cluster?.route ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle) : State.StateConnected));
+  // Behind a Route that is down every view would only repeat the RouteBanner, so they stay empty until it connects.
+  // Connecting and reconnecting keep them, so a blip does not throw away a filter or an open detail.
+  const unreachable = routeState === State.StateIdle || routeState === State.StateStopped || routeState === State.StateError || routeState === State.$zero;
 
   if (!cluster) {
     return (
-      <Empty className="h-full border-0">
-        <EmptyHeader>
-          <EmptyTitle>Select a cluster</EmptyTitle>
-          <EmptyDescription>Port Forwards, Logs and Shell live here.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <>
+        <div data-drag className="h-13 shrink-0" />
+        <Empty className="border-0">
+          <EmptyHeader>
+            <EmptyTitle>Select a cluster</EmptyTitle>
+            <EmptyDescription>Its workloads, port forwards, logs and shells open here.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </>
     );
   }
 
   return (
     <>
       <ClusterHeader cluster={cluster} />
-      <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as typeof activeTab)} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="h-9 w-full justify-start gap-5 border-b px-4">
-          <TabsTrigger value="overview" className="flex-none px-0">Overview</TabsTrigger>
+      <RouteBanner cluster={cluster} />
+      <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as MainTab)} className="min-h-0 flex-1 gap-0">
+        <TabsList variant="line" className="h-9 w-full shrink-0 justify-start gap-5 border-b px-4">
+          <TabsTrigger value="overview" className="flex-none px-0">
+            Overview
+          </TabsTrigger>
           <TabsTrigger value="nodes" className="flex-none px-0">
             Nodes
             <NodeProblems cluster={cluster} />
@@ -187,34 +92,29 @@ function ClusterTabs() {
             Port forwards
             <TabCount value={forwardsFor(data?.forwards, cluster).length} />
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex-none px-0">
-            Logs
-            <LogsLive cluster={cluster} />
-          </TabsTrigger>
-          <TabsTrigger value="shell" className="flex-none px-0">
-            Shell
-            <ShellCount cluster={cluster} />
-          </TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="flex min-h-0 flex-col">
-          <ClusterOverview key={cluster.id} cluster={cluster} />
-        </TabsContent>
-        <TabsContent value="nodes" className="flex min-h-0 flex-col">
-          <ClusterNodes key={cluster.id} cluster={cluster} />
-        </TabsContent>
-        <TabsContent value="events" className="flex min-h-0 flex-col">
-          <ClusterEvents key={cluster.id} cluster={cluster} />
-        </TabsContent>
-        <TabsContent value="forwards" className="overflow-auto">
-          <PortForwards key={cluster.id} cluster={cluster} />
-        </TabsContent>
-        <TabsContent value="logs" className="flex min-h-0 flex-col">
-          <Logs key={cluster.id} cluster={cluster} />
-        </TabsContent>
-        <TabsContent value="shell" className="flex min-h-0 flex-col">
-          <PodShell key={cluster.id} cluster={cluster} />
-        </TabsContent>
+        <div className="flex min-h-0 flex-1">
+          <InspectorSlot.Provider value={slot}>
+            <TabsContent value="overview" className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {!unreachable && <ClusterOverview key={cluster.id} cluster={cluster} />}
+            </TabsContent>
+            <TabsContent value="nodes" className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {!unreachable && <ClusterNodes key={cluster.id} cluster={cluster} />}
+            </TabsContent>
+            <TabsContent value="events" className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {!unreachable && <ClusterEvents key={cluster.id} cluster={cluster} />}
+            </TabsContent>
+            <TabsContent value="forwards" className="min-w-0 flex-1 overflow-auto">
+              <PortForwards key={cluster.id} cluster={cluster} />
+            </TabsContent>
+          </InspectorSlot.Provider>
+          <div
+            ref={setSlot}
+            className="w-0 shrink-0 overflow-hidden bg-background has-[[data-slot=inspector]]:w-1/2 has-[[data-slot=inspector]]:max-w-[44rem] has-[[data-slot=inspector]]:border-l [&>*]:h-full"
+          />
+        </div>
       </Tabs>
+      <Dock cluster={cluster} />
     </>
   );
 }
@@ -237,24 +137,201 @@ function EventsLive({ cluster }: { cluster: Cluster }) {
 }
 
 function ShellCount({ cluster }: { cluster: Cluster }) {
-  const open = useUIStore(
-    (s) => Object.values(s.shellSessions).filter((x) => x.target.clusterId === cluster.id && x.state !== State.StateStopped && x.state !== State.StateError).length,
-  );
+  const open = useUIStore((s) => openShellCount(s, cluster.id));
   return <TabCount value={open} />;
+}
+
+const dockMin = 120;
+// The view keeps at least this much of the window above the dock.
+const viewMin = 220;
+
+// Dock holds a Cluster's log stream and shells under whichever view is open, the way an editor keeps its terminal.
+function Dock({ cluster }: { cluster: Cluster }) {
+  const tab = useUIStore((s) => s.dockTab);
+  const open = useUIStore((s) => s.dockOpen);
+  const height = useUIStore((s) => s.dockHeight);
+  const setDockOpen = useUIStore((s) => s.setDockOpen);
+  const setDockHeight = useUIStore((s) => s.setDockHeight);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setDockOpen(!useUIStore.getState().dockOpen);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setDockOpen]);
+
+  const resize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const from = e.clientY;
+    const move = (ev: PointerEvent) => setDockHeight(Math.min(Math.max(height + from - ev.clientY, dockMin), window.innerHeight - viewMin));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  return (
+    <section className="relative flex shrink-0 flex-col border-t" style={open ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
+      {open && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
+      <div className="flex h-9 shrink-0 items-stretch gap-5 px-4">
+        <DockButton value="logs">
+          Logs
+          <LogsLive cluster={cluster} />
+        </DockButton>
+        <DockButton value="shell">
+          Shell
+          <ShellCount cluster={cluster} />
+        </DockButton>
+        <Button variant="ghost" size="icon-xs" className="my-auto ml-auto" title={open ? "Hide panel (⌘J)" : "Show panel (⌘J)"} onClick={() => setDockOpen(!open)}>
+          {open ? <CaretDownIcon /> : <CaretUpIcon />}
+        </Button>
+      </div>
+      {open && (tab === "logs" ? <Logs key={cluster.id} cluster={cluster} /> : <PodShell key={cluster.id} cluster={cluster} />)}
+    </section>
+  );
+}
+
+function DockButton({ value, children }: { value: DockTab; children: ReactNode }) {
+  const active = useUIStore((s) => s.dockOpen && s.dockTab === value);
+  const selectTab = useUIStore((s) => s.selectTab);
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => selectTab(value)}
+      className={cn(
+        "relative flex items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground",
+        active && "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// RouteBanner stands where the Cluster's views would fail, with the one action that makes them work.
+function RouteBanner({ cluster }: { cluster: Cluster }) {
+  const { data } = useQuery(configQuery);
+  const status = useUIStore((s) => s.routeStatuses[cluster.route]);
+  const requestConnect = useUIStore((s) => s.requestConnect);
+  const problem = useRouteProblem(cluster.route);
+  const route = data?.routes?.find((r) => r.id === cluster.route);
+  if (!cluster.route) return <DirectBanner cluster={cluster} />;
+  if (!route || status?.state === State.StateConnected) return null;
+  const busy = status?.state === State.StateConnecting || status?.state === State.StateReconnecting;
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2.5 border-y bg-muted/50 px-4 text-sm">
+      <StateDot status={status} />
+      <span className={cn("min-w-0 flex-1 truncate", problem && !busy && "text-destructive")} title={problem}>
+        {busy
+          ? `Connecting through ${route.name}…`
+          : problem
+            ? `${route.name} failed: ${problem}`
+            : `${cluster.name} is reached through ${route.name}, which is not connected.`}
+      </span>
+      {!busy && (
+        <Button size="xs" onClick={() => requestConnect(route.id)}>
+          {problem ? "Retry" : "Connect"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// A Cluster that does not answer directly is where a Route first comes up, as one way to reach it.
+function DirectBanner({ cluster }: { cluster: Cluster }) {
+  const queryClient = useQueryClient();
+  const { status, error } = useQuery(reachabilityQuery(cluster.id));
+  const { data } = useQuery(configQuery);
+  const [creating, setCreating] = useState(false);
+  const setRoute = useMutation({
+    mutationFn: (routeId: string) => RouteService.SetClusterRoute(cluster.id, routeId),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+  if (status !== "error") return null;
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2.5 border-y bg-muted/50 px-4 text-sm">
+      <WarningIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate" title={errorText(error)}>
+        {errorText(error)}
+      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="xs" />}>Reach through a route…</DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          {data?.routes?.map((r) => (
+            <DropdownMenuItem key={r.id} onClick={() => setRoute.mutate(r.id)}>
+              {r.name}
+            </DropdownMenuItem>
+          ))}
+          {!!data?.routes?.length && <DropdownMenuSeparator />}
+          <DropdownMenuItem onClick={() => setCreating(true)}>New route…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {creating && <RouteDialog route={null} onClose={() => setCreating(false)} onSaved={(r) => setRoute.mutate(r.id)} />}
+    </div>
+  );
+}
+
+function RenameDialog({ cluster, onClose }: { cluster: Cluster; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(cluster.name);
+  const rename = useMutation({
+    mutationFn: () => ClusterService.Rename(cluster.id, name),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["config"] });
+      onClose();
+    },
+  });
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault();
+            rename.mutate();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Rename {cluster.name}</DialogTitle>
+            <DialogDescription>
+              The name is only shown in Kubereach; context <span className="font-medium text-foreground">{cluster.context}</span> in your kubeconfig stays as it is. Leave it empty to use the
+              context's name.
+            </DialogDescription>
+          </DialogHeader>
+          <Input autoFocus value={name} placeholder={cluster.context} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} />
+          {rename.error && <p className="text-sm text-destructive">{errorText(rename.error)}</p>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={rename.isPending}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ClusterHeader({ cluster }: { cluster: Cluster }) {
   const queryClient = useQueryClient();
   const { data: version, status, error } = useQuery(reachabilityQuery(cluster.id));
   const { data } = useQuery(configQuery);
-  const routeStatus = useUIStore((s) => s.routeStatuses[cluster.route]);
-  const options = [{ value: "", label: "Direct" }, ...(data?.routes ?? []).map((r) => ({ value: r.id, label: r.name }))];
   const setRoute = useMutation({
     mutationFn: (routeId: string) => RouteService.SetClusterRoute(cluster.id, routeId),
     onSuccess: () => queryClient.invalidateQueries(),
   });
   const selectCluster = useUIStore((s) => s.selectCluster);
   const [removing, setRemoving] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const remove = useMutation({
     mutationFn: () => ClusterService.Delete(cluster.id),
     onSuccess: () => {
@@ -265,7 +342,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
     },
   });
   return (
-    <div className="flex h-14 items-center gap-3 px-4">
+    <div data-drag className="flex h-13 shrink-0 items-center gap-3 px-4 select-none">
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate text-base font-semibold">{cluster.name}</span>
         {cluster.context !== cluster.name && (
@@ -274,25 +351,10 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
           </span>
         )}
       </div>
-      <Select value={cluster.route} items={options} onValueChange={(id) => setRoute.mutate(id ?? "")}>
-        <SelectTrigger size="sm" title={statusLabel(routeStatus)}>
-          {cluster.route && <StateDot status={routeStatus} />}
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <RouteChip cluster={cluster} />
       <span
         title={reachabilityLabel(status, error, version)}
-        className={cn(
-          "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs",
-          status === "error" ? "text-muted-foreground" : "text-foreground",
-        )}
+        className={cn("inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs", status === "error" ? "text-muted-foreground" : "text-foreground")}
       >
         <span
           className={cn(
@@ -308,7 +370,25 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="More" />}>
           <DotsThreeIcon weight="bold" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="whitespace-nowrap">
+              Reach through
+              <span className="ml-auto min-w-0 truncate pl-4 text-muted-foreground">{data?.routes?.find((r) => r.id === cluster.route)?.name ?? "Direct"}</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup value={cluster.route} onValueChange={(id) => setRoute.mutate(id as string)}>
+                <DropdownMenuRadioItem value="">Direct</DropdownMenuRadioItem>
+                {data?.routes?.map((r) => (
+                  <DropdownMenuRadioItem key={r.id} value={r.id}>
+                    {r.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuItem onClick={() => setRenaming(true)}>Rename…</DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
             onClick={() => {
@@ -320,6 +400,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {renaming && <RenameDialog cluster={cluster} onClose={() => setRenaming(false)} />}
       <ConfirmDialog
         open={removing}
         onOpenChange={setRemoving}

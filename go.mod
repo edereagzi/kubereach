@@ -6,7 +6,7 @@ require (
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-cmp v0.7.0
-	github.com/wailsapp/wails/v3 v3.0.0-beta.23
+	github.com/wailsapp/wails/v3 v3.0.0-beta.25
 	golang.org/x/crypto v0.57.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0

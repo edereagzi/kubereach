@@ -459,3 +459,37 @@ func TestKubeconfigClient_QuietLogFollowIsNotCut(t *testing.T) {
 		t.Fatalf("line = %+v", lines[0])
 	}
 }
+
+func TestRenameCluster_KeepsContextAndSurvivesReimport(t *testing.T) {
+	svc, _ := newService(t)
+	path := writeKubeconfig(t)
+	clusters, err := svc.ImportKubeconfigs([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := clusters[0]
+	if err := svc.RenameCluster(c.ID, "  prod-eu  "); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ImportKubeconfigs([]string{path}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := svc.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Clusters) != 2 || cfg.Clusters[0].Name != "prod-eu" || cfg.Clusters[0].Context != c.Context {
+		t.Fatalf("got %+v", cfg.Clusters)
+	}
+
+	if err := svc.RenameCluster(c.ID, " "); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ = svc.LoadConfig()
+	if cfg.Clusters[0].Name != c.Context {
+		t.Fatalf("an empty name should fall back to the context, got %q", cfg.Clusters[0].Name)
+	}
+	if err := svc.RenameCluster("missing", "x"); err == nil {
+		t.Fatal("expected error for unknown cluster")
+	}
+}

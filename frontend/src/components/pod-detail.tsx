@@ -8,7 +8,7 @@ import { portsLabel, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { podMetricsQuery, podQuery, podUsageKey, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
@@ -108,59 +108,57 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
   const startLogs = useStartLogs(cluster);
   const d = pod.data;
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[calc(100vh-4rem)] flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-8">
-            <span className="truncate">
-              {target.namespace}/{target.name}
-            </span>
-            {d && <ReasonBadge reason={d.reason} />}
-            <Button variant="ghost" size="icon-sm" title="Refresh" disabled={pod.isFetching} onClick={() => pod.refetch()}>
-              <ArrowsClockwiseIcon className={cn(pod.isFetching && "animate-spin")} />
-            </Button>
-          </DialogTitle>
-          <DialogDescription className="flex flex-wrap items-center gap-x-3">
-            {d
-              ? [d.phase, d.node && `on ${d.node}`, target.ports.length > 0 && portsLabel(target.ports), d.events?.[0] && `last event ${ago(d.events[0].time)}`]
-                  .filter(Boolean)
-                  .join(" · ")
-              : "Loading…"}
-            {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
-          </DialogDescription>
-          <div className="flex gap-1.5">
-            <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
-            <span className="ml-auto">
-              <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
-            </span>
-          </div>
-        </DialogHeader>
-        {pod.error && <p className="text-xs text-destructive">{errorText(pod.error)}</p>}
-        <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>
-          {d && (
-            <>
-              <Section title="Containers">
-                {d.containers?.map((c) => (
-                  <Container
-                    key={c.name}
-                    container={c}
-                    usage={usage?.containers?.[c.name]}
-                    onPrevious={() => startLogs.mutate({ ...target, container: c.name, previous: true }, { onSuccess: onClose })}
-                    pending={startLogs.isPending}
-                  />
-                ))}
-              </Section>
-              <Section title="Conditions">
-                <Conditions conditions={d.conditions ?? []} />
-              </Section>
-              <Section title="Events">
-                {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
-              </Section>
-            </>
-          )}
-        </DetailTabs>
-      </DialogContent>
-    </Dialog>
+    <Inspector onClose={onClose}>
+      <InspectorHeader>
+        <InspectorTitle className="flex items-center gap-2 pr-8">
+          <span className="truncate">
+            {target.namespace}/{target.name}
+          </span>
+          {d && <ReasonBadge reason={d.reason} />}
+          <Button variant="ghost" size="icon-sm" title="Refresh" disabled={pod.isFetching} onClick={() => pod.refetch()}>
+            <ArrowsClockwiseIcon className={cn(pod.isFetching && "animate-spin")} />
+          </Button>
+        </InspectorTitle>
+        <InspectorDescription className="flex flex-wrap items-center gap-x-3">
+          {d
+            ? [d.phase, d.node && `on ${d.node}`, target.ports.length > 0 && portsLabel(target.ports), d.events?.[0] && `last event ${ago(d.events[0].time)}`]
+                .filter(Boolean)
+                .join(" · ")
+            : "Loading…"}
+          {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
+        </InspectorDescription>
+        <div className="flex flex-wrap gap-1.5">
+          <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
+          <span className="ml-auto">
+            <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
+          </span>
+        </div>
+      </InspectorHeader>
+      {pod.error && <p className="text-xs text-destructive">{errorText(pod.error)}</p>}
+      <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>
+        {d && (
+          <>
+            <Section title="Containers">
+              {d.containers?.map((c) => (
+                <Container
+                  key={c.name}
+                  container={c}
+                  usage={usage?.containers?.[c.name]}
+                  onPrevious={() => startLogs.mutate({ ...target, container: c.name, previous: true })}
+                  pending={startLogs.isPending}
+                />
+              ))}
+            </Section>
+            <Section title="Conditions">
+              <Conditions conditions={d.conditions ?? []} />
+            </Section>
+            <Section title="Events">
+              {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
+            </Section>
+          </>
+        )}
+      </DetailTabs>
+    </Inspector>
   );
 }
 

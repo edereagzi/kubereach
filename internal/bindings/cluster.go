@@ -67,6 +67,10 @@ func (c *ClusterService) SetNamespaces(clusterID string, namespaces []string) er
 	return c.svc.SetNamespaces(clusterID, namespaces)
 }
 
+func (c *ClusterService) Rename(clusterID, name string) error {
+	return c.svc.RenameCluster(clusterID, name)
+}
+
 func (c *ClusterService) DescribePod(ctx context.Context, clusterID, namespace, name string) (service.PodDiagnosis, error) {
 	return c.svc.DescribePod(ctx, clusterID, namespace, name)
 }

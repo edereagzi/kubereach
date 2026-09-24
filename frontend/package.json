@@ -20,7 +20,7 @@
     "@tanstack/react-query": "^5.103.1",
     "@tanstack/react-router": "^1.170.38",
     "@tanstack/react-virtual": "^3.14.13",
-    "@wailsio/runtime": "3.0.0-beta.23",
+    "@wailsio/runtime": "3.0.0-beta.25",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",

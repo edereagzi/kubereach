@@ -6,9 +6,10 @@ import { RolloutState, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
+import { useInspectorWalk } from "@/components/inspector";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
-import { YamlDialog } from "@/components/yaml-view";
+import { YamlDetail } from "@/components/yaml-view";
 import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     requestInspect(null);
   }, [inspectRequest, pending, groups, cluster.id, requestInspect]);
 
+  const shownRows = useRef<Target[]>([]);
+  useInspectorWalk(shownRows, inspecting, (t) => t.value, setInspecting);
+
   // "/" jumps to the filter from anywhere on the tab that is not already typing.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -111,6 +115,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     }
   }
   const total = shown.reduce((n, g) => n + g.items.length, 0);
+  shownRows.current = [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -121,7 +126,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.workload && <WorkloadDetail cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.kind === "svc" && <YamlDialog cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "svc" && <YamlDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="w-auto min-w-48 flex-1">
           <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />
@@ -144,7 +149,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
-      <div className={cn("min-h-0 flex-1 overflow-auto pb-4 transition-opacity", rescoping && "opacity-50")}>
+      <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-4 transition-opacity", rescoping && "opacity-50")}>
         {total === 0 && !pending && (
           <Empty className="justify-start border-0 pt-12">
             <EmptyHeader>
@@ -160,14 +165,24 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           const running = kinds.filter((g) => !folded(g.label));
           const reference = kinds.filter((g) => folded(g.label));
           const open = words.length > 0 || !!unfolded[ns];
-          const line = (t: Target) => (
-            <TargetLine key={t.value} cluster={cluster} target={t} pressure={pressure(t)} onForward={() => setForwarding(t)} onInspect={() => setInspecting(t)} />
-          );
+          const line = (t: Target) => {
+            shownRows.current.push(t);
+            return (
+              <TargetLine
+                key={t.value}
+                cluster={cluster}
+                target={t}
+                pressure={pressure(t)}
+                selected={t.value === inspecting?.value}
+                onInspect={() => setInspecting(t)}
+              />
+            );
+          };
           return (
             <section key={ns}>
-              <h3 className="sticky top-0 z-10 flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium">
-                {ns}
-                <span className="text-xs font-normal text-muted-foreground">{counts(running)}</span>
+              <h3 className="sticky top-0 z-10 flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium whitespace-nowrap">
+                <span className="truncate">{ns}</span>
+                <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">{counts(running)}</span>
               </h3>
               {running.flatMap((g) => g.items).map(line)}
               {reference.length > 0 && words.length === 0 && (
@@ -201,9 +216,16 @@ const meta = (t: Target) => {
   return t.workload ? workloadLabel(t.workload) : "";
 };
 
-function TargetLine({ cluster, target, pressure, onForward, onInspect }: { cluster: Cluster; target: Target; pressure?: string; onForward: () => void; onInspect: () => void }) {
+// Ports, hosts and reasons are identifiers and set in mono; counts such as "1/1 ready" read as words.
+function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluster: Cluster; target: Target; pressure?: string; selected: boolean; onInspect: () => void }) {
   return (
-    <div className="group grid h-8 grid-cols-[48px_minmax(220px,26rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent">
+    <div
+      data-row={target.value}
+      className={cn(
+        "group grid h-8 grid-cols-[48px_minmax(96px,22rem)_minmax(5rem,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent",
+        selected && "bg-accent shadow-[inset_2px_0_0_var(--primary)]",
+      )}
+    >
       <KindBadge kind={target.kind} />
       <button
         type="button"
@@ -213,20 +235,20 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect }: { clust
       >
         {target.name}
       </button>
-      <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
         {target.kind === "pod" && (
           <>
             <ReasonBadge reason={target.reason} className="cursor-pointer" onClick={onInspect} />
             <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
-            {!!target.restarts && <span className="shrink-0">{restartsLabel(target.restarts, target.lastRestart)}</span>}
+            {!!target.restarts && <span className="min-w-0 truncate">{restartsLabel(target.restarts, target.lastRestart)}</span>}
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
         {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
-        <span className="truncate">{meta(target)}</span>
+        <span className={cn("truncate", (target.kind === "svc" || target.ingress) && "font-mono")}>{meta(target)}</span>
       </span>
       <span className="flex justify-end gap-0.5">
-        <TargetVerbs cluster={cluster} target={target} onForward={onForward} row />
+        <TargetVerbs cluster={cluster} target={target} row />
       </span>
     </div>
   );

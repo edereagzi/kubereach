@@ -29,7 +29,11 @@ type EventBuffer = { events: KubeEvent[]; version: number };
 // A closed session's stop is still on its way, so its last transitions arrive after it left the store.
 const closedShells = new Set<string>();
 
-export type ClusterTab = "overview" | "nodes" | "events" | "forwards" | "logs" | "shell";
+export type MainTab = "overview" | "nodes" | "events" | "forwards";
+// Logs and Shell are sessions that outlive a view, so they sit in a dock under whichever view is open.
+export type DockTab = "logs" | "shell";
+export type ClusterTab = MainTab | DockTab;
+const dockHeightKey = "dockHeight";
 
 // An object another tab asks the Overview to open the detail of.
 export type InspectRequest = { clusterId: string; kind: Kind; namespace: string; name: string };
@@ -37,8 +41,23 @@ export type InspectRequest = { clusterId: string; kind: Kind; namespace: string;
 interface UIState {
   selectedClusterId: string | null;
   selectCluster: (id: string | null) => void;
-  activeTab: ClusterTab;
+  // The Routes page takes the main area until a Cluster is selected again.
+  routesOpen: boolean;
+  openRoutes: () => void;
+  activeTab: MainTab;
+  dockTab: DockTab;
+  dockOpen: boolean;
+  dockHeight: number;
+  // Asking for a dock tab opens the dock on it; asking for a view switches the view.
   selectTab: (tab: ClusterTab) => void;
+  setDockOpen: (open: boolean) => void;
+  setDockHeight: (height: number) => void;
+  // A Route another part of the window asks the sidebar to connect, where its credential and host key prompts live.
+  connectRequest: string | null;
+  requestConnect: (routeId: string | null) => void;
+  // Why a Connect call was refused before the Route started, which its status never carries.
+  connectErrors: Record<string, string>;
+  setConnectError: (routeId: string, message: string | null) => void;
   routeStatuses: Record<string, RouteStatus>;
   setRouteStatus: (status: RouteStatus) => void;
   forwardStatuses: Record<string, ForwardStatus>;
@@ -73,9 +92,29 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedClusterId: null,
-  selectCluster: (id) => set({ selectedClusterId: id }),
+  selectCluster: (id) => set({ selectedClusterId: id, routesOpen: false }),
+  routesOpen: false,
+  openRoutes: () => set({ routesOpen: true }),
   activeTab: "overview",
-  selectTab: (tab) => set({ activeTab: tab }),
+  dockTab: "logs",
+  dockOpen: false,
+  dockHeight: Number(localStorage.getItem(dockHeightKey)) || 320,
+  selectTab: (tab) => set(tab === "logs" || tab === "shell" ? { dockTab: tab, dockOpen: true } : { activeTab: tab }),
+  setDockOpen: (open) => set({ dockOpen: open }),
+  setDockHeight: (height) => {
+    localStorage.setItem(dockHeightKey, String(height));
+    set({ dockHeight: height });
+  },
+  connectRequest: null,
+  requestConnect: (routeId) => set({ connectRequest: routeId }),
+  connectErrors: {},
+  setConnectError: (routeId, message) =>
+    set((s) => {
+      const connectErrors = { ...s.connectErrors };
+      if (message) connectErrors[routeId] = message;
+      else delete connectErrors[routeId];
+      return { connectErrors };
+    }),
   routeStatuses: {},
   setRouteStatus: (status) =>
     set((s) => ({ routeStatuses: { ...s.routeStatuses, [status.routeId]: status } })),
@@ -178,3 +217,6 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   shiftImportPreview: () => set((s) => ({ importPreviews: s.importPreviews.slice(1) })),
 }));
+
+export const openShellCount = (s: { shellSessions: Record<string, ShellStatus> }, clusterId: string) =>
+  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && x.state !== State.StateStopped && x.state !== State.StateError).length;

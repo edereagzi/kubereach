@@ -14,6 +14,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -348,6 +349,23 @@ func (s *Service) SetNamespaces(clusterID string, namespaces []string) error {
 		return err
 	}
 	cfg.Clusters[i].Namespaces = namespaces
+	return s.saveConfig(cfg)
+}
+
+// RenameCluster sets the name Kubereach shows for the Cluster; the kubeconfig and its context stay as they are.
+// An empty name falls back to the context's.
+func (s *Service) RenameCluster(clusterID, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := loadConfig(s.configPath)
+	if err != nil {
+		return err
+	}
+	i, err := findCluster(cfg, clusterID)
+	if err != nil {
+		return err
+	}
+	cfg.Clusters[i].Name = cmp.Or(strings.TrimSpace(name), cfg.Clusters[i].Context)
 	return s.saveConfig(cfg)
 }
 

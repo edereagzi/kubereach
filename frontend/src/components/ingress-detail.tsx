@@ -4,7 +4,7 @@ import type { Cluster, IngressPath } from "@bindings/internal/service";
 import { ReasonBadge, Section } from "@/components/pod-detail";
 import type { Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { ingressQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -28,59 +28,57 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
   const ing = q.data?.ingress ?? target.ingress;
   const paths = q.data?.paths ?? [];
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[calc(100vh-4rem)] flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 pr-8">
-            <span className="truncate">
-              {target.namespace}/{target.name}
-            </span>
-            <Button variant="ghost" size="icon-sm" title="Refresh" disabled={q.isFetching} onClick={() => q.refetch()}>
-              <ArrowsClockwiseIcon className={cn(q.isFetching && "animate-spin")} />
-            </Button>
-          </DialogTitle>
-          <DialogDescription>{["Ingress", ing?.hosts?.join(", ")].filter(Boolean).join(" · ")}</DialogDescription>
-        </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
-        <DetailTabs cluster={cluster} kind="ing" namespace={target.namespace} name={target.name}>
-          <Section title="Paths">
-            {paths.length === 0 && !q.isPending && <p className="text-xs text-muted-foreground">This Ingress has no rules.</p>}
-            {paths.map((p, i) => (
-              <div key={i} className="rounded-md border px-3 py-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={cn("truncate font-medium", !isFallback(p) && "font-mono")} title={pathLabel(p)}>
-                    {pathLabel(p)}
-                  </span>
-                  <ArrowRightIcon className="size-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate font-mono text-muted-foreground">{p.service ? `${p.service}:${p.port}` : "no backend"}</span>
-                  {p.unknown ? (
-                    <span className="ml-auto shrink-0 text-muted-foreground">{p.problem}</span>
-                  ) : (
-                    <ReasonBadge reason={p.problem} className="ml-auto shrink-0" />
-                  )}
-                </div>
-                {!!p.pods?.length && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {p.pods.map((pod) => (
-                      <Button
-                        key={pod.name}
-                        variant="outline"
-                        size="xs"
-                        className="h-5 min-w-0 max-w-full font-mono text-xs"
-                        title={`Why is ${pod.name} in this state?`}
-                        onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name })}
-                      >
-                        <span className="truncate">{pod.name}</span>
-                        {!pod.ready && <span className="shrink-0 text-destructive">· not ready</span>}
-                      </Button>
-                    ))}
-                  </div>
+    <Inspector onClose={onClose}>
+      <InspectorHeader>
+        <InspectorTitle className="flex items-center gap-2 pr-8">
+          <span className="truncate">
+            {target.namespace}/{target.name}
+          </span>
+          <Button variant="ghost" size="icon-sm" title="Refresh" disabled={q.isFetching} onClick={() => q.refetch()}>
+            <ArrowsClockwiseIcon className={cn(q.isFetching && "animate-spin")} />
+          </Button>
+        </InspectorTitle>
+        <InspectorDescription>{["Ingress", ing?.hosts?.join(", ")].filter(Boolean).join(" · ")}</InspectorDescription>
+      </InspectorHeader>
+      {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
+      <DetailTabs cluster={cluster} kind="ing" namespace={target.namespace} name={target.name}>
+        <Section title="Paths">
+          {paths.length === 0 && !q.isPending && <p className="text-xs text-muted-foreground">This Ingress has no rules.</p>}
+          {paths.map((p, i) => (
+            <div key={i} className="rounded-md border px-3 py-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={cn("truncate font-medium", !isFallback(p) && "font-mono")} title={pathLabel(p)}>
+                  {pathLabel(p)}
+                </span>
+                <ArrowRightIcon className="size-3 shrink-0 text-muted-foreground" />
+                <span className="truncate font-mono text-muted-foreground">{p.service ? `${p.service}:${p.port}` : "no backend"}</span>
+                {p.unknown ? (
+                  <span className="ml-auto shrink-0 text-muted-foreground">{p.problem}</span>
+                ) : (
+                  <ReasonBadge reason={p.problem} className="ml-auto shrink-0" />
                 )}
               </div>
-            ))}
-          </Section>
-        </DetailTabs>
-      </DialogContent>
-    </Dialog>
+              {!!p.pods?.length && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {p.pods.map((pod) => (
+                    <Button
+                      key={pod.name}
+                      variant="outline"
+                      size="xs"
+                      className="h-5 min-w-0 max-w-full font-mono text-xs"
+                      title={`Why is ${pod.name} in this state?`}
+                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name })}
+                    >
+                      <span className="truncate">{pod.name}</span>
+                      {!pod.ready && <span className="shrink-0 text-destructive">· not ready</span>}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </Section>
+      </DetailTabs>
+    </Inspector>
   );
 }

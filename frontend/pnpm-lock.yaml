@@ -33,8 +33,8 @@ importers:
         specifier: ^3.14.13
         version: 3.14.13(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@wailsio/runtime':
-        specifier: 3.0.0-beta.23
-        version: 3.0.0-beta.23
+        specifier: 3.0.0-beta.25
+        version: 3.0.0-beta.25
       '@xterm/addon-fit':
         specifier: ^0.11.0
         version: 0.11.0
@@ -713,8 +713,8 @@ packages:
       oxc-transform-react:
         optional: true
 
-  '@wailsio/runtime@3.0.0-beta.23':
-    resolution: {integrity: sha512-Am9N7nvA9WBpVzOkrJ0PzTg/cgEFL72I97ksOfOuryLP4VOdnl7viP59+6Nx5zMoHJo207k85WINJaWfCY1CQQ==}
+  '@wailsio/runtime@3.0.0-beta.25':
+    resolution: {integrity: sha512-VjymRlaTJWQULr94R4XivNypJUrWWxsNA+vi8aBhREri2JWg4UUJdMhBM9vzPC0cFWH3tioHNJgxpne36OynyA==}
 
   '@xterm/addon-fit@0.11.0':
     resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
@@ -2651,7 +2651,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.0(@types/node@26.6.1)(jiti@2.7.0)
 
-  '@wailsio/runtime@3.0.0-beta.23': {}
+  '@wailsio/runtime@3.0.0-beta.25': {}
 
   '@xterm/addon-fit@0.11.0': {}
 
