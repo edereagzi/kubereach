@@ -13,7 +13,7 @@ import { ComboboxTrigger } from "@/components/ui/combobox";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { podsQuery } from "@/queries";
+import { podsQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
@@ -147,7 +147,7 @@ export function Logs({ cluster }: { cluster: Cluster }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
-        {error && <p className="px-4 pb-2 text-xs text-destructive">{String(error)}</p>}
+        {error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error)}</p>}
         <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>Nothing followed yet</EmptyTitle>
@@ -175,7 +175,7 @@ function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; pick
         <LogToolbar stream={stream} view={view} patch={patch} />
         {shell}
       </div>
-      {(error || stream.error) && <p className="px-4 pb-2 text-xs text-destructive">{String(error ?? statusLabel(stream))}</p>}
+      {(error || stream.error) && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error ?? statusLabel(stream))}</p>}
       {stream.deleted && (
         <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
           {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if it is recreated.
@@ -273,7 +273,7 @@ function compile({ query, regex }: ViewState): { matcher: ((l: LogLine) => boole
       error: null,
     };
   } catch (e) {
-    return { matcher: null, error: String(e) };
+    return { matcher: null, error: errorText(e) };
   }
 }
 

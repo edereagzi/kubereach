@@ -7,7 +7,7 @@ import type { Kind, Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { yamlQuery } from "@/queries";
+import { yamlQuery, errorText } from "@/queries";
 
 const objectKind: Record<Kind, ObjectKind> = {
   svc: ObjectKind.ObjectService,
@@ -64,7 +64,7 @@ export function YamlView({ cluster, kind, namespace, name }: YamlProps) {
         </div>
       )}
       {q.error ? (
-        <p className="text-xs text-destructive">{String(q.error)}</p>
+        <p className="text-xs text-destructive">{errorText(q.error)}</p>
       ) : q.data ? (
         <pre className="font-mono text-xs leading-5">{highlight(q.data)}</pre>
       ) : (

@@ -17,7 +17,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { configQuery, portInUse } from "@/queries";
+import { configQuery, portInUse, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -165,7 +165,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
         )}
       </span>
       <span className={cn("flex min-w-0 flex-1 items-center gap-2 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>
-        {error && !busy ? String(error) : busy ? `Port ${busy.port} is in use by another program` : stateSentence(forward, status)}
+        {error && !busy ? errorText(error) : busy ? `Port ${busy.port} is in use by another program` : stateSentence(forward, status)}
         {busy && (
           <Button
             variant="outline"
@@ -329,7 +329,7 @@ export function AddForward({
           )}
           {(listError || add.error) && (
             <p className="flex items-center gap-2 text-sm text-destructive">
-              {String(listError ?? add.error)}
+              {errorText(listError ?? add.error)}
               {suggestion && (
                 <Button
                   variant="outline"

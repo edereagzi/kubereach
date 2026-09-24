@@ -113,10 +113,10 @@ type logConn struct {
 // A Cluster follows one source at a time, so the stream it replaces is stopped first.
 func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, error) {
 	if src.Namespace == "" || src.Name == "" {
-		return LogStatus{}, errors.New("namespace and name are required")
+		return LogStatus{}, userErrorf("Logs need a namespace and a name")
 	}
 	if (src.Previous || src.Container != "") && src.Kind != LogSourcePod {
-		return LogStatus{}, errors.New("previous logs and a single container are read from a single pod")
+		return LogStatus{}, userErrorf("Previous logs and a single container are read from a single pod")
 	}
 	k, err := s.clusterClient(src.ClusterID)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 			all := slices.Concat(pod.Spec.InitContainers, pod.Spec.Containers)
 			i := slices.IndexFunc(all, func(c corev1.Container) bool { return c.Name == src.Container })
 			if i < 0 {
-				return LogStatus{}, fmt.Errorf("pod %s has no container %q", src.Name, src.Container)
+				return LogStatus{}, userErrorf("Pod %s has no container %s", src.Name, src.Container)
 			}
 			containers = all[i : i+1]
 		}
@@ -463,7 +463,7 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 	}
 }
 
-var errLogsEnded = errors.New("log stream ended")
+var errLogsEnded error = &userError{msg: "The log stream ended"}
 
 func (lc *logConn) markTerminating(pod *corev1.Pod) {
 	if pod.DeletionTimestamp == nil {
@@ -632,10 +632,7 @@ func (s *Service) emitLogs(lc *logConn, batch []LogLine) {
 }
 
 func (s *Service) setLogState(lc *logConn, state State, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
+	msg := errorMessage(err)
 	s.updateLogStatus(lc, func(st *LogStatus) { st.State, st.Error = state, msg })
 }
 

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"sync"
 	"time"
@@ -26,7 +25,7 @@ type ClusterChange struct {
 
 const watchCoalesce = 500 * time.Millisecond
 
-var errClientReplaced = errors.New("the Cluster's watch was restarted; retry")
+var errClientReplaced error = &userError{msg: "The Cluster's watch was restarted; try again"}
 
 // watchCache holds a Cluster's informers, started per kind on first read and serving every later read without the Route.
 type watchCache struct {
@@ -95,9 +94,9 @@ func (w *watchCache) list(ctx context.Context, key string, kinds []string, names
 		synced := !slices.ContainsFunc(k.ctrls, func(c cache.Controller) bool { return !c.HasSynced() })
 		k.mu.Lock()
 		defer k.mu.Unlock()
-		for _, err := range k.errs {
+		for ns, err := range k.errs {
 			if err != nil {
-				return false, wrapForbidden(err)
+				return false, wrapForbidden(&namespaceError{namespace: ns, err: err})
 			}
 		}
 		return synced, nil

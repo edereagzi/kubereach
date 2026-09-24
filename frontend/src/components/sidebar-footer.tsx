@@ -16,6 +16,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
 
@@ -53,7 +54,7 @@ export function SidebarFooter() {
           <AppearanceMenu />
         </DropdownMenuContent>
       </DropdownMenu>
-      {error && <p className="px-2 pb-1 text-xs text-destructive">{String(error)}</p>}
+      {error && <p className="px-2 pb-1 text-xs text-destructive">{errorText(error)}</p>}
       {exportConfig.data && (
         <p className="truncate px-2 pb-1 text-xs text-muted-foreground" title={exportConfig.data}>
           Exported to {exportConfig.data}
@@ -131,7 +132,7 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
             ))}
           </div>
         )}
-        {importConfig.error && <p className="text-xs text-destructive">{String(importConfig.error)}</p>}
+        {importConfig.error && <p className="text-xs text-destructive">{errorText(importConfig.error)}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel

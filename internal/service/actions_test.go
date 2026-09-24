@@ -170,7 +170,7 @@ func TestRollbackDeployment_NoPreviousRevision(t *testing.T) {
 	ctx := context.Background()
 
 	err := svc.RollbackDeployment(ctx, id, "default", "api")
-	if err == nil || err.Error() != `deployment "api" has no previous revision to roll back to` {
+	if err == nil || service.Describe(err).Message != "Deployment api has no previous revision to roll back to" {
 		t.Errorf("err = %v; want no previous revision", err)
 	}
 	forbid(cs, "list", "replicasets", false)

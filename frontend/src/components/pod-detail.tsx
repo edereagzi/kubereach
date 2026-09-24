@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DetailTabs } from "@/components/yaml-view";
-import { podMetricsQuery, podQuery, podUsageKey } from "@/queries";
+import { podMetricsQuery, podQuery, podUsageKey, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // States that are normal passage or a deliberate choice rather than a fault; a complete rollout has nothing to say on a row.
@@ -135,7 +135,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
             </span>
           </div>
         </DialogHeader>
-        {pod.error && <p className="text-xs text-destructive">{String(pod.error)}</p>}
+        {pod.error && <p className="text-xs text-destructive">{errorText(pod.error)}</p>}
         <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>
           {d && (
             <>

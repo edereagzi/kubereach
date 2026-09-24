@@ -181,7 +181,7 @@ func (s *Service) DescribeWorkload(ctx context.Context, clusterID string, kind W
 	}
 	d.Events, err = objectEvents(ctx, k, eventKind, namespace, name, string(meta.GetUID()))
 	if err != nil {
-		d.EventsError = err.Error()
+		d.EventsError = errorMessage(err)
 	}
 	return d, nil
 }

@@ -262,6 +262,25 @@ func TestListing_ForbiddenThenExplicitNamespaces(t *testing.T) {
 	}
 }
 
+func TestListing_ForbiddenNamespaceInScopeIsNamed(t *testing.T) {
+	svc, cs, id := newFakeService(t, namespace("payments"), namespace("locked"))
+	cs.PrependReactor("list", "services", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if a.GetNamespace() != "locked" {
+			return false, nil, nil
+		}
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "services"}, "", errors.New("rbac"))
+	})
+	if err := svc.SetNamespaces(id, []string{"payments", "locked"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := svc.ListServices(context.Background(), id)
+	want := service.ErrorInfo{Code: "forbidden", Message: "Your role may not read namespace locked"}
+	if diff := cmp.Diff(want, service.Describe(err)); diff != "" {
+		t.Errorf("error mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestSetNamespaces_UnknownCluster(t *testing.T) {
 	svc, _, _ := newFakeService(t)
 	if err := svc.SetNamespaces("missing", []string{"a"}); err == nil {

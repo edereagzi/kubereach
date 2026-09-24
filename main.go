@@ -3,7 +3,6 @@ package main
 import (
 	"embed"
 	"encoding/json"
-	"errors"
 	"log"
 
 	"github.com/edereagzi/kubereach/internal/bindings"
@@ -25,34 +24,11 @@ func main() {
 	}
 	svc := service.New(configPath, nil)
 
-	// Typed errors cross to the frontend as err.cause.code so the UI never parses messages. Wails falls back from a
-	// service's marshaler to its default one, not to Options.MarshalError, so every service is given it.
+	// Errors cross to the frontend as err.cause: the message the user is shown, and a code the UI acts on. Wails
+	// falls back from a service's marshaler to its default one, not to Options.MarshalError, so every service is given it.
 	typedErrors := application.ServiceOptions{MarshalError: func(err error) []byte {
-		if errors.Is(err, service.ErrForbidden) {
-			return []byte(`{"code":"forbidden"}`)
-		}
-		var need *service.CredentialError
-		if errors.As(err, &need) {
-			data, _ := json.Marshal(need)
-			return data
-		}
-		var exists *service.ForwardExistsError
-		if errors.As(err, &exists) {
-			data, _ := json.Marshal(struct {
-				Code string `json:"code"`
-				*service.ForwardExistsError
-			}{"forward-exists", exists})
-			return data
-		}
-		var inUse *service.PortInUseError
-		if errors.As(err, &inUse) {
-			data, _ := json.Marshal(struct {
-				Code string `json:"code"`
-				*service.PortInUseError
-			}{"port-in-use", inUse})
-			return data
-		}
-		return nil
+		data, _ := json.Marshal(service.Describe(err))
+		return data
 	}}
 	app := application.New(application.Options{
 		Name:        "Kubereach",

@@ -114,7 +114,7 @@ func (s *Service) DescribeNode(ctx context.Context, clusterID, name string) (Nod
 	selector := fields.OneTermEqualSelector("spec.nodeName", name).String()
 	pods, err := k.client.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{FieldSelector: selector})
 	if err != nil {
-		d.Node.Unknown, d.PodsError = true, wrapForbidden(err).Error()
+		d.Node.Unknown, d.PodsError = true, errorMessage(err)
 		return d, nil
 	}
 	// Without metrics-server the pods still list; they just cannot be ranked by what they use.
@@ -142,7 +142,7 @@ func (s *Service) DescribeNode(ctx context.Context, clusterID, name string) (Nod
 	rankNodePods(d.Pods, d.Node.Allocatable)
 	d.Events, err = objectEvents(ctx, k, "Node", metav1.NamespaceAll, name, string(node.UID))
 	if err != nil {
-		d.EventsError = err.Error()
+		d.EventsError = errorMessage(err)
 	}
 	return d, nil
 }

@@ -30,7 +30,7 @@ func (s *Service) RestartWorkload(ctx context.Context, clusterID string, kind Wo
 	case WorkloadDaemonSet:
 		_, err = apps.DaemonSets(namespace).Patch(ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	default:
-		return fmt.Errorf("a %s cannot be restarted", kind)
+		return userErrorf("A %s cannot be restarted", kind)
 	}
 	return wrapForbidden(err)
 }
@@ -47,7 +47,7 @@ func (s *Service) DeletePod(ctx context.Context, clusterID, namespace, name stri
 // ScaleWorkload sets a Deployment's or StatefulSet's replicas through the scale subresource.
 func (s *Service) ScaleWorkload(ctx context.Context, clusterID string, kind WorkloadKind, namespace, name string, replicas int32) error {
 	if replicas < 0 {
-		return fmt.Errorf("replicas must not be negative, got %d", replicas)
+		return userErrorf("Replicas cannot be negative")
 	}
 	k, err := s.clusterClient(clusterID)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Service) ScaleWorkload(ctx context.Context, clusterID string, kind Work
 	case WorkloadStatefulSet:
 		_, err = apps.StatefulSets(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}, "scale")
 	default:
-		return fmt.Errorf("a %s cannot be scaled", kind)
+		return userErrorf("A %s cannot be scaled", kind)
 	}
 	return wrapForbidden(err)
 }
@@ -78,7 +78,7 @@ func (s *Service) RollbackDeployment(ctx context.Context, clusterID, namespace, 
 		return wrapForbidden(err)
 	}
 	if d.Spec.Paused {
-		return fmt.Errorf("deployment %q is paused; resume it before rolling back", name)
+		return userErrorf("Deployment %s is paused; resume it before rolling back", name)
 	}
 	selector, err := metav1.LabelSelectorAsSelector(d.Spec.Selector)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *Service) RollbackDeployment(ctx context.Context, clusterID, namespace, 
 		}
 	}
 	if previous == nil {
-		return fmt.Errorf("deployment %q has no previous revision to roll back to", name)
+		return userErrorf("Deployment %s has no previous revision to roll back to", name)
 	}
 	template := previous.Spec.Template.DeepCopy()
 	delete(template.Labels, appsv1.DefaultDeploymentUniqueLabelKey)

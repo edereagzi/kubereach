@@ -18,7 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { configQuery, reachabilityLabel, reachabilityQuery } from "@/queries";
+import { configQuery, reachabilityLabel, reachabilityQuery, errorText } from "@/queries";
 import { State } from "@bindings/internal/service";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,7 @@ export function Shell() {
             <PlusIcon />
           </Button>
         </div>
-        {importError && <p className="px-4 py-1 text-xs text-destructive">{String(importError)}</p>}
+        {importError && <p className="px-4 py-1 text-xs text-destructive">{errorText(importError)}</p>}
         <div className="min-h-0 flex-1 overflow-auto">
           <ClusterList />
           <RouteList />
@@ -94,7 +94,7 @@ function ClusterList() {
             <WarningIcon />
           </EmptyMedia>
           <EmptyTitle>Configuration could not be loaded</EmptyTitle>
-          <EmptyDescription>{String(error)}</EmptyDescription>
+          <EmptyDescription>{errorText(error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

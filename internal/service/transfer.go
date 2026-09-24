@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"os"
 	"slices"
 
@@ -119,7 +118,7 @@ func (s *Service) ImportConfig(path string, remap map[string]string) error {
 	for _, from := range p.MissingPaths {
 		to, ok := remap[from]
 		if !ok {
-			return fmt.Errorf("%s: %w", from, os.ErrNotExist)
+			return userErrorf("%s does not exist", from)
 		}
 		if to != "" {
 			fi, err := os.Stat(to)
@@ -127,7 +126,7 @@ func (s *Service) ImportConfig(path string, remap map[string]string) error {
 				return err
 			}
 			if !fi.Mode().IsRegular() {
-				return fmt.Errorf("%s is not a file", to)
+				return userErrorf("%s is not a file", to)
 			}
 		}
 	}

@@ -236,8 +236,8 @@ func TestShell_NoShellAvailableFails(t *testing.T) {
 		select {
 		case st := <-states:
 			if st.State == service.StateError {
-				if !strings.Contains(st.Error, "executable file not found") {
-					t.Errorf("error = %q, want the last shell's failure", st.Error)
+				if st.Error != "The pod has none of bash, zsh, sh" {
+					t.Errorf("error = %q, want the shells tried named", st.Error)
 				}
 				execs, _ := f.api.execLog()
 				if diff := cmp.Diff([]string{"app:bash", "app:zsh", "app:sh"}, execs); diff != "" {

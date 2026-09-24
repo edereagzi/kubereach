@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/ed25519"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-var ErrRouteDown = errors.New("route is not connected")
+var ErrRouteDown error = &userError{msg: "The Route is not connected"}
 
 // CredentialError reports a missing session secret: Code is "passphrase" (Target is the key file)
 // or "password" (Target is user@host:port). The UI asks for it and calls ConnectRoute again.
@@ -139,10 +140,10 @@ func (s *Service) SaveRoute(r Route) (Route, error) {
 
 func validateRoute(r *Route) error {
 	if r.Name == "" {
-		return errors.New("route name is required")
+		return userErrorf("A Route needs a name")
 	}
 	if len(r.Servers) == 0 {
-		return errors.New("route needs at least one SSH server")
+		return userErrorf("A Route needs at least one SSH server")
 	}
 	r.Servers = slices.Clone(r.Servers)
 	for i := range r.Servers {
@@ -152,15 +153,15 @@ func validateRoute(r *Route) error {
 		}
 		switch {
 		case srv.Host == "":
-			return errors.New("SSH server host is required")
+			return userErrorf("An SSH server needs a host")
 		case srv.User == "":
-			return errors.New("SSH server username is required")
+			return userErrorf("An SSH server needs a username")
 		case srv.Port < 1 || srv.Port > 65535:
-			return fmt.Errorf("SSH server port %d is out of range", srv.Port)
+			return userErrorf("SSH server port %d is out of range", srv.Port)
 		case srv.Auth == AuthKeyFile && srv.KeyFile == "":
-			return errors.New("key file is required for key authentication")
+			return userErrorf("Key authentication needs a key file")
 		case srv.Auth != AuthAgent && srv.Auth != AuthKeyFile && srv.Auth != AuthPassword:
-			return fmt.Errorf("unknown authentication method %q", srv.Auth)
+			return userErrorf("Unknown authentication method %s", srv.Auth)
 		}
 	}
 	return nil
@@ -198,7 +199,7 @@ func (s *Service) loadForRouteDelete(routeID string) (Config, int, error) {
 		return cfg, 0, err
 	}
 	if slices.ContainsFunc(cfg.Clusters, func(c Cluster) bool { return c.RouteID == routeID }) {
-		return cfg, 0, fmt.Errorf("route %q is used by a cluster", cfg.Routes[i].Name)
+		return cfg, 0, userErrorf("Route %s is used by a Cluster", cfg.Routes[i].Name)
 	}
 	return cfg, i, nil
 }
@@ -288,12 +289,12 @@ func (s *Service) AnswerHostKey(routeID string, accept bool) error {
 	rc := s.routes[routeID]
 	s.mu.Unlock()
 	if rc == nil {
-		return fmt.Errorf("route %q is not connecting", routeID)
+		return userErrorf("The Route is not connecting")
 	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.pending {
-		return fmt.Errorf("route %q has no host key waiting for approval", routeID)
+		return userErrorf("The Route has no host key waiting for approval")
 	}
 	rc.pending = false
 	rc.hostKey <- accept
@@ -322,7 +323,7 @@ func (s *Service) authMethod(srv SSHServer, secret string) (ssh.AuthMethod, io.C
 		// ponytail: unix socket only; Windows needs the openssh-ssh-agent named pipe.
 		conn, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
 		if err != nil {
-			return nil, nil, fmt.Errorf("ssh agent: %w", err)
+			return nil, nil, &userError{msg: "The SSH agent cannot be reached", err: err}
 		}
 		return ssh.PublicKeysCallback(agent.NewClient(conn).Signers), conn, nil
 	case AuthKeyFile:
@@ -339,7 +340,7 @@ func (s *Service) authMethod(srv SSHServer, secret string) (ssh.AuthMethod, io.C
 		}
 		return ssh.Password(password), io.NopCloser(nil), nil
 	}
-	return nil, nil, fmt.Errorf("unknown authentication method %q", srv.Auth)
+	return nil, nil, userErrorf("Unknown authentication method %s", srv.Auth)
 }
 
 func passwordTarget(srv SSHServer) string {
@@ -379,6 +380,9 @@ func (s *Service) keySigner(keyFile, passphrase string) (ssh.Signer, error) {
 		return nil, &CredentialError{Code: "passphrase", Target: keyFile}
 	}
 	signer, err = ssh.ParsePrivateKeyWithPassphrase(data, []byte(passphrase))
+	if errors.Is(err, x509.IncorrectPasswordError) {
+		return nil, &userError{msg: "The passphrase of " + keyFile + " is wrong", err: err}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", keyFile, err)
 	}
@@ -420,7 +424,7 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 			rc.setClients(nil)
 			clients.Close()
 			if err == nil {
-				err = errors.New("connection closed")
+				err = userErrorf("The SSH connection closed")
 			}
 		}
 		var unknown *unknownHostError
@@ -437,7 +441,7 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 				if accept {
 					err = s.trustHostKey(unknown.prompt.Address, unknown.key)
 				} else {
-					err = fatalError{fmt.Errorf("%s: host key rejected", unknown.prompt.Address)}
+					err = fatalError{userErrorf("The host key of SSH server %s was rejected", unknown.prompt.Address)}
 				}
 			}
 			if err == nil {
@@ -474,7 +478,7 @@ func keepAlive(ctx context.Context, client *ssh.Client, interval time.Duration) 
 		case <-tick.C:
 		}
 		if unanswered.Load() >= keepaliveMisses {
-			return fmt.Errorf("%d keepalives went unanswered", keepaliveMisses)
+			return userErrorf("The SSH server stopped answering keepalives")
 		}
 		unanswered.Add(1)
 		go func() {
@@ -506,12 +510,12 @@ func (s *Service) dialRoute(ctx context.Context, route Route) (routeClients, err
 
 // dialServer resolves credentials afresh so a restarted agent is picked up on reconnect,
 // and bounds the dial and handshake by ctx so Stop never waits on a stalled server.
-// Errors are prefixed with the server address so the UI can name the failed SSH Server.
+// Errors carry the server address so the UI can name the failed SSH Server.
 func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Client, srv SSHServer) (client *ssh.Client, err error) {
 	addr := net.JoinHostPort(srv.Host, strconv.Itoa(srv.Port))
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%s: %w", addr, err)
+			err = &sshServerError{addr: addr, err: err}
 		}
 	}()
 	auth, closer, err := s.authMethod(srv, "")
@@ -647,7 +651,7 @@ func (s *Service) setRouteState(rc *routeConn, state State, err error) {
 	rc.status.State = state
 	rc.status.Error = ""
 	if err != nil {
-		rc.status.Error = err.Error()
+		rc.status.Error = errorMessage(err)
 	}
 	status := rc.status
 	rc.mu.Unlock()

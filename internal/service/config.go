@@ -11,7 +11,7 @@ import (
 
 const ConfigVersion = 1
 
-var ErrUnsupportedVersion = errors.New("unsupported configuration version")
+var ErrUnsupportedVersion error = &userError{msg: "The configuration was written by a newer Kubereach"}
 
 type Config struct {
 	Version  int       `yaml:"version" json:"version"`
@@ -77,7 +77,7 @@ func loadConfig(path string) (Config, error) {
 func parseConfig(path string, data []byte) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+		return Config{}, &userError{msg: path + " is not a valid Kubereach configuration", err: err}
 	}
 	if cfg.Version != ConfigVersion {
 		return Config{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, cfg.Version)

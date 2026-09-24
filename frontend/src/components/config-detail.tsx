@@ -7,7 +7,7 @@ import type { Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DetailTabs } from "@/components/yaml-view";
-import { configObjectQuery } from "@/queries";
+import { configObjectQuery, errorText } from "@/queries";
 import { cn } from "@/lib/utils";
 
 const keysLabel = (n: number) => `${n} key${n === 1 ? "" : "s"}`;
@@ -32,7 +32,7 @@ export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; t
           </DialogTitle>
           <DialogDescription>{[secret ? "Secret" : "ConfigMap", o?.type, keysLabel(keys.length)].filter(Boolean).join(" · ")}</DialogDescription>
         </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
+        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
         <DetailTabs cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name}>
           {keys.length === 0 && !q.isPending && <p className="text-xs text-muted-foreground">No keys.</p>}
           <dl className="grid grid-cols-[fit-content(14rem)_1fr] gap-x-4 gap-y-1 text-xs">

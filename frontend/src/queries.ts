@@ -134,9 +134,10 @@ export const workloadsQuery = (clusterId: string) =>
     retry: false,
   });
 
-// main.go marshals typed errors as {code, ...} on the error's cause.
-type ErrorCause = { code?: string; target?: string; port?: number; suggested?: number };
+// main.go marshals every error as {message, code, ...} on its cause; the message is the one worded for the user.
+type ErrorCause = { message?: string; code?: string; target?: string; port?: number; suggested?: number };
 const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;
+export const errorText = (error: unknown) => errorCause(error)?.message ?? (error instanceof Error ? error.message : String(error));
 export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
 
 // credentialRequired returns which session secret a Connect call is missing, if any.
@@ -155,7 +156,7 @@ export function portInUse(error: unknown): { port: number; suggested: number } |
 
 export function reachabilityLabel(status: "pending" | "error" | "success", error: unknown, version?: string) {
   if (status === "pending") return "Checking…";
-  if (status === "error") return String(error);
+  if (status === "error") return errorText(error);
   return version ? `API reachable, ${version}` : "API reachable";
 }
 

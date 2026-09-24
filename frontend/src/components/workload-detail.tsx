@@ -12,7 +12,7 @@ import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DetailTabs } from "@/components/yaml-view";
-import { workloadQuery } from "@/queries";
+import { workloadQuery, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // workloadReason is what a row's badge says: the rollout state, or that the CronJob is suspended.
@@ -52,7 +52,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
             <WorkloadActions cluster={cluster} workload={w} />
           </div>
         </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
+        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
         <DetailTabs cluster={cluster} kind={kind} namespace={w.namespace} name={w.name}>
           {r && (
             <Section title="Rollout">

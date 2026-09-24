@@ -154,9 +154,9 @@ func (s *Service) watchEvents(ctx context.Context, ec *eventConn, namespace stri
 func (s *Service) reportEventState(ec *eventConn) {
 	ec.mu.Lock()
 	var forbidden, failing error
-	for _, err := range ec.errs {
+	for ns, err := range ec.errs {
 		if apierrors.IsForbidden(err) {
-			forbidden = wrapForbidden(err)
+			forbidden = wrapForbidden(&namespaceError{namespace: ns, err: err})
 		} else if err != nil {
 			failing = err
 		}
@@ -173,10 +173,7 @@ func (s *Service) reportEventState(ec *eventConn) {
 }
 
 func (s *Service) setEventState(ec *eventConn, state State, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
+	msg := errorMessage(err)
 	ec.mu.Lock()
 	before := ec.status
 	ec.status.State, ec.status.Error = state, msg

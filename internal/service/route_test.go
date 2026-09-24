@@ -669,7 +669,7 @@ func TestRoute_FailureNamesTheServer(t *testing.T) {
 	}
 	ev := f.waitState(t, service.StateReconnecting)
 	want := fmt.Sprintf("127.0.0.1:%d", f.route.Servers[1].Port)
-	if !strings.HasPrefix(ev.Error, want) {
+	if !strings.Contains(ev.Error, want) {
 		t.Errorf("error %q does not name the failed server %q", ev.Error, want)
 	}
 	if err := f.svc.StopRoute(f.route.ID); err != nil {
@@ -799,7 +799,7 @@ func TestRoute_ChangedHostKeyIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev := f.waitState(t, service.StateError)
-	if !strings.Contains(ev.Error, "mismatch") {
+	if !strings.Contains(ev.Error, "does not match") {
 		t.Errorf("error %q does not report the mismatch", ev.Error)
 	}
 	select {

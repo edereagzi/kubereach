@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { errorText } from "@/queries";
 
 type ConfirmProps = {
   open: boolean;
@@ -33,7 +34,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirm,
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {children}
-        {action.error && <p className="text-xs text-destructive">{action.error.message}</p>}
+        {action.error && <p className="text-xs text-destructive">{errorText(action.error)}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={action.isPending}>Cancel</AlertDialogCancel>
           <Button variant={destructive ? "destructive" : "default"} disabled={disabled || action.isPending} onClick={() => action.mutate()}>

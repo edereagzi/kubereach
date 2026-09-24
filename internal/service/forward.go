@@ -3,7 +3,6 @@ package service
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -164,7 +163,7 @@ func nextFreePort(cfg Config) (int, error) {
 			return port, nil
 		}
 	}
-	return 0, errors.New("no free local port left")
+	return 0, userErrorf("No free local port is left")
 }
 
 // SetForwardEnabled switches a Saved Forward on or off, binding or releasing its port.
@@ -263,7 +262,7 @@ func (s *Service) bindForward(pf PortForward) {
 	fc := &forwardConn{cancel: cancel, status: ForwardStatus{Forward: pf, State: StateIdle}}
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(pf.LocalPort)))
 	if err != nil {
-		fc.status.State, fc.status.Error = StateError, err.Error()
+		fc.status.State, fc.status.Error = StateError, errorMessage(err)
 	} else {
 		fc.ln = ln
 		go s.acceptForward(ctx, fc)
@@ -299,11 +298,11 @@ func validateForward(pf PortForward) error {
 	case pf.Target.Kind != TargetService && pf.Target.Kind != TargetPod:
 		return fmt.Errorf("unknown target kind %q", pf.Target.Kind)
 	case pf.Target.Namespace == "" || pf.Target.Name == "":
-		return errors.New("target namespace and name are required")
+		return userErrorf("A forward needs a namespace and a name")
 	case pf.RemotePort < 1 || pf.RemotePort > 65535:
-		return fmt.Errorf("remote port %d is out of range", pf.RemotePort)
+		return userErrorf("Remote port %d is out of range", pf.RemotePort)
 	case pf.LocalPort < 0 || pf.LocalPort > 65535:
-		return fmt.Errorf("local port %d is out of range", pf.LocalPort)
+		return userErrorf("Local port %d is out of range", pf.LocalPort)
 	}
 	return nil
 }
@@ -340,7 +339,7 @@ func resolvePod(ctx context.Context, k kube, target ForwardTarget, port int) (st
 			return "", 0, err
 		}
 		if pod.Status.Phase != corev1.PodRunning {
-			return "", 0, fmt.Errorf("pod %s is not running (%s)", pod.Name, pod.Status.Phase)
+			return "", 0, userErrorf("Pod %s is not running (%s)", pod.Name, pod.Status.Phase)
 		}
 		return target.Name, port, nil
 	}
@@ -349,11 +348,11 @@ func resolvePod(ctx context.Context, k kube, target ForwardTarget, port int) (st
 		return "", 0, err
 	}
 	if len(svc.Spec.Selector) == 0 {
-		return "", 0, fmt.Errorf("service %s/%s has no selector", svc.Namespace, svc.Name)
+		return "", 0, userErrorf("Service %s/%s has no selector", svc.Namespace, svc.Name)
 	}
 	i := slices.IndexFunc(svc.Spec.Ports, func(p corev1.ServicePort) bool { return int(p.Port) == port })
 	if i < 0 {
-		return "", 0, fmt.Errorf("service %s/%s has no port %d", svc.Namespace, svc.Name, port)
+		return "", 0, userErrorf("Service %s/%s has no port %d", svc.Namespace, svc.Name, port)
 	}
 	list, err := k.client.CoreV1().Pods(target.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(svc.Spec.Selector).String(),
@@ -362,11 +361,11 @@ func resolvePod(ctx context.Context, k kube, target ForwardTarget, port int) (st
 		return "", 0, err
 	}
 	if len(list.Items) == 0 {
-		return "", 0, fmt.Errorf("service %s/%s has no pods", svc.Namespace, svc.Name)
+		return "", 0, userErrorf("Service %s/%s has no pods", svc.Namespace, svc.Name)
 	}
 	pod := slices.MinFunc(list.Items, podPreference)
 	if pod.Status.Phase != corev1.PodRunning {
-		return "", 0, fmt.Errorf("pod %s is not running (%s)", pod.Name, pod.Status.Phase)
+		return "", 0, userErrorf("Pod %s is not running (%s)", pod.Name, pod.Status.Phase)
 	}
 	targetPort := svc.Spec.Ports[i].TargetPort
 	if targetPort.Type == intstr.String {
@@ -377,7 +376,7 @@ func resolvePod(ctx context.Context, k kube, target ForwardTarget, port int) (st
 				}
 			}
 		}
-		return "", 0, fmt.Errorf("pod %s has no container port named %q", pod.Name, targetPort.StrVal)
+		return "", 0, userErrorf("Pod %s has no container port named %s", pod.Name, targetPort.StrVal)
 	}
 	if targetPort.IntVal == 0 {
 		return pod.Name, port, nil
@@ -529,14 +528,14 @@ func (s *Service) forwardConnection(ctx context.Context, fc *forwardConn) (https
 	fc.mu.Unlock()
 	pod, podPort, conn, err := s.dialForwardBounded(ctx, fc.status.Forward)
 	if err != nil {
-		s.updateForward(fc, func(st *ForwardStatus) { st.Pod, st.State, st.Error = "", StateError, err.Error() })
+		s.updateForward(fc, func(st *ForwardStatus) { st.Pod, st.State, st.Error = "", StateError, errorMessage(err) })
 		return nil, 0, 0, err
 	}
 	fc.mu.Lock()
 	if fc.closed {
 		fc.mu.Unlock()
 		_ = conn.Close()
-		return nil, 0, 0, errors.New("forward was turned off")
+		return nil, 0, 0, userErrorf("The forward was turned off")
 	}
 	fc.conn, fc.podPort = conn, podPort
 	_, id := attach()

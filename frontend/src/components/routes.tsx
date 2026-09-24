@@ -33,7 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { configQuery, credentialRequired } from "@/queries";
+import { configQuery, credentialRequired, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +56,7 @@ type Status = { state: State; error?: string };
 
 export function statusLabel(status?: Status) {
   if (!status) return "not connected";
-  return status.error ? `${status.state}: ${status.error}` : status.state;
+  return status.error || status.state;
 }
 
 // Hollow is the deliberate off state, distinct from idle's filled grey.
@@ -101,8 +101,8 @@ export function RouteList() {
     mutationFn: () => RouteService.ImportSSHConfig(),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
   });
-  const connectError = connect.error && !credentialRequired(connect.error) ? String(connect.error) : null;
-  const listError = (!credential && connectError) || (importSSHConfig.error ? String(importSSHConfig.error) : null);
+  const connectError = connect.error && !credentialRequired(connect.error) ? errorText(connect.error) : null;
+  const listError = (!credential && connectError) || (importSSHConfig.error ? errorText(importSSHConfig.error) : null);
 
   return (
     <div className="flex flex-col">
@@ -244,7 +244,7 @@ function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => v
               <PlusIcon /> Add SSH server
             </Button>
           </div>
-          {save.error && <p className="text-sm text-destructive">{String(save.error)}</p>}
+          {save.error && <p className="text-sm text-destructive">{errorText(save.error)}</p>}
           <DialogFooter>
             {route && (
               <Button

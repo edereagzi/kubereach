@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ComboboxTrigger } from "@/components/ui/combobox";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { useTheme } from "@/theme";
 import { cn } from "@/lib/utils";
@@ -181,7 +182,7 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
-        {error && <p className="px-4 pb-2 text-xs text-destructive">{String(error)}</p>}
+        {error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error)}</p>}
         <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>No shell open</EmptyTitle>
@@ -217,7 +218,7 @@ export function PodShell({ cluster }: { cluster: Cluster }) {
           );
         })}
         {picker}
-        {error && <span className="truncate text-xs text-destructive">{String(error)}</span>}
+        {error && <span className="truncate text-xs text-destructive">{errorText(error)}</span>}
       </div>
       <TerminalView key={active.id} session={active} />
     </div>

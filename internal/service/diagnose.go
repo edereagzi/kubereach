@@ -86,7 +86,7 @@ func (s *Service) DescribePod(ctx context.Context, clusterID, namespace, name st
 	d.Containers = append(describeContainers(pod.Spec.InitContainers, pod.Status.InitContainerStatuses, true), describeContainers(pod.Spec.Containers, pod.Status.ContainerStatuses, false)...)
 	d.Events, err = objectEvents(ctx, k, "Pod", pod.Namespace, pod.Name, string(pod.UID))
 	if err != nil {
-		d.EventsError = err.Error()
+		d.EventsError = errorMessage(err)
 	}
 	return d, nil
 }

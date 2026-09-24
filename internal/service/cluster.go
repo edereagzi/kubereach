@@ -108,7 +108,7 @@ func (h headerTimeout) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = resp.Body.Close()
 		}
 		cancel()
-		return nil, fmt.Errorf("%s %s: no response within %v", req.Method, req.URL.Redacted(), h.d)
+		return nil, &userError{msg: fmt.Sprintf("The Cluster did not answer within %v", h.d), err: fmt.Errorf("%s %s", req.Method, req.URL.Redacted())}
 	}
 	if err != nil {
 		cancel()

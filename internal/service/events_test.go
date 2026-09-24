@@ -3,7 +3,6 @@ package service_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -160,8 +159,8 @@ func TestEvents_ForbiddenNamespaceIsReportedBesidePermittedOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := waitEventState(t, states, service.StateError)
-	if !strings.Contains(st.Error, "forbidden") {
-		t.Errorf("status = %+v, want a forbidden error", st)
+	if st.Error != "Your role may not read namespace locked" {
+		t.Errorf("status = %+v, want the forbidden namespace named", st)
 	}
 	if got := collectEvents(t, batches, stream.ID, 1); got[0].ID != "default/api-0.BackOff" {
 		t.Errorf("events = %+v, want the permitted namespace's", got)

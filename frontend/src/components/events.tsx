@@ -6,6 +6,7 @@ import { statusLabel, StateDot } from "@/components/routes";
 import { KindBadge, type Kind } from "@/components/targets";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Toggle } from "@/components/ui/toggle";
+import { errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
@@ -77,7 +78,7 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
           Warnings only
         </Toggle>
       </div>
-      {problem && <p className="px-4 pb-2 text-xs text-destructive">{String(problem)}</p>}
+      {problem && <p className="px-4 pb-2 text-xs text-destructive">{errorText(problem)}</p>}
       {shown.length > 0 ? (
         <EventList cluster={cluster} events={shown} />
       ) : (

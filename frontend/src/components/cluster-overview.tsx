@@ -17,7 +17,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Toggle } from "@/components/ui/toggle";
-import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey } from "@/queries";
+import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +92,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       <Empty className="justify-start border-0 pt-12">
         <EmptyHeader>
           <EmptyTitle>Cluster could not be listed</EmptyTitle>
-          <EmptyDescription>{String(error)}</EmptyDescription>
+          <EmptyDescription>{errorText(error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -141,7 +141,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         .filter((g) => g.error)
         .map((g) => (
           <p key={g.label} className="px-4 pb-1 text-xs text-muted-foreground">
-            {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${String(g.error)}`}
+            {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
       <div className={cn("min-h-0 flex-1 overflow-auto pb-4 transition-opacity", rescoping && "opacity-50")}>
@@ -323,7 +323,7 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
             </ComboboxItem>
           )}
         </ComboboxList>
-        {save.error && <p className="px-2 pb-2 text-xs text-destructive">{String(save.error)}</p>}
+        {save.error && <p className="px-2 pb-2 text-xs text-destructive">{errorText(save.error)}</p>}
       </ComboboxContent>
     </Combobox>
   );
@@ -350,7 +350,7 @@ function NamespacePrompt({ cluster, error }: { cluster: Cluster; error: unknown 
       <div>
         <p className="text-sm font-medium">{error ? "Some of these namespaces are forbidden" : "Cluster-wide listing is forbidden"}</p>
         <p className="text-sm text-muted-foreground">Enter the namespaces you may use. They are remembered for this cluster.</p>
-        {!!error && <p className="mt-2 text-xs text-muted-foreground">{String(error)}</p>}
+        {!!error && <p className="mt-2 text-xs text-muted-foreground">{errorText(error)}</p>}
       </div>
       <div className="flex gap-2">
         <Input autoFocus placeholder="default, payments" value={value} onChange={(e) => setValue(e.target.value)} />
@@ -358,7 +358,7 @@ function NamespacePrompt({ cluster, error }: { cluster: Cluster; error: unknown 
           Save
         </Button>
       </div>
-      {save.error && <p className="text-sm text-destructive">{String(save.error)}</p>}
+      {save.error && <p className="text-sm text-destructive">{errorText(save.error)}</p>}
     </form>
   );
 }

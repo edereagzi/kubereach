@@ -137,7 +137,7 @@ func matchPattern(pattern, alias string) bool {
 // serversFor resolves ProxyJump recursively, outermost server first, ending with the host itself.
 func serversFor(h sshHost, byAlias map[string]sshHost, depth int) ([]SSHServer, error) {
 	if depth > 8 {
-		return nil, fmt.Errorf("ProxyJump chain for %q is too deep or circular", h.alias)
+		return nil, userErrorf("The ProxyJump chain of %s is too deep or circular", h.alias)
 	}
 	var servers []SSHServer
 	if h.proxyJump != "" && !strings.EqualFold(h.proxyJump, "none") {

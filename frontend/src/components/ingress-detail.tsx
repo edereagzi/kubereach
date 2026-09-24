@@ -6,7 +6,7 @@ import type { Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DetailTabs } from "@/components/yaml-view";
-import { ingressQuery } from "@/queries";
+import { ingressQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +41,7 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
           </DialogTitle>
           <DialogDescription>{["Ingress", ing?.hosts?.join(", ")].filter(Boolean).join(" · ")}</DialogDescription>
         </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
+        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
         <DetailTabs cluster={cluster} kind="ing" namespace={target.namespace} name={target.name}>
           <Section title="Paths">
             {paths.length === 0 && !q.isPending && <p className="text-xs text-muted-foreground">This Ingress has no rules.</p>}

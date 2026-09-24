@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DetailTabs } from "@/components/yaml-view";
-import { isForbidden, nodeMetricsQuery, nodeQuery, nodesQuery } from "@/queries";
+import { isForbidden, nodeMetricsQuery, nodeQuery, nodesQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +72,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
       <Empty className="justify-start border-0 pt-12">
         <EmptyHeader>
           <EmptyTitle>{isForbidden(nodes.error) ? "Nodes are forbidden for this role" : "Nodes could not be listed"}</EmptyTitle>
-          <EmptyDescription>{isForbidden(nodes.error) ? "The rest of the Cluster is unaffected." : String(nodes.error)}</EmptyDescription>
+          <EmptyDescription>{isForbidden(nodes.error) ? "The rest of the Cluster is unaffected." : errorText(nodes.error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -173,7 +173,7 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
             <Meter named name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
           </DialogDescription>
         </DialogHeader>
-        {q.error && <p className="text-xs text-destructive">{String(q.error)}</p>}
+        {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
         <DetailTabs cluster={cluster} kind="node" namespace="" name={n.name}>
           {d && (
             <>

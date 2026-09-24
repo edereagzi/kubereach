@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,7 +72,7 @@ type shellAttempt struct {
 // EventShellOutput and transitions as EventShellState. cols and rows are the terminal's initial size.
 func (s *Service) StartShell(ctx context.Context, target ShellTarget, cols, rows int) (ShellStatus, error) {
 	if target.Namespace == "" || target.Pod == "" {
-		return ShellStatus{}, errors.New("namespace and pod are required")
+		return ShellStatus{}, userErrorf("A shell needs a namespace and a pod")
 	}
 	k, err := s.clusterClient(target.ClusterID)
 	if err != nil {
@@ -184,7 +185,7 @@ func (s *Service) shell(sessionID string) (*shellConn, error) {
 	defer s.mu.Unlock()
 	sc := s.shells[sessionID]
 	if sc == nil {
-		return nil, errors.New("shell session has ended")
+		return nil, userErrorf("The shell session has ended")
 	}
 	return sc, nil
 }
@@ -194,9 +195,9 @@ func (s *Service) shell(sessionID string) (*shellConn, error) {
 func (s *Service) runShell(ctx context.Context, sc *shellConn, executorFor func(shell string) (remotecommand.Executor, error)) {
 	defer close(sc.done)
 	var err error
+	var started bool
 	for _, shell := range shells {
 		s.updateShellStatus(sc, func(st *ShellStatus) { st.Shell, st.State, st.Error = shell, StateConnecting, "" })
-		var started bool
 		started, err = s.execShell(ctx, sc, executorFor, shell)
 		if ctx.Err() != nil {
 			s.setShellState(sc, StateStopped, nil)
@@ -210,6 +211,9 @@ func (s *Service) runShell(ctx context.Context, sc *shellConn, executorFor func(
 			}
 			break
 		}
+	}
+	if !started && err != nil {
+		err = &userError{msg: "The pod has none of " + strings.Join(shells, ", "), err: err}
 	}
 	s.mu.Lock()
 	delete(s.shells, sc.status.ID)
@@ -274,10 +278,7 @@ func (q sizeQueue) Next() *remotecommand.TerminalSize {
 }
 
 func (s *Service) setShellState(sc *shellConn, state State, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
+	msg := errorMessage(err)
 	s.updateShellStatus(sc, func(st *ShellStatus) { st.State, st.Error = state, msg })
 }
 
