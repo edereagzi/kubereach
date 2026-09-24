@@ -25,45 +25,46 @@ func main() {
 	}
 	svc := service.New(configPath, nil)
 
+	// Typed errors cross to the frontend as err.cause.code so the UI never parses messages. Wails falls back from a
+	// service's marshaler to its default one, not to Options.MarshalError, so every service is given it.
+	typedErrors := application.ServiceOptions{MarshalError: func(err error) []byte {
+		if errors.Is(err, service.ErrForbidden) {
+			return []byte(`{"code":"forbidden"}`)
+		}
+		var need *service.CredentialError
+		if errors.As(err, &need) {
+			data, _ := json.Marshal(need)
+			return data
+		}
+		var exists *service.ForwardExistsError
+		if errors.As(err, &exists) {
+			data, _ := json.Marshal(struct {
+				Code string `json:"code"`
+				*service.ForwardExistsError
+			}{"forward-exists", exists})
+			return data
+		}
+		var inUse *service.PortInUseError
+		if errors.As(err, &inUse) {
+			data, _ := json.Marshal(struct {
+				Code string `json:"code"`
+				*service.PortInUseError
+			}{"port-in-use", inUse})
+			return data
+		}
+		return nil
+	}}
 	app := application.New(application.Options{
 		Name:        "Kubereach",
 		Description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
-		// Typed errors cross to the frontend as err.cause.code so the UI never parses messages.
-		MarshalError: func(err error) []byte {
-			if errors.Is(err, service.ErrForbidden) {
-				return []byte(`{"code":"forbidden"}`)
-			}
-			var need *service.CredentialError
-			if errors.As(err, &need) {
-				data, _ := json.Marshal(need)
-				return data
-			}
-			var exists *service.ForwardExistsError
-			if errors.As(err, &exists) {
-				data, _ := json.Marshal(struct {
-					Code string `json:"code"`
-					*service.ForwardExistsError
-				}{"forward-exists", exists})
-				return data
-			}
-			var inUse *service.PortInUseError
-			if errors.As(err, &inUse) {
-				data, _ := json.Marshal(struct {
-					Code string `json:"code"`
-					*service.PortInUseError
-				}{"port-in-use", inUse})
-				return data
-			}
-			return nil
-		},
 		Services: []application.Service{
-			application.NewService(bindings.NewConfigService(svc)),
-			application.NewService(bindings.NewClusterService(svc)),
-			application.NewService(bindings.NewRouteService(svc)),
-			application.NewService(bindings.NewForwardService(svc)),
-			application.NewService(bindings.NewLogService(svc)),
-			application.NewService(bindings.NewEventService(svc)),
-			application.NewService(bindings.NewShellService(svc)),
+			application.NewServiceWithOptions(bindings.NewConfigService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewClusterService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewRouteService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewForwardService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewLogService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewEventService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewShellService(svc), typedErrors),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
