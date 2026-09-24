@@ -19,6 +19,7 @@ import {
   type RouteStatus,
   type SSHServer,
 } from "@bindings/internal/service";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -195,7 +196,9 @@ function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => v
     onSuccess: done,
   });
   const remove = useMutation({ mutationFn: () => RouteService.Delete(route!.id), onSuccess: done });
-  const error = save.error ?? remove.error;
+  const [deleting, setDeleting] = useState(false);
+  const { data } = useQuery(configQuery);
+  const clusters = (data?.clusters ?? []).filter((c) => route && c.route === route.id).map((c) => c.name);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -241,17 +244,19 @@ function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => v
               <PlusIcon /> Add SSH server
             </Button>
           </div>
-          {error && <p className="text-sm text-destructive">{String(error)}</p>}
+          {save.error && <p className="text-sm text-destructive">{String(save.error)}</p>}
           <DialogFooter>
             {route && (
               <Button
                 type="button"
                 variant="destructive"
                 className="mr-auto"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
+                onClick={() => {
+                  remove.reset();
+                  setDeleting(true);
+                }}
               >
-                Delete
+                Delete…
               </Button>
             )}
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -262,6 +267,27 @@ function RouteDialog({ route, onClose }: { route: Route | null; onClose: () => v
             </Button>
           </DialogFooter>
         </form>
+        {route && (
+          <ConfirmDialog
+            open={deleting}
+            onOpenChange={setDeleting}
+            title={`Delete route ${route.name}?`}
+            description={
+              clusters.length > 0
+                ? (
+                  <>
+                    {clusters.length > 1 ? "Clusters" : "Cluster"} <span className="font-medium text-foreground">{clusters.join(", ")}</span>{" "}
+                    {clusters.length > 1 ? "use" : "uses"} this route. Switch {clusters.length > 1 ? "them" : "it"} to another route or Direct first.
+                  </>
+                )
+                : "Kubereach forgets this route and its SSH servers, and disconnects it if connected. Your SSH config and keys stay as they are."
+            }
+            confirm="Delete route"
+            destructive
+            disabled={clusters.length > 0}
+            action={remove}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

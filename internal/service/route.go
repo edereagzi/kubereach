@@ -166,27 +166,41 @@ func validateRoute(r *Route) error {
 	return nil
 }
 
-// DeleteRoute refuses while a Cluster still references the Route.
+// DeleteRoute refuses, leaving the Route connected, while a Cluster still references it.
 func (s *Service) DeleteRoute(routeID string) error {
+	s.mu.Lock()
+	_, _, err := s.loadForRouteDelete(routeID)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	if err := s.StopRoute(routeID); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cfg, err := loadConfig(s.configPath)
+	cfg, i, err := s.loadForRouteDelete(routeID)
 	if err != nil {
 		return err
-	}
-	i, err := findRoute(cfg, routeID)
-	if err != nil {
-		return err
-	}
-	if slices.ContainsFunc(cfg.Clusters, func(c Cluster) bool { return c.RouteID == routeID }) {
-		return fmt.Errorf("route %q is used by a cluster", cfg.Routes[i].Name)
 	}
 	delete(s.routes, routeID)
 	cfg.Routes = slices.Delete(cfg.Routes, i, i+1)
 	return s.saveConfig(cfg)
+}
+
+func (s *Service) loadForRouteDelete(routeID string) (Config, int, error) {
+	cfg, err := loadConfig(s.configPath)
+	if err != nil {
+		return cfg, 0, err
+	}
+	i, err := findRoute(cfg, routeID)
+	if err != nil {
+		return cfg, 0, err
+	}
+	if slices.ContainsFunc(cfg.Clusters, func(c Cluster) bool { return c.RouteID == routeID }) {
+		return cfg, 0, fmt.Errorf("route %q is used by a cluster", cfg.Routes[i].Name)
+	}
+	return cfg, i, nil
 }
 
 // SetClusterRoute attaches a Route to a Cluster; an empty routeID means direct access.

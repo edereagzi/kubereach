@@ -3,15 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClusterService } from "@bindings/internal/bindings";
 import { WorkloadKind, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import type { Target } from "@/components/targets";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -29,7 +21,7 @@ type ActionProps = {
   onOpen?: () => void;
 };
 
-// WriteAction changes the Cluster only after a confirmation that names it; the dialog stays open on failure to say why.
+// WriteAction changes the Cluster only after a confirmation that names it.
 function WriteAction({ cluster, label, title, description, confirm, destructive, disabled, children, run, onDone, onOpen }: ActionProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -54,25 +46,21 @@ function WriteAction({ cluster, label, title, description, confirm, destructive,
       >
         {label}
       </Button>
-      <AlertDialog open={open} onOpenChange={(o) => !action.isPending && setOpen(o)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{title}</AlertDialogTitle>
-            <AlertDialogDescription>{description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <p className="border-l-2 border-foreground/40 pl-3 text-sm text-muted-foreground">
-            on <span className="text-base font-semibold text-foreground">{cluster.name}</span>
-          </p>
-          {children}
-          {action.error && <p className="text-xs text-destructive">{action.error.message}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={action.isPending}>Cancel</AlertDialogCancel>
-            <Button variant={destructive ? "destructive" : "default"} disabled={disabled || action.isPending} onClick={() => action.mutate()}>
-              {confirm}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={title}
+        description={description}
+        confirm={confirm}
+        destructive={destructive}
+        disabled={disabled}
+        action={action}
+      >
+        <p className="border-l-2 border-foreground/40 pl-3 text-sm text-muted-foreground">
+          on <span className="text-base font-semibold text-foreground">{cluster.name}</span>
+        </p>
+        {children}
+      </ConfirmDialog>
     </>
   );
 }

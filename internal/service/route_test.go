@@ -934,3 +934,16 @@ func TestRoute_ClientOutlivesARouteRestart(t *testing.T) {
 		t.Errorf("builds = %d, want 1", builds)
 	}
 }
+
+func TestRoute_DeleteInUseLeavesItConnected(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	f.connect(t)
+
+	if err := f.svc.DeleteRoute(f.route.ID); err == nil {
+		t.Fatal("deleting a Route in use should fail")
+	}
+	if _, err := f.svc.CheckReachability(context.Background(), f.cluster); err != nil {
+		t.Errorf("after refused delete: %v, want the Route still connected", err)
+	}
+}

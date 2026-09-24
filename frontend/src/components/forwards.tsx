@@ -4,6 +4,7 @@ import { ArrowRightIcon, ArrowSquareOutIcon, DotsThreeIcon, PlusIcon } from "@ph
 import { Browser } from "@wailsio/runtime";
 import { ForwardService } from "@bindings/internal/bindings";
 import { State, TargetKind, type Cluster, type ForwardStatus, type PortForward } from "@bindings/internal/service";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import { StateDot } from "@/components/routes";
 import { forwardKind, KindBadge, portsLabel, TargetPicker, targetValue, useTargets, type Target } from "@/components/targets";
@@ -37,10 +38,11 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
   const groups = new Map<string, PortForward[]>();
   for (const f of saved) groups.set(forwardKey(f), [...(groups.get(forwardKey(f)) ?? []), f]);
 
-  if (saved.length === 0) {
-    return (
-      <>
-        {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
+  // One AddForward for both branches, so it keeps its state when its first forward turns the empty state into the list.
+  return (
+    <>
+      {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
+      {saved.length === 0 ? (
         <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>No port forwards</EmptyTitle>
@@ -52,34 +54,31 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
             </Button>
           </EmptyContent>
         </Empty>
-      </>
-    );
-  }
-
-  return (
-    <div className="flex flex-col pb-4">
-      {adding && <AddForward cluster={cluster} saved={saved} onClose={() => setAdding(false)} />}
-      <div className="flex items-center gap-2 px-4 py-2.5">
-        <Button size="sm" onClick={() => setAdding(true)}>
-          <PlusIcon /> Add forward
-        </Button>
-        <span className="ml-auto text-xs text-muted-foreground">
-          {on} of {saved.length} on
-          {failing > 0 && <span className="text-destructive"> · {failing} failing</span>}
-        </span>
-      </div>
-      {[...groups].map(([key, forwards]) => (
-        <section key={key}>
-          <h3 className="flex items-center gap-2 px-4 pt-3 pb-1 text-sm font-medium">
-            <KindBadge kind={forwards[0]!.target.kind === TargetKind.TargetService ? "svc" : "pod"} />
-            {forwards[0]!.target.namespace}/{forwards[0]!.target.name}
-          </h3>
-          {forwards.map((f) => (
-            <ForwardRow key={f.id} forward={f} status={statuses[f.id]} />
+      ) : (
+        <div className="flex flex-col pb-4">
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <PlusIcon /> Add forward
+            </Button>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {on} of {saved.length} on
+              {failing > 0 && <span className="text-destructive"> · {failing} failing</span>}
+            </span>
+          </div>
+          {[...groups].map(([key, forwards]) => (
+            <section key={key}>
+              <h3 className="flex items-center gap-2 px-4 pt-3 pb-1 text-sm font-medium">
+                <KindBadge kind={forwards[0]!.target.kind === TargetKind.TargetService ? "svc" : "pod"} />
+                {forwards[0]!.target.namespace}/{forwards[0]!.target.name}
+              </h3>
+              {forwards.map((f) => (
+                <ForwardRow key={f.id} forward={f} status={statuses[f.id]} />
+              ))}
+            </section>
           ))}
-        </section>
-      ))}
-    </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -103,6 +102,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [localPort, setLocalPort] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const invalidateConfig = () => queryClient.invalidateQueries({ queryKey: configQuery.queryKey });
   const setEnabled = useMutation({
     mutationFn: (enabled: boolean) => ForwardService.SetEnabled(forward.id, enabled),
@@ -119,7 +119,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
   const remove = useMutation({ mutationFn: () => ForwardService.Delete(forward.id), onSuccess: invalidateConfig });
   const address = `localhost:${forward.localPort}`;
   const url = `${forward.remotePort === 443 || forward.remotePort === 8443 ? "https" : "http"}://${address}`;
-  const error = setEnabled.error ?? remove.error ?? save.error;
+  const error = setEnabled.error ?? save.error;
   const busy = portInUse(error);
   const failed = !!error || status?.state === State.StateError;
 
@@ -198,11 +198,30 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
           >
             Change local port…
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={() => remove.mutate()}>
-            Delete forward
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              remove.reset();
+              setDeleting(true);
+            }}
+          >
+            Delete forward…
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete forward ${address}?`}
+        description={`Port ${forward.localPort} is released. Adding the forward again may get a different local port.`}
+        confirm="Delete forward"
+        destructive
+        action={remove}
+      >
+        <p className="border-l-2 border-foreground/40 pl-3 font-mono text-sm break-all text-foreground">
+          {forward.target.namespace}/{forward.target.name}:{forward.remotePort}
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -228,7 +247,9 @@ export function AddForward({
   const forwardable = groups.filter((g) => g.label !== "Workloads");
   const existing = (port: number) => target && saved.find((f) => forwardKey(f) === target.value && f.remotePort === port);
   const pick = (port: number): PortPick => picks[port] ?? { checked: true, localPort: "" };
-  const ticked = (target?.ports ?? []).filter((p) => !existing(p.port) && pick(p.port).checked);
+  // A port served over both UDP and TCP is listed twice, but only one forward per port number can exist.
+  const ports = [...new Map((target?.ports ?? []).map((p) => [p.port, p])).values()];
+  const ticked = ports.filter((p) => !existing(p.port) && pick(p.port).checked);
   const add = useMutation({
     mutationFn: async () => {
       for (const p of ticked) {
@@ -242,12 +263,13 @@ export function AddForward({
         });
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: configQuery.queryKey });
-      onClose();
-    },
+    // Ports saved before a failure show as already forwarded, so a retry adds only the rest.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: configQuery.queryKey }),
+    onSuccess: onClose,
   });
   const busy = portInUse(add.error);
+  const clash = busy && ticked.find((p) => Number(pick(p.port).localPort) === busy.port);
+  const suggestion = busy && clash ? { port: clash.port, localPort: busy.suggested } : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -274,8 +296,8 @@ export function AddForward({
           {target && (
             <div className="grid gap-1.5">
               <Label>Ports</Label>
-              {target.ports.length === 0 && <p className="text-sm text-muted-foreground">{target.label} declares no ports.</p>}
-              {target.ports.map((p) => {
+              {ports.length === 0 && <p className="text-sm text-muted-foreground">{target.label} declares no ports.</p>}
+              {ports.map((p) => {
                 const already = existing(p.port);
                 const current = pick(p.port);
                 return (
@@ -306,9 +328,20 @@ export function AddForward({
             </div>
           )}
           {(listError || add.error) && (
-            <p className="text-sm text-destructive">
+            <p className="flex items-center gap-2 text-sm text-destructive">
               {String(listError ?? add.error)}
-              {busy && ` — ${busy.suggested} is free`}
+              {suggestion && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    add.reset();
+                    setPicks({ ...picks, [suggestion.port]: { ...pick(suggestion.port), localPort: String(suggestion.localPort) } });
+                  }}
+                >
+                  Use {suggestion.localPort} instead
+                </Button>
+              )}
             </p>
           )}
         </div>

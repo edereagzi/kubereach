@@ -4,6 +4,7 @@ import { ArrowsClockwiseIcon, CubeIcon, DotsThreeIcon, PlusIcon, WarningIcon } f
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService, RouteService } from "@bindings/internal/bindings";
 import type { Cluster } from "@bindings/internal/service";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ClusterOverview } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
@@ -12,15 +13,6 @@ import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
 import { RouteList, statusLabel, StateDot } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -328,23 +320,15 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <AlertDialog open={removing} onOpenChange={(o) => !remove.isPending && setRemoving(o)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {cluster.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Kubereach forgets this cluster and deletes its port forwards; open logs and shells close. The cluster and your kubeconfig stay as they are.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {remove.error && <p className="text-xs text-destructive">{String(remove.error)}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
-            <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
-              Remove cluster
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={removing}
+        onOpenChange={setRemoving}
+        title={`Remove ${cluster.name}?`}
+        description="Kubereach forgets this cluster and deletes its port forwards; open logs and shells close. The cluster and your kubeconfig stay as they are."
+        confirm="Remove cluster"
+        destructive
+        action={remove}
+      />
     </div>
   );
 }
