@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretRightIcon, CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
@@ -19,6 +19,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Toggle } from "@/components/ui/toggle";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey } from "@/queries";
 import { useUIStore } from "@/store";
+import { cn } from "@/lib/utils";
 
 // The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
 // Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
@@ -46,6 +47,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
   const { groups, error: listError, pending } = useTargets(cluster, true);
+  const rescoping = useIsMutating({ mutationKey: scopeKey(cluster.id) }) > 0;
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
   const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
   const [problems, setProblems] = useState(false);
@@ -82,7 +84,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   }, []);
 
   if ((!explicit.length && isForbidden(namespaces.error)) || isForbidden(listError)) {
-    return <NamespacePrompt cluster={cluster} />;
+    return <NamespacePrompt cluster={cluster} error={explicit.length ? listError : null} />;
   }
   const error = listError ?? (explicit.length ? null : namespaces.error);
   if (error) {
@@ -142,7 +144,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${String(g.error)}`}
           </p>
         ))}
-      <div className="min-h-0 flex-1 overflow-auto pb-4">
+      <div className={cn("min-h-0 flex-1 overflow-auto pb-4 transition-opacity", rescoping && "opacity-50")}>
         {total === 0 && !pending && (
           <Empty className="justify-start border-0 pt-12">
             <EmptyHeader>
@@ -230,17 +232,23 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect }: { clust
   );
 }
 
+const scopeKey = (clusterId: string) => ["namespace-scope", clusterId];
+const textWidth = document.createElement("canvas").getContext("2d")!;
+
 // A role that may not list namespaces can still add one by name.
 function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[] }) {
   const queryClient = useQueryClient();
   const scope = cluster.namespaces ?? [];
   const [draft, setDraft] = useState(scope);
   const [query, setQuery] = useState("");
-  // Saves run one after another, so quick ticks land in the order they were made.
+  // Saves run one after another, so quick ticks land in the order they were made; each stays pending until the lists
+  // have been fetched again, which is what the spinner and the dimmed list show.
   const save = useMutation({
-    scope: { id: `namespaces:${cluster.id}` },
+    mutationKey: scopeKey(cluster.id),
+    scope: { id: scopeKey(cluster.id).join(":") },
     mutationFn: (namespaces: string[]) => ClusterService.SetNamespaces(cluster.id, namespaces),
-    onSettled: () => queryClient.invalidateQueries(),
+    onSettled: () =>
+      Promise.all([queryClient.invalidateQueries({ queryKey: ["config"] }), queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] })]),
   });
   const pick = (namespaces: string[]) => {
     setDraft(namespaces);
@@ -249,6 +257,26 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
   const typed = query.trim();
   const items = [...new Set([...(known ?? []), ...draft, ...(!known && typed ? [typed] : [])])].sort();
   const label = scope.length ? scope.join(", ") : "All namespaces";
+  // As many names as fit the button are written out, the rest counted; the first is always written, truncated if need be.
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [shown, setShown] = useState(scope.length);
+  useLayoutEffect(() => {
+    const el = labelRef.current;
+    if (!el) return;
+    const { font, fontFamily } = getComputedStyle(el);
+    const width = (text: string, as: string) => ((textWidth.font = as), textWidth.measureText(text).width);
+    // The count is an 11px pill with 6px padding a side, 6px from the names.
+    const count = (n: number) => (n < scope.length ? width(`+${scope.length - n}`, `11px ${fontFamily}`) + 18 : 0);
+    const fits = (n: number) => width(scope.slice(0, n).join(", "), font) + count(n) <= el.clientWidth;
+    const fit = () => {
+      let n = scope.length;
+      while (n > 1 && !fits(n)) n--;
+      setShown(n);
+    };
+    fit();
+    // Widths measured before the app's font arrives are the fallback's.
+    void document.fonts.ready.then(fit);
+  }, [label]);
 
   return (
     <Combobox
@@ -263,8 +291,15 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
         else setQuery("");
       }}
     >
-      <ComboboxTrigger render={<Button variant="ghost" size="sm" className="max-w-80 text-muted-foreground" title={label} />}>
-        <span className="truncate">{label}</span>
+      {/* A fixed width and the spinner in the caret's place keep the toolbar still while the scope changes. */}
+      <ComboboxTrigger
+        render={<Button variant="ghost" size="sm" className={cn("w-60 justify-between text-muted-foreground", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
+      >
+        <span ref={labelRef} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="truncate">{scope.length ? scope.slice(0, shown).join(", ") : label}</span>
+          {shown < scope.length && <span className="shrink-0 rounded-full bg-foreground/8 px-1.5 text-[11px] leading-4 tabular-nums">+{scope.length - shown}</span>}
+        </span>
+        {save.isPending && <CircleNotchIcon className="size-4 animate-spin" />}
       </ComboboxTrigger>
       <ComboboxContent align="end" className="w-72">
         <ComboboxInput showTrigger={false} placeholder={known ? "Search namespaces" : "Add a namespace by name"} autoFocus>
@@ -284,7 +319,7 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
         <ComboboxList>
           {(ns: string) => (
             <ComboboxItem key={ns} value={ns}>
-              {ns}
+              {known || draft.includes(ns) ? ns : `Add “${ns}”`}
             </ComboboxItem>
           )}
         </ComboboxList>
@@ -294,7 +329,8 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
   );
 }
 
-function NamespacePrompt({ cluster }: { cluster: Cluster }) {
+// With a scope set, the error says which namespace the role may not read.
+function NamespacePrompt({ cluster, error }: { cluster: Cluster; error: unknown }) {
   const queryClient = useQueryClient();
   const [value, setValue] = useState(cluster.namespaces?.join(", ") ?? "");
   const save = useMutation({
@@ -312,8 +348,9 @@ function NamespacePrompt({ cluster }: { cluster: Cluster }) {
       }}
     >
       <div>
-        <p className="text-sm font-medium">Cluster-wide listing is forbidden</p>
+        <p className="text-sm font-medium">{error ? "Some of these namespaces are forbidden" : "Cluster-wide listing is forbidden"}</p>
         <p className="text-sm text-muted-foreground">Enter the namespaces you may use. They are remembered for this cluster.</p>
+        {!!error && <p className="mt-2 text-xs text-muted-foreground">{String(error)}</p>}
       </div>
       <div className="flex gap-2">
         <Input autoFocus placeholder="default, payments" value={value} onChange={(e) => setValue(e.target.value)} />
