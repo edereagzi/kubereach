@@ -103,6 +103,11 @@ func (a *testAPI) deletePod(pod string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.gone[pod] = true
+	a.endFollows(pod)
+}
+
+// endFollows ends the pod's follow bodies, as its containers stopping does; callers hold a.mu.
+func (a *testAPI) endFollows(pod string) {
 	for key, feed := range a.feeds {
 		if strings.HasPrefix(key, pod+"/") {
 			close(feed)
@@ -493,4 +498,174 @@ func TestLogs_PreviousRunIsReadOnceAndStaysReadable(t *testing.T) {
 	if _, err := f.svc.StartLogs(context.Background(), src); err == nil {
 		t.Fatal("previous logs of a workload started without error")
 	}
+}
+
+func TestLogs_OverLongLineIsCutAndTheStreamGoesOn(t *testing.T) {
+	f := newForwardFixture(t, twoContainerPod("default", "api-0"))
+	batches, _ := logEvents(f.svc)
+	f.api.seedLogs("api-0", "app", "before", strings.Repeat("x", 3<<20), "after")
+
+	stream, err := f.svc.StartLogs(context.Background(), service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := collectLogs(t, batches, stream.ID, 3)
+	if lines[0].Text != "before" || lines[2].Text != "after" {
+		t.Errorf("lines around the long one = %q, %q", lines[0].Text, lines[2].Text)
+	}
+	if long := lines[1]; !long.Truncated || len(long.Text) > 1<<20 || !strings.HasPrefix(long.Text, "xxx") {
+		t.Errorf("long line = %d bytes, truncated %v, want it cut at 1 MiB and marked", len(long.Text), long.Truncated)
+	}
+	if lines[0].Truncated || lines[2].Truncated {
+		t.Error("short lines are marked truncated")
+	}
+	f.api.writeLog("api-0", "app", "live")
+	if got := collectLogs(t, batches, stream.ID, 1); got[0].Text != "live" {
+		t.Errorf("line after the long one = %q, want live", got[0].Text)
+	}
+	_ = f.svc.StopLogs(stream.ID)
+}
+
+func TestLogs_StartingContainerIsPolledWithoutBackoff(t *testing.T) {
+	f := newForwardFixture(t, twoContainerPod("default", "api-0"))
+	batches, _ := logEvents(f.svc)
+
+	// Nothing seeded: the API answers 400 as it does for a container that is waiting to start.
+	stream, err := f.svc.StartLogs(context.Background(), service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * time.Second)
+	f.api.seedLogs("api-0", "app", "running")
+	started := time.Now()
+	collectLogs(t, batches, stream.ID, 1)
+	if waited := time.Since(started); waited > 2*time.Second {
+		t.Errorf("first line arrived %s after the container ran, want within a couple of seconds", waited)
+	}
+	_ = f.svc.StopLogs(stream.ID)
+}
+
+func TestLogs_StartReplacesTheClustersStream(t *testing.T) {
+	f := newForwardFixture(t, twoContainerPod("default", "api-0"), twoContainerPod("default", "api-1"))
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-0", "app", "zero")
+	f.api.seedLogs("api-1", "app", "one")
+
+	ctx := context.Background()
+	src := service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "app"}
+	first, err := f.svc.StartLogs(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.Name = "api-1"
+	second, err := f.svc.StartLogs(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitLogStatus(t, states, func(st service.LogStatus) bool { return st.ID == first.ID && st.State == service.StateStopped })
+	if got := f.svc.LogStatuses(); len(got) != 1 || got[0].ID != second.ID {
+		t.Errorf("statuses = %+v, want only the second stream", got)
+	}
+	// The first stream may have delivered before it was replaced; the second delivers only api-1's.
+	for {
+		select {
+		case b := <-batches:
+			if b.StreamID != second.ID {
+				continue
+			}
+			if b.Lines[0].Pod != "api-1" {
+				t.Errorf("second stream's lines = %+v, want api-1's", b.Lines)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for the second stream's lines")
+		}
+		break
+	}
+	_ = f.svc.StopLogs(second.ID)
+}
+
+func TestLogs_DeletedWorkloadIsReportedAndFollowedWhenBack(t *testing.T) {
+	f := newForwardFixture(t, deployment("default", "api"), twoContainerPod("default", "api-a"))
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-a", "app", "a 1")
+	f.api.seedLogs("api-a", "sidecar", "a side")
+	f.api.seedLogs("api-b", "app", "b 1")
+	f.api.seedLogs("api-b", "sidecar", "b side")
+
+	ctx := context.Background()
+	stream, err := f.svc.StartLogs(ctx, service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourceDeployment, Name: "api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitLogPods(t, states, "api-a")
+	collectLogs(t, batches, stream.ID, 2)
+
+	if err := f.cs.AppsV1().Deployments("default").Delete(ctx, "api", metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.api.deletePod("api-a")
+	if err := f.cs.CoreV1().Pods("default").Delete(ctx, "api-a", metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	gone := waitLogStatus(t, states, func(st service.LogStatus) bool { return st.Deleted && len(st.Pods) == 0 })
+	if gone.State != service.StateConnected {
+		t.Errorf("state after the deployment was deleted = %s (%s), want still connected", gone.State, gone.Error)
+	}
+	if got := f.svc.LogStatuses(); len(got) != 1 || !got[0].Deleted {
+		t.Errorf("statuses = %+v, want the stream kept and marked deleted", got)
+	}
+
+	if _, err := f.cs.AppsV1().Deployments("default").Create(ctx, deployment("default", "api"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cs.CoreV1().Pods("default").Create(ctx, twoContainerPod("default", "api-b"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	waitLogStatus(t, states, func(st service.LogStatus) bool { return !st.Deleted && slices.Equal(st.Pods, []string{"api-b"}) })
+	for _, l := range collectLogs(t, batches, stream.ID, 2) {
+		if l.Pod != "api-b" {
+			t.Errorf("line after the deployment came back = %+v, want api-b's", l)
+		}
+	}
+	_ = f.svc.StopLogs(stream.ID)
+}
+
+func TestLogs_TerminatingPodEndingIsNotAReconnect(t *testing.T) {
+	f := newForwardFixture(t, deployment("default", "api"), twoContainerPod("default", "api-a"))
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-a", "app", "a 1")
+	f.api.seedLogs("api-a", "sidecar", "a side")
+
+	ctx := context.Background()
+	stream, err := f.svc.StartLogs(ctx, service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourceDeployment, Name: "api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitLogPods(t, states, "api-a")
+	collectLogs(t, batches, stream.ID, 2)
+	waitLogState(t, states, service.StateConnected)
+
+	pod := twoContainerPod("default", "api-a")
+	pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	if _, err := f.cs.CoreV1().Pods("default").Update(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// The informer has to see the deletion before the containers stop; there is no event to wait on for that.
+	time.Sleep(200 * time.Millisecond)
+	f.api.mu.Lock()
+	f.api.endFollows("api-a")
+	f.api.mu.Unlock()
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case st := <-states:
+			if st.State == service.StateReconnecting {
+				t.Fatalf("a terminating pod's stream ending was reported: %+v", st)
+			}
+			continue
+		case <-deadline:
+		}
+		break
+	}
+	_ = f.svc.StopLogs(stream.ID)
 }

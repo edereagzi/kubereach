@@ -306,6 +306,11 @@ export interface LogLine {
     "time": string;
     "text": string;
     "fields"?: { [_ in string]?: string } | null;
+
+    /**
+     * Truncated marks a line cut at 1 MiB; the rest of it was skipped.
+     */
+    "truncated"?: boolean;
 }
 
 /**
@@ -351,6 +356,11 @@ export interface LogStatus {
     "containers": string[] | null;
     "state": State;
     "error"?: string;
+
+    /**
+     * Deleted marks a workload that no longer exists; its pods are still followed should it come back.
+     */
+    "deleted"?: boolean;
 }
 
 /**

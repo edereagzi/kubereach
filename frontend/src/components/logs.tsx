@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, TextAlignLeftIcon, XIcon } from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
 import { LogSourceKind, type Cluster, type LogLine, type LogStatus } from "@bindings/internal/service";
+import { CopyButton } from "@/components/copy-button";
 import { statusLabel, StateDot } from "@/components/routes";
 import { KindBadge, logKind, TargetPicker, useTargets, type Kind, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
@@ -57,17 +58,37 @@ const segments = (l: LogLine, { showPod, showContainer }: Columns): Segment[] =>
   return out;
 };
 const lineText = (l: LogLine, cols: Columns) => segments(l, cols).map((s) => s.text).join("  ");
+// A row draws its first shownChars characters, so one huge line cannot stretch the view; Show all and Copy reach the rest.
+const shownChars = 2000;
+const clip = (segs: Segment[]): { segs: Segment[]; hidden: number } => {
+  const total = segs.reduce((n, s) => n + s.text.length, 0);
+  if (total <= shownChars) return { segs, hidden: 0 };
+  let room = shownChars;
+  const out: Segment[] = [];
+  for (const s of segs) {
+    if (room <= 0) break;
+    out.push(s.text.length > room ? { ...s, text: s.text.slice(0, room) } : s);
+    room -= s.text.length;
+  }
+  return { segs: out, hidden: total - shownChars };
+};
+const compact = new Intl.NumberFormat(undefined, { notation: "compact" });
+// Rows are keyed by the line itself, so their measured heights stay with them when the buffer drops its oldest lines.
+const lineKeys = new WeakMap<LogLine, number>();
+let nextLineKey = 0;
+const lineKey = (l: LogLine) => {
+  let k = lineKeys.get(l);
+  if (k === undefined) lineKeys.set(l, (k = nextLineKey++));
+  return k;
+};
 
 export const streamFor = (streams: Record<string, LogStatus>, cluster: Cluster) =>
   Object.values(streams).find((st) => st.source.clusterId === cluster.id);
 
-// A cluster follows one source at a time, so starting a new one replaces the old.
 export function useStartLogs(cluster: Cluster) {
   const selectTab = useUIStore((s) => s.selectTab);
   return useMutation({
     mutationFn: async (target: Target & { previous?: boolean }) => {
-      const current = streamFor(useUIStore.getState().logStreams, cluster);
-      if (current) await LogService.Stop(current.id);
       await LogService.Start({
         clusterId: cluster.id,
         kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod,
@@ -155,6 +176,11 @@ function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; pick
         {shell}
       </div>
       {(error || stream.error) && <p className="px-4 pb-2 text-xs text-destructive">{String(error ?? statusLabel(stream))}</p>}
+      {stream.deleted && (
+        <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
+          {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if it is recreated.
+        </p>
+      )}
       <LogView stream={stream} view={view} />
     </div>
   );
@@ -162,6 +188,8 @@ function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; pick
 
 function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewState; patch: (p: Partial<ViewState>) => void }) {
   const clearLogs = useUIStore((s) => s.clearLogs);
+  const wrap = useUIStore((s) => s.logWrap);
+  const toggleWrap = useUIStore((s) => s.toggleLogWrap);
   const stop = useMutation({ mutationFn: () => LogService.Stop(stream.id) });
   const containers = stream.containers ?? [];
   return (
@@ -213,6 +241,9 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
+      <Button variant={wrap ? "secondary" : "ghost"} size="icon-sm" title="Wrap long lines" aria-pressed={wrap} onClick={toggleWrap}>
+        <TextAlignLeftIcon />
+      </Button>
       <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => clearLogs(stream.id)}>
         Clear
       </Button>
@@ -272,8 +303,21 @@ function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
 function LogList({ lines, total, version, showPod, showContainer }: { lines: LogLine[]; total: number; version: number; showPod: boolean; showContainer: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
-  const seen = useRef(0);
+  const wrap = useUIStore((s) => s.logWrap);
+  // Lines are found by identity, not position, because the capped buffer drops its oldest ones.
+  const seen = useRef<LogLine | undefined>(undefined);
   const [expanded, setExpanded] = useState(() => new Set<LogLine>());
+  const [shownInFull, setShownInFull] = useState(() => new Set<LogLine>());
+  // Reading a line means staying on it; new batches must not scroll it away.
+  const toggle = (set: (f: (s: Set<LogLine>) => Set<LogLine>) => void, line: LogLine) => {
+    setFollowing(false);
+    set((s) => {
+      const next = new Set(s);
+      if (next.has(line)) next.delete(line);
+      else next.add(line);
+      return next;
+    });
+  };
   // Only the rows in view exist in the DOM, so Select All is remembered and Copy writes every line itself.
   const allSelected = useRef(false);
   const virtualizer = useVirtualizer({
@@ -281,6 +325,10 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
     getScrollElement: () => parentRef.current,
     estimateSize: () => 20,
     overscan: 30,
+    // The buffer is appended in place, so version is part of the key function's identity.
+    getItemKey: useCallback((i: number) => lineKey(lines[i]!), [lines, version]),
+    // Keeps the top row where it is when the buffer drops its oldest lines.
+    anchorTo: "end",
   });
 
   // Jumping straight to scrollHeight lands exactly at the bottom, so the scroll handler never mistakes it for a scroll up.
@@ -290,9 +338,9 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
     if (!following) return;
     const el = parentRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-    seen.current = lines.length;
+    seen.current = lines.at(-1);
   }, [lines.length, version, following, totalSize]);
-  const behind = Math.max(0, lines.length - seen.current);
+  const behind = seen.current ? lines.length - 1 - lines.lastIndexOf(seen.current) : lines.length;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col border-t">
@@ -323,6 +371,9 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
           {virtualizer.getVirtualItems().map((item) => {
             const line = lines[item.index]!;
             const open = expanded.has(line);
+            const full = shownInFull.has(line);
+            const all = segments(line, { showPod, showContainer });
+            const { segs, hidden } = full ? { segs: all, hidden: 0 } : clip(all);
             const fields = line.fields ? Object.entries(line.fields) : [];
             const width = Math.max(0, ...fields.map(([k]) => k.length));
             return (
@@ -330,11 +381,11 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
                 key={item.key}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                className={cn("absolute left-0 w-max min-w-full", open && "bg-accent")}
+                className={cn("absolute left-0", wrap ? "w-full" : "w-max min-w-full", open && "bg-accent")}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <div
-                  className="group relative min-h-5 px-4 leading-5 whitespace-pre hover:bg-muted/50"
+                  className={cn("group relative min-h-5 px-4 leading-5 hover:bg-muted/50", wrap ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-pre")}
                 >
                   {/* Only the caret opens the fields, so clicking and dragging over lines is left to text selection. */}
                   {fields.length > 0 && (
@@ -346,21 +397,12 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
                         "absolute top-0 left-0.5 flex h-5 w-3.5 items-center justify-center text-muted-foreground select-none hover:text-foreground focus-visible:opacity-100",
                         !open && "opacity-0 group-hover:opacity-100",
                       )}
-                      onClick={() => {
-                        // Reading a line means staying on it; new batches must not scroll it away.
-                        setFollowing(false);
-                        setExpanded((s) => {
-                          const next = new Set(s);
-                          if (next.has(line)) next.delete(line);
-                          else next.add(line);
-                          return next;
-                        });
-                      }}
+                      onClick={() => toggle(setExpanded, line)}
                     >
                       <CaretRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
                     </button>
                   )}
-                  {segments(line, { showPod, showContainer }).map((seg, i) => (
+                  {segs.map((seg, i) => (
                     <Fragment key={i}>
                       {i > 0 && "  "}
                       <span className={seg.className} title={seg.title}>
@@ -368,6 +410,24 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
                       </span>
                     </Fragment>
                   ))}
+                  {(hidden > 0 || full) && (
+                    <span className="text-muted-foreground select-none">
+                      {hidden > 0 && "…"}
+                      {"  "}
+                      {line.truncated ? (
+                        <span className="text-amber-700 dark:text-amber-400" title="The rest of this line was not received.">
+                          truncated
+                        </span>
+                      ) : (
+                        hidden > 0 && `+${compact.format(hidden)} characters`
+                      )}
+                      {"  "}
+                      <button type="button" className="hover:text-foreground hover:underline" onClick={() => toggle(setShownInFull, line)}>
+                        {full ? "Show less" : "Show all"}
+                      </button>
+                      <CopyButton text={line.text} title="Copy the whole line" className="ml-1 size-5 align-top opacity-100" />
+                    </span>
+                  )}
                 </div>
                 {open && (
                   <div className="border-b px-4 pt-0.5 pb-1.5 leading-5 whitespace-pre text-muted-foreground">

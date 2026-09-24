@@ -2,11 +2,13 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -14,9 +16,11 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -53,6 +57,8 @@ type LogLine struct {
 	Time      time.Time         `json:"time"`
 	Text      string            `json:"text"`
 	Fields    map[string]string `json:"fields,omitempty"`
+	// Truncated marks a line cut at 1 MiB; the rest of it was skipped.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // EventLogLines carries a LogBatch; lines are batched so a chatty pod does not flood the UI.
@@ -74,16 +80,19 @@ type LogStatus struct {
 	Containers []string `json:"containers"`
 	State      State    `json:"state"`
 	Error      string   `json:"error,omitempty"`
+	// Deleted marks a workload that no longer exists; its pods are still followed should it come back.
+	Deleted bool `json:"deleted,omitempty"`
 }
 
 func (st LogStatus) equal(o LogStatus) bool {
-	return st.State == o.State && st.Error == o.Error && slices.Equal(st.Pods, o.Pods) && slices.Equal(st.Containers, o.Containers)
+	return st.State == o.State && st.Error == o.Error && st.Deleted == o.Deleted && slices.Equal(st.Pods, o.Pods) && slices.Equal(st.Containers, o.Containers)
 }
 
 const (
 	logTailLines   = 1000
 	logBatchMax    = 1000
 	logBatchLinger = 50 * time.Millisecond
+	logLineMax     = 1 << 20
 )
 
 type logConn struct {
@@ -95,10 +104,13 @@ type logConn struct {
 	// pods holds the cancel of each followed pod; open counts the log bodies currently streaming.
 	pods map[string]context.CancelFunc
 	open int
-	wg   sync.WaitGroup
+	// terminating pods are followed to their last line, but their bodies ending is not a drop.
+	terminating map[string]bool
+	wg          sync.WaitGroup
 }
 
 // StartLogs follows the source, delivering EventLogLines batches until StopLogs; a single pod's stream also ends when the pod is gone.
+// A Cluster follows one source at a time, so the stream it replaces is stopped first.
 func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, error) {
 	if src.Namespace == "" || src.Name == "" {
 		return LogStatus{}, errors.New("namespace and name are required")
@@ -112,6 +124,8 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 	}
 	var selector *metav1.LabelSelector
 	var containers []corev1.Container
+	var workload cache.ListerWatcher
+	var workloadType runtime.Object
 	switch src.Kind {
 	case LogSourcePod:
 		pod, err := k.client.CoreV1().Pods(src.Namespace).Get(ctx, src.Name, metav1.GetOptions{})
@@ -128,23 +142,29 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 			containers = all[i : i+1]
 		}
 	case LogSourceDeployment:
-		d, err := k.client.AppsV1().Deployments(src.Namespace).Get(ctx, src.Name, metav1.GetOptions{})
+		client := k.client.AppsV1().Deployments(src.Namespace)
+		d, err := client.Get(ctx, src.Name, metav1.GetOptions{})
 		if err != nil {
 			return LogStatus{}, err
 		}
 		selector, containers = d.Spec.Selector, d.Spec.Template.Spec.Containers
+		workload, workloadType = namedListWatch(client, src.Name), &appsv1.Deployment{}
 	case LogSourceStatefulSet:
-		ss, err := k.client.AppsV1().StatefulSets(src.Namespace).Get(ctx, src.Name, metav1.GetOptions{})
+		client := k.client.AppsV1().StatefulSets(src.Namespace)
+		ss, err := client.Get(ctx, src.Name, metav1.GetOptions{})
 		if err != nil {
 			return LogStatus{}, err
 		}
 		selector, containers = ss.Spec.Selector, ss.Spec.Template.Spec.Containers
+		workload, workloadType = namedListWatch(client, src.Name), &appsv1.StatefulSet{}
 	case LogSourceDaemonSet:
-		ds, err := k.client.AppsV1().DaemonSets(src.Namespace).Get(ctx, src.Name, metav1.GetOptions{})
+		client := k.client.AppsV1().DaemonSets(src.Namespace)
+		ds, err := client.Get(ctx, src.Name, metav1.GetOptions{})
 		if err != nil {
 			return LogStatus{}, err
 		}
 		selector, containers = ds.Spec.Selector, ds.Spec.Template.Spec.Containers
+		workload, workloadType = namedListWatch(client, src.Name), &appsv1.DaemonSet{}
 	default:
 		return LogStatus{}, fmt.Errorf("unknown log source kind %q", src.Kind)
 	}
@@ -166,12 +186,61 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 	if selector == nil {
 		status.Pods = []string{src.Name}
 	}
-	lc := &logConn{cancel: cancel, done: make(chan struct{}), lines: make(chan LogLine, logBatchMax), status: status, pods: map[string]context.CancelFunc{}}
+	lc := &logConn{cancel: cancel, done: make(chan struct{}), lines: make(chan LogLine, logBatchMax), status: status, pods: map[string]context.CancelFunc{}, terminating: map[string]bool{}}
+	var replaced []*logConn
 	s.mu.Lock()
+	for id, old := range s.logs {
+		if old.status.Source.ClusterID == src.ClusterID {
+			replaced = append(replaced, old)
+			delete(s.logs, id)
+		}
+	}
 	s.logs[status.ID] = lc
 	s.mu.Unlock()
-	go s.runLogs(runCtx, lc, k, core.Pods(src.Namespace), podSelector)
+	for _, old := range replaced {
+		s.stopLogConn(old)
+	}
+	go s.runLogs(runCtx, lc, k, core.Pods(src.Namespace), podSelector, s.watchWorkloadDeletion(lc, workload, workloadType))
 	return status, nil
+}
+
+func namedListWatch[L runtime.Object](c listWatcher[L], name string) cache.ListerWatcher {
+	byName := fields.OneTermEqualSelector("metadata.name", name).String()
+	return plainListWatch{&cache.ListWatch{
+		ListWithContextFunc: func(ctx context.Context, o metav1.ListOptions) (runtime.Object, error) {
+			o.FieldSelector = byName
+			return c.List(ctx, o)
+		},
+		WatchFuncWithContext: func(ctx context.Context, o metav1.ListOptions) (watch.Interface, error) {
+			o.FieldSelector = byName
+			return c.Watch(ctx, o)
+		},
+	}}
+}
+
+// The name is checked again because the fake clientset in tests ignores field selectors.
+func (s *Service) watchWorkloadDeletion(lc *logConn, lw cache.ListerWatcher, obj runtime.Object) cache.Controller {
+	if lw == nil {
+		return nil
+	}
+	name := lc.status.Source.Name
+	mark := func(obj any, deleted bool) {
+		if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+			obj = d.Obj
+		}
+		if o, ok := obj.(metav1.Object); ok && o.GetName() == name {
+			s.updateLogStatus(lc, func(st *LogStatus) { st.Deleted = deleted })
+		}
+	}
+	_, ctrl := cache.NewInformerWithOptions(cache.InformerOptions{
+		ListerWatcher: lw,
+		ObjectType:    obj,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj any) { mark(obj, false) },
+			DeleteFunc: func(obj any) { mark(obj, true) },
+		},
+	})
+	return ctrl
 }
 
 // StopLogs ends the stream, returning once it is stopped and forgotten; a stream that already ended is forgotten too.
@@ -180,13 +249,16 @@ func (s *Service) StopLogs(streamID string) error {
 	lc := s.logs[streamID]
 	delete(s.logs, streamID)
 	s.mu.Unlock()
-	if lc == nil {
-		return nil
+	if lc != nil {
+		s.stopLogConn(lc)
 	}
+	return nil
+}
+
+func (s *Service) stopLogConn(lc *logConn) {
 	lc.cancel()
 	<-lc.done
 	s.setLogState(lc, StateStopped, nil)
-	return nil
 }
 
 // LogStatuses returns every log stream of this session.
@@ -213,7 +285,7 @@ func containerNames(containers []corev1.Container) []string {
 
 // runLogs batches the merged lines of every followed pod. A single pod's stream that ended on its own stays
 // listed in StateError so its lines remain readable until StopLogs.
-func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1client.PodInterface, selector labels.Selector) {
+func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1client.PodInterface, selector labels.Selector, workload cache.Controller) {
 	defer close(lc.done)
 	s.setLogState(lc, StateConnecting, nil)
 	readersDone := make(chan struct{})
@@ -223,6 +295,7 @@ func (s *Service) runLogs(ctx context.Context, lc *logConn, k kube, pods corev1c
 		if selector == nil {
 			gone = s.followPod(ctx, lc, pods, lc.status.Source.Name, lc.status.Containers)
 		} else {
+			lc.wg.Go(func() { workload.RunWithContext(ctx) })
 			s.watchWorkload(ctx, lc, k, pods, selector)
 		}
 		lc.wg.Wait()
@@ -259,9 +332,11 @@ func (s *Service) watchWorkload(ctx context.Context, lc *logConn, k kube, pods c
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				if pod := obj.(*corev1.Pod); selector.Matches(labels.Set(pod.Labels)) {
+					lc.markTerminating(pod)
 					s.followWorkloadPod(ctx, lc, pods, pod)
 				}
 			},
+			UpdateFunc: func(_, obj any) { lc.markTerminating(obj.(*corev1.Pod)) },
 			DeleteFunc: func(obj any) {
 				if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 					obj = d.Obj
@@ -311,6 +386,7 @@ func (s *Service) leaveWorkloadPod(lc *logConn, name string) {
 	lc.mu.Lock()
 	cancel := lc.pods[name]
 	delete(lc.pods, name)
+	delete(lc.terminating, name)
 	lc.mu.Unlock()
 	if cancel == nil {
 		return
@@ -367,12 +443,14 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 		if opened {
 			backoff = time.Second
 		}
-		if lc.openBodies(0) == 0 {
+		if lc.dropped(pod) {
 			s.setLogState(lc, StateReconnecting, cmp.Or(err, errLogsEnded))
 		}
-		// A Route that is down is polled every second so the stream resumes as soon as it is back.
+		// A Route that is down, or a container still waiting to start (400), is polled every second so the
+		// stream starts as soon as it can.
+		// ponytail: a container that never starts (image pull failing) is polled every second too; follow pod status if that load matters.
 		wait := backoff
-		if errors.Is(err, ErrRouteDown) {
+		if errors.Is(err, ErrRouteDown) || apierrors.IsBadRequest(err) {
 			wait = time.Second
 		} else {
 			backoff = min(backoff*2, 30*time.Second)
@@ -386,6 +464,22 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 }
 
 var errLogsEnded = errors.New("log stream ended")
+
+func (lc *logConn) markTerminating(pod *corev1.Pod) {
+	if pod.DeletionTimestamp == nil {
+		return
+	}
+	lc.mu.Lock()
+	lc.terminating[pod.Name] = true
+	lc.mu.Unlock()
+}
+
+// dropped reports a body ending as the stream's drop when nothing else is streaming and the pod is not going away.
+func (lc *logConn) dropped(pod string) bool {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	return lc.open == 0 && !lc.terminating[pod]
+}
 
 func (lc *logConn) openBodies(delta int) int {
 	lc.mu.Lock()
@@ -415,10 +509,17 @@ func (s *Service) readContainerLogs(ctx context.Context, lc *logConn, pods corev
 	lc.openBodies(1)
 	defer lc.openBodies(-1)
 	s.setLogState(lc, StateConnected, nil)
-	sc := bufio.NewScanner(body)
-	sc.Buffer(nil, 1<<20)
-	for sc.Scan() {
-		l := parseLogLine(pod, container, sc.Text())
+	r := bufio.NewReader(body)
+	for {
+		raw, cut, err := readLogLine(r)
+		if err == io.EOF {
+			return true, nil
+		}
+		if err != nil {
+			return true, err
+		}
+		l := parseLogLine(pod, container, raw)
+		l.Truncated = cut
 		if !cutoff.IsZero() && !l.Time.IsZero() && !l.Time.After(cutoff) {
 			continue
 		}
@@ -431,7 +532,30 @@ func (s *Service) readContainerLogs(ctx context.Context, lc *logConn, pods corev
 			return true, nil
 		}
 	}
-	return true, sc.Err()
+}
+
+// readLogLine cuts a line over logLineMax and skips its rest, where bufio.Scanner would end the stream.
+func readLogLine(r *bufio.Reader) (string, bool, error) {
+	var line []byte
+	cut := false
+	for {
+		frag, err := r.ReadSlice('\n')
+		frag = bytes.TrimSuffix(frag, []byte("\n"))
+		if room := logLineMax - len(line); len(frag) > room {
+			frag, cut = frag[:room], true
+		}
+		line = append(line, frag...)
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil && len(line) == 0 {
+			return "", false, err
+		}
+		if cut {
+			return strings.ToValidUTF8(string(line), ""), true, nil
+		}
+		return string(bytes.TrimSuffix(line, []byte("\r"))), false, nil
+	}
 }
 
 // parseLogLine splits the RFC3339Nano prefix the API server adds with timestamps=true; a line without one keeps its full text.
