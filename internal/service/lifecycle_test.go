@@ -29,3 +29,19 @@ func TestShutdown_ClosesEveryRouteAndForward(t *testing.T) {
 		t.Errorf("saved forwards after shutdown = %+v, want the forward still on", cfg.Forwards)
 	}
 }
+
+func TestShutdown_StopsEventStreams(t *testing.T) {
+	f := newForwardFixture(t)
+	_, states := eventEvents(f.svc)
+	stream, err := f.svc.StartEvents(f.cluster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitEventState(t, states, service.StateConnected)
+
+	f.svc.Shutdown()
+
+	if st := waitEventState(t, states, service.StateStopped); st.ID != stream.ID {
+		t.Errorf("stopped stream = %s, want %s", st.ID, stream.ID)
+	}
+}

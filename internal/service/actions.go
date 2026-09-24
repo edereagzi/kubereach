@@ -110,7 +110,11 @@ func (s *Service) RollbackDeployment(ctx context.Context, clusterID, namespace, 
 	}
 	template := previous.Spec.Template.DeepCopy()
 	delete(template.Labels, appsv1.DefaultDeploymentUniqueLabelKey)
-	patch, err := json.Marshal([]map[string]any{{"op": "replace", "path": "/spec/template", "value": template}})
+	// The resourceVersion read above makes the API server refuse the patch with a conflict if the Deployment changed since.
+	patch, err := json.Marshal([]map[string]any{
+		{"op": "add", "path": "/metadata/resourceVersion", "value": d.ResourceVersion},
+		{"op": "replace", "path": "/spec/template", "value": template},
+	})
 	if err != nil {
 		return err
 	}

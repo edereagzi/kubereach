@@ -53,11 +53,15 @@ func previewImport(cfg Config, path string) (ImportPreview, error) {
 	if err != nil {
 		return ImportPreview{}, err
 	}
+	invalid := func(err error) error { return userErrorf("%s cannot be imported: %s", path, errorMessage(err)) }
 	p := ImportPreview{Path: path, Routes: []Route{}, Clusters: []Cluster{}, Forwards: []PortForward{}, MissingPaths: []string{}}
 	for _, r := range in.Routes {
 		if _, err := findRoute(cfg, r.ID); err == nil {
 			p.Duplicates++
 			continue
+		}
+		if err := validateRoute(&r); err != nil {
+			return ImportPreview{}, invalid(err)
 		}
 		p.Routes = append(p.Routes, r)
 		for _, srv := range r.Servers {
@@ -76,6 +80,9 @@ func previewImport(cfg Config, path string) (ImportPreview, error) {
 		if slices.ContainsFunc(cfg.Forwards, func(o PortForward) bool { return o.ID == f.ID || o.sameTarget(f) }) {
 			p.Duplicates++
 			continue
+		}
+		if err := validateForward(f); err != nil {
+			return ImportPreview{}, invalid(err)
 		}
 		p.Forwards = append(p.Forwards, f)
 	}

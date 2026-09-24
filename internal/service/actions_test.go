@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,7 +13,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 const restartedAt = "kubectl.kubernetes.io/restartedAt"
@@ -186,5 +190,46 @@ func TestRollbackDeployment_PatchForbidden(t *testing.T) {
 	forbid(cs, "patch", "deployments", false)
 	if err := svc.RollbackDeployment(context.Background(), id, "default", "api"); !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("forbidden rollback patch err = %v; want ErrForbidden", err)
+	}
+}
+
+func TestRollbackDeployment_ConcurrentChangeConflicts(t *testing.T) {
+	d := deployment("default", "api")
+	d.UID = types.UID("api-uid")
+	d.ResourceVersion = "8"
+	d.Spec.Template.Spec.Containers[0].Image = "acme/api:v2"
+	svc, cs, id := newFakeService(t, d, revisionReplicaSet(d, "2", "acme/api:v2", true), revisionReplicaSet(d, "1", "acme/api:v1", true))
+	// The Deployment is changed right after it is read; the fake tracker keeps no resourceVersions, so the
+	// API server's optimistic lock on a patch that carries one is played here.
+	serverVersion := "8"
+	cs.PrependReactor("get", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
+		stale := d.DeepCopy()
+		serverVersion = "9"
+		return true, stale, nil
+	})
+	cs.PrependReactor("patch", "deployments", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		var ops []struct{ Path, Value any }
+		if err := json.Unmarshal(a.(k8stesting.PatchAction).GetPatch(), &ops); err != nil {
+			return true, nil, err
+		}
+		for _, op := range ops {
+			if op.Path == "/metadata/resourceVersion" && op.Value != serverVersion {
+				return true, nil, apierrors.NewConflict(schema.GroupResource{Group: "apps", Resource: "deployments"}, "api", errors.New("the object has been modified"))
+			}
+		}
+		return false, nil, nil
+	})
+	ctx := context.Background()
+
+	err := svc.RollbackDeployment(ctx, id, "default", "api")
+	if !apierrors.IsConflict(err) || service.Describe(err).Message != "It changed in the Cluster meanwhile; try again" {
+		t.Errorf("err = %v; want a conflict", err)
+	}
+	got, err := cs.Tracker().Get(appsv1.SchemeGroupVersion.WithResource("deployments"), "default", "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image := got.(*appsv1.Deployment).Spec.Template.Spec.Containers[0].Image; image != "acme/api:v2" {
+		t.Errorf("image after a conflicting rollback = %s, want it unchanged", image)
 	}
 }

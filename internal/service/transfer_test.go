@@ -144,3 +144,42 @@ func TestInspectImport_DetectsKubeconfigByContent(t *testing.T) {
 		t.Errorf("preview = %+v, want kubeconfig at %s", preview, file)
 	}
 }
+
+func TestImportConfig_InvalidEntrySavesNothing(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "export.yaml")
+	cluster := service.Cluster{ID: "c1", Name: "kept", Kubeconfig: file, Context: "x"}
+	forward := service.PortForward{ID: "f1", ClusterID: "c1", Target: service.ForwardTarget{Kind: service.TargetPod, Namespace: "default", Name: "p"}, RemotePort: 80, LocalPort: 20000}
+	for name, tc := range map[string]struct {
+		cfg  service.Config
+		want string
+	}{
+		"route without servers": {
+			service.Config{Routes: []service.Route{{ID: "r1", Name: "bastion"}}, Clusters: []service.Cluster{cluster}},
+			file + " cannot be imported: A Route needs at least one SSH server",
+		},
+		"forward out of range": {
+			service.Config{Clusters: []service.Cluster{cluster}, Forwards: []service.PortForward{forward, {ID: "f2", ClusterID: "c1", Target: forward.Target, RemotePort: 70000, LocalPort: 20001}}},
+			file + " cannot be imported: Remote port 70000 is out of range",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src, _ := newService(t)
+			if err := src.SaveConfig(tc.cfg); err != nil {
+				t.Fatal(err)
+			}
+			if err := src.ExportConfig(file); err != nil {
+				t.Fatal(err)
+			}
+			dst, _ := newService(t)
+			if _, err := dst.InspectImport(file); err == nil || service.Describe(err).Message != tc.want {
+				t.Errorf("preview err = %v, want %q", err, tc.want)
+			}
+			if err := dst.ImportConfig(file, nil); err == nil || service.Describe(err).Message != tc.want {
+				t.Errorf("import err = %v, want %q", err, tc.want)
+			}
+			if got, err := dst.LoadConfig(); err != nil || len(got.Clusters)+len(got.Routes)+len(got.Forwards) != 0 {
+				t.Errorf("config after a rejected import = %+v, %v; want it empty", got, err)
+			}
+		})
+	}
+}

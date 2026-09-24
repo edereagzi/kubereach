@@ -296,7 +296,7 @@ func (s *Service) unbindForward(fc *forwardConn) {
 func validateForward(pf PortForward) error {
 	switch {
 	case pf.Target.Kind != TargetService && pf.Target.Kind != TargetPod:
-		return fmt.Errorf("unknown target kind %q", pf.Target.Kind)
+		return userErrorf("Unknown forward target kind %s", pf.Target.Kind)
 	case pf.Target.Namespace == "" || pf.Target.Name == "":
 		return userErrorf("A forward needs a namespace and a name")
 	case pf.RemotePort < 1 || pf.RemotePort > 65535:
