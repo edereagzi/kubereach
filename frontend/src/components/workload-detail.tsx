@@ -1,6 +1,5 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, restartsLabel, Section } from "@/components/pod-detail";
 import { workloadKind, type Target } from "@/components/targets";
@@ -9,7 +8,7 @@ import { useUIStore } from "@/store";
 import { WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
-import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/refresh-button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { workloadQuery, errorText } from "@/queries";
@@ -41,9 +40,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
             {w.namespace}/{w.name}
           </span>
           <ReasonBadge reason={workloadReason(w)} />
-          <Button variant="ghost" size="icon-sm" title="Refresh" disabled={q.isFetching} onClick={() => q.refetch()}>
-            <ArrowsClockwiseIcon className={cn(q.isFetching && "animate-spin")} />
-          </Button>
+          <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{[w.kind, workloadLabel(w), d?.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ")}</InspectorDescription>
         <div className="flex flex-wrap gap-1.5">

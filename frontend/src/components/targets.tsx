@@ -90,6 +90,7 @@ export function useTargets(cluster: Cluster, overview = false) {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
     pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || configMaps.isPending || secrets.isPending)),
+    fetching: [services, workloads, pods, ingresses, configMaps, secrets].some((q) => q.isFetching),
   };
 }
 

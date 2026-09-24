@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowsClockwiseIcon,
   ArrowsLeftRightIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -15,6 +14,7 @@ import { State, type Cluster } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamFor } from "@/components/logs";
 import { SidebarFooter } from "@/components/sidebar-footer";
+import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -41,6 +41,7 @@ export function Sidebar() {
   });
   useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
   const importError = importKubeconfig.error ?? importDropped.error;
+  const fetchingReachability = useIsFetching({ predicate: (q) => q.queryKey[0] === "cluster" && q.queryKey[2] === "reachability" }) > 0;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,9 +57,11 @@ export function Sidebar() {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div data-drag className="flex h-13 shrink-0 items-center justify-end gap-0.5 px-2 select-none">
-        <Button variant="ghost" size="icon-sm" title="Check which clusters answer" onClick={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}>
-          <ArrowsClockwiseIcon />
-        </Button>
+        <RefreshButton
+          title="Refresh clusters"
+          fetching={fetchingReachability}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}
+        />
         <Button variant="ghost" size="icon-sm" title="Add clusters from kubeconfig" disabled={importKubeconfig.isPending} onClick={() => importKubeconfig.mutate()}>
           <PlusIcon />
         </Button>
@@ -127,7 +130,7 @@ function ClusterList({ needle }: { needle: string }) {
 }
 
 function ClusterRow({ cluster }: { cluster: Cluster }) {
-  const selected = useUIStore((s) => s.selectedClusterId === cluster.id);
+  const selected = useUIStore((s) => s.selectedClusterId === cluster.id && !s.routesOpen);
   const selectCluster = useUIStore((s) => s.selectCluster);
   return (
     <li>
@@ -179,7 +182,7 @@ function Activity({ cluster }: { cluster: Cluster }) {
 
 // Unreachable is the normal state of a cluster whose Route is down, so it is a hollow ring rather than an error colour.
 function ReachabilityDot({ cluster }: { cluster: Cluster }) {
-  const { status, error, data } = useQuery(reachabilityQuery(cluster.id));
+  const { status, fetchStatus, error, data } = useQuery(reachabilityQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
   const routeDown = useUIStore((s) => !!cluster.route && s.routeStatuses[cluster.route]?.state !== State.StateConnected);
   const route = config?.routes?.find((r) => r.id === cluster.route);
@@ -188,7 +191,8 @@ function ReachabilityDot({ cluster }: { cluster: Cluster }) {
       title={routeDown && route ? `Reached through ${route.name}, which is not connected` : reachabilityLabel(status, error, data)}
       className={cn(
         "size-2 shrink-0 rounded-full",
-        status === "pending" && "animate-pulse bg-muted-foreground",
+        fetchStatus === "fetching" && "animate-pulse",
+        status === "pending" && "bg-muted-foreground",
         status === "success" && "bg-green-500",
         status === "error" && "border-[1.5px] border-muted-foreground/70",
       )}

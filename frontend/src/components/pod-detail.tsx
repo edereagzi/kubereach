@@ -1,12 +1,12 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, PodCondition, ResourceUsage } from "@bindings/internal/service";
 import { DeletePodAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
 import { portsLabel, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
+import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
@@ -115,9 +115,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
             {target.namespace}/{target.name}
           </span>
           {d && <ReasonBadge reason={d.reason} />}
-          <Button variant="ghost" size="icon-sm" title="Refresh" disabled={pod.isFetching} onClick={() => pod.refetch()}>
-            <ArrowsClockwiseIcon className={cn(pod.isFetching && "animate-spin")} />
-          </Button>
+          <RefreshButton fetching={pod.isFetching} onRefresh={() => pod.refetch()} />
         </InspectorTitle>
         <InspectorDescription className="flex flex-wrap items-center gap-x-3">
           {d

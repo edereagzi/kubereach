@@ -4,7 +4,7 @@ import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, WarningIcon } from "@phospho
 import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import { State, type Cluster } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ClusterOverview } from "@/components/cluster-overview";
+import { ClusterOverview, NamespaceScope } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
@@ -53,9 +53,11 @@ function ClusterTabs() {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
   const routeState = useUIStore((s) => (cluster?.route ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle) : State.StateConnected));
-  // Behind a Route that is down every view would only repeat the RouteBanner, so they stay empty until it connects.
-  // Connecting and reconnecting keep them, so a blip does not throw away a filter or an open detail.
-  const unreachable = routeState === State.StateIdle || routeState === State.StateStopped || routeState === State.StateError || routeState === State.$zero;
+  // Behind a Route that is down every view would only repeat the RouteBanner, so they stay empty until it connects;
+  // mounted while connecting, they would list before the SSH link is up and fail. Reconnecting keeps them, so a blip
+  // does not throw away a filter or an open detail.
+  const unreachable =
+    routeState === State.StateIdle || routeState === State.StateConnecting || routeState === State.StateStopped || routeState === State.StateError || routeState === State.$zero;
 
   if (!cluster) {
     return (
@@ -350,6 +352,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
             {cluster.context}
           </span>
         )}
+        <NamespaceScope cluster={cluster} />
       </div>
       <RouteChip cluster={cluster} />
       <span

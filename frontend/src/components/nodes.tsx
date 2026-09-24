@@ -1,9 +1,8 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
-import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/refresh-button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle, useInspectorWalk } from "@/components/inspector";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -151,7 +150,6 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
   // meters keep answering with the numbers the user pressed Refresh to be rid of.
   const metrics = useQuery(nodeMetricsQuery(cluster.id));
   const usage = metrics.data?.get(node.name);
-  const refreshing = q.isFetching || metrics.isFetching;
   const d = q.data;
   const n = d?.node ?? node;
   return (
@@ -160,18 +158,13 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
         <InspectorTitle className="flex items-center gap-2 pr-8">
           <span className="truncate">{n.name}</span>
           <ReasonBadge reason={n.problem} />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            title="Refresh"
-            disabled={refreshing}
-            onClick={() => {
+          <RefreshButton
+            fetching={q.isFetching || metrics.isFetching}
+            onRefresh={() => {
               void q.refetch();
               void metrics.refetch();
             }}
-          >
-            <ArrowsClockwiseIcon className={cn(refreshing && "animate-spin")} />
-          </Button>
+          />
         </InspectorTitle>
         <InspectorDescription className="flex flex-wrap items-center gap-x-3">
           {[n.roles?.join(", "), n.version, !n.unknown && podsLabel(n.pods)].filter(Boolean).join(" · ")}

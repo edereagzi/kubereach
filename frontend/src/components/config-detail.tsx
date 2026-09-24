@@ -1,9 +1,10 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, EyeIcon, EyeSlashIcon } from "@phosphor-icons/react";
+import { EyeIcon, EyeSlashIcon } from "@phosphor-icons/react";
 import type { Cluster } from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
 import type { Target } from "@/components/targets";
+import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
@@ -25,9 +26,7 @@ export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; t
           <span className="truncate">
             {target.namespace}/{target.name}
           </span>
-          <Button variant="ghost" size="icon-sm" title="Refresh" disabled={q.isFetching} onClick={() => q.refetch()}>
-            <ArrowsClockwiseIcon className={cn(q.isFetching && "animate-spin")} />
-          </Button>
+          <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{[secret ? "Secret" : "ConfigMap", o?.type, keysLabel(keys.length)].filter(Boolean).join(" · ")}</InspectorDescription>
       </InspectorHeader>

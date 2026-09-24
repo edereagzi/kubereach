@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { ConfigService } from "@bindings/internal/bindings";
+import { ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,13 +26,25 @@ export function SidebarFooter() {
   const pushImportPreviews = useUIStore((s) => s.pushImportPreviews);
   const shiftImportPreview = useUIStore((s) => s.shiftImportPreview);
   const exportConfig = useMutation({ mutationFn: () => ConfigService.Export() });
+  const { data: exportedTo, reset: clearExported } = exportConfig;
+  useEffect(() => {
+    if (!exportedTo) return;
+    const t = setTimeout(clearExported, 3000);
+    return () => clearTimeout(t);
+  }, [exportedTo, clearExported]);
+  const queryClient = useQueryClient();
+  // A kubeconfig picked here is imported the way a dropped one is.
   const inspect = useMutation({
     mutationFn: async () => {
       const p = await ConfigService.InspectImport();
-      if (p?.kubeconfig) throw new Error(`${p.path} is a kubeconfig, not a Kubereach export`);
+      if (p?.kubeconfig) {
+        await ClusterService.ImportPaths([p.path]);
+        return null;
+      }
       return p;
     },
     onSuccess: (p) => p && pushImportPreviews([p]),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
   });
   const error = exportConfig.error ?? inspect.error;
   const openRoutes = useUIStore((s) => s.openRoutes);

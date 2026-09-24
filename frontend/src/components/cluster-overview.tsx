@@ -47,8 +47,14 @@ const isProblem = (t: Target, pressure?: string) => {
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
-  const { groups, error: listError, pending } = useTargets(cluster, true);
+  const { groups: liveGroups, error: listError, pending, fetching } = useTargets(cluster, true);
   const rescoping = useIsMutating({ mutationKey: scopeKey(cluster.id) }) > 0;
+  const explicit = cluster.namespaces ?? [];
+  // Each kind is its own list and lands on its own; the rows change once all have, so a namespace fills in one step.
+  const live = { groups: liveGroups, namespaces: explicit.length ? explicit : (namespaces.data ?? []) };
+  const settled = useRef(live);
+  if (!fetching && !namespaces.isFetching && !rescoping) settled.current = live;
+  const { groups } = settled.current;
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
   const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
   const [problems, setProblems] = useState(false);
@@ -61,16 +67,15 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     setInspecting(null);
     setForwarding(t);
   };
-  const explicit = cluster.namespaces ?? [];
   const inspectRequest = useUIStore((s) => s.inspectRequest);
   const requestInspect = useUIStore((s) => s.requestInspect);
 
   // Another tab asked for an object's detail; it opens once the lists have it, and a request for nothing listed is dropped.
   useEffect(() => {
     if (!inspectRequest || inspectRequest.clusterId !== cluster.id || pending) return;
-    setInspecting(groups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
+    setInspecting(liveGroups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
     requestInspect(null);
-  }, [inspectRequest, pending, groups, cluster.id, requestInspect]);
+  }, [inspectRequest, pending, liveGroups, cluster.id, requestInspect]);
 
   const shownRows = useRef<Target[]>([]);
   useInspectorWalk(shownRows, inspecting, (t) => t.value, setInspecting);
@@ -105,7 +110,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t, pressure(t))) && matches(words, g.label, t)) }));
   const byNamespace = new Map<string, TargetGroup[]>();
-  for (const ns of explicit.length ? explicit : (namespaces.data ?? [])) byNamespace.set(ns, []);
+  for (const ns of settled.current.namespaces) byNamespace.set(ns, []);
   for (const g of shown) {
     for (const t of g.items) {
       const list = byNamespace.get(t.namespace) ?? [];
@@ -115,6 +120,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     }
   }
   const total = shown.reduce((n, g) => n + g.items.length, 0);
+  // Counted over the scope, not the search: typing a name must not make the alarm go quiet.
+  const problemCount = groups.reduce((n, g) => n + g.items.filter((t) => isProblem(t, pressure(t))).length, 0);
   shownRows.current = [];
 
   return (
@@ -128,19 +135,34 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.kind === "svc" && <YamlDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-        <InputGroup className="w-auto min-w-48 flex-1">
+        <InputGroup className="h-7 w-72">
           <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
           <InputGroupAddon align="inline-end">
-            <kbd className="rounded border px-1 font-sans text-[10px] text-muted-foreground">/</kbd>
+            <kbd className="font-sans text-[10px] text-muted-foreground">/</kbd>
           </InputGroupAddon>
         </InputGroup>
-        <Toggle variant="outline" size="sm" pressed={problems} onPressedChange={setProblems} title="Only pods, workloads and ingresses that are not healthy">
+        <Toggle
+          variant="outline"
+          size="sm"
+          pressed={problems}
+          onPressedChange={setProblems}
+          title="Only pods, workloads and ingresses that are not healthy"
+          className="aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
+        >
           Problems
+          <span
+            className={cn(
+              "rounded-full px-1.5 text-[11px] leading-4 tabular-nums",
+              problemCount > 0 ? "bg-destructive/15 text-destructive" : "bg-foreground/8 text-muted-foreground",
+              problems && problemCount > 0 && "bg-destructive text-background",
+            )}
+          >
+            {problemCount}
+          </span>
         </Toggle>
-        <NamespaceScope cluster={cluster} known={namespaces.error ? undefined : (namespaces.data ?? [])} />
       </div>
       {groups
         .filter((g) => g.error)
@@ -257,9 +279,12 @@ function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluste
 const scopeKey = (clusterId: string) => ["namespace-scope", clusterId];
 const textWidth = document.createElement("canvas").getContext("2d")!;
 
+// The scope is the Cluster's, not the Overview's: Events and the Nodes' pods are read through it too.
 // A role that may not list namespaces can still add one by name.
-function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[] }) {
+export function NamespaceScope({ cluster }: { cluster: Cluster }) {
   const queryClient = useQueryClient();
+  const namespaces = useQuery(namespacesQuery(cluster.id));
+  const known = namespaces.error ? undefined : (namespaces.data ?? []);
   const scope = cluster.namespaces ?? [];
   const [draft, setDraft] = useState(scope);
   const [query, setQuery] = useState("");
@@ -279,7 +304,7 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
   const typed = query.trim();
   const items = [...new Set([...(known ?? []), ...draft, ...(!known && typed ? [typed] : [])])].sort();
   const label = scope.length ? scope.join(", ") : "All namespaces";
-  // As many names as fit the button are written out, the rest counted; the first is always written, truncated if need be.
+  // Every name is written and cut where the button ends; the count is of the names that cannot be read whole.
   const labelRef = useRef<HTMLSpanElement>(null);
   const [shown, setShown] = useState(scope.length);
   useLayoutEffect(() => {
@@ -313,17 +338,17 @@ function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[]
         else setQuery("");
       }}
     >
-      {/* A fixed width and the spinner in the caret's place keep the toolbar still while the scope changes. */}
+      {/* A fixed width and the spinner in the caret's place keep the button still while the scope changes. */}
       <ComboboxTrigger
-        render={<Button variant="ghost" size="sm" className={cn("w-60 justify-between text-muted-foreground", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
+        render={<Button variant="ghost" size="sm" className={cn("-ml-2 w-60 justify-between text-muted-foreground", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
       >
         <span ref={labelRef} className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className="truncate">{scope.length ? scope.slice(0, shown).join(", ") : label}</span>
+          <span className="truncate">{label}</span>
           {shown < scope.length && <span className="shrink-0 rounded-full bg-foreground/8 px-1.5 text-[11px] leading-4 tabular-nums">+{scope.length - shown}</span>}
         </span>
         {save.isPending && <CircleNotchIcon className="size-4 animate-spin" />}
       </ComboboxTrigger>
-      <ComboboxContent align="end" className="w-72">
+      <ComboboxContent align="start" className="w-72">
         <ComboboxInput showTrigger={false} placeholder={known ? "Search namespaces" : "Add a namespace by name"} autoFocus>
           <MagnifyingGlassIcon className="order-first ml-2 size-4 text-muted-foreground" />
         </ComboboxInput>
