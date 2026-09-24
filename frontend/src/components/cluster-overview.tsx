@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
@@ -12,6 +12,7 @@ import { YamlDialog } from "@/components/yaml-view";
 import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxTrigger } from "@/components/ui/combobox";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -47,7 +48,6 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const { groups, error: listError, pending } = useTargets(cluster, true);
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
   const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
-  const [editing, setEditing] = useState(false);
   const [problems, setProblems] = useState(false);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
   const [needle, setNeedle] = useState("");
@@ -81,10 +81,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  if (editing || isForbidden(namespaces.error) || isForbidden(listError)) {
-    return <NamespacePrompt cluster={cluster} forbidden={!editing} onDone={() => setEditing(false)} />;
+  if ((!explicit.length && isForbidden(namespaces.error)) || isForbidden(listError)) {
+    return <NamespacePrompt cluster={cluster} />;
   }
-  const error = namespaces.error ?? listError;
+  const error = listError ?? (explicit.length ? null : namespaces.error);
   if (error) {
     return (
       <Empty className="justify-start border-0 pt-12">
@@ -99,7 +99,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t, pressure(t))) && matches(words, g.label, t)) }));
   const byNamespace = new Map<string, TargetGroup[]>();
-  for (const ns of namespaces.data ?? []) byNamespace.set(ns, []);
+  for (const ns of explicit.length ? explicit : (namespaces.data ?? [])) byNamespace.set(ns, []);
   for (const g of shown) {
     for (const t of g.items) {
       const list = byNamespace.get(t.namespace) ?? [];
@@ -133,10 +133,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         <Toggle variant="outline" size="sm" pressed={problems} onPressedChange={setProblems} title="Only pods, workloads and ingresses that are not healthy">
           Problems
         </Toggle>
-        <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditing(true)}>
-          {explicit.length ? explicit.join(", ") : "All namespaces"}
-          <span className="text-muted-foreground/70">· Edit scope</span>
-        </Button>
+        <NamespaceScope cluster={cluster} known={namespaces.error ? undefined : (namespaces.data ?? [])} />
       </div>
       {groups
         .filter((g) => g.error)
@@ -233,15 +230,76 @@ function TargetLine({ cluster, target, pressure, onForward, onInspect }: { clust
   );
 }
 
-function NamespacePrompt({ cluster, forbidden, onDone }: { cluster: Cluster; forbidden: boolean; onDone: () => void }) {
+// A role that may not list namespaces can still add one by name.
+function NamespaceScope({ cluster, known }: { cluster: Cluster; known?: string[] }) {
+  const queryClient = useQueryClient();
+  const scope = cluster.namespaces ?? [];
+  const [draft, setDraft] = useState(scope);
+  const [query, setQuery] = useState("");
+  // Saves run one after another, so quick ticks land in the order they were made.
+  const save = useMutation({
+    scope: { id: `namespaces:${cluster.id}` },
+    mutationFn: (namespaces: string[]) => ClusterService.SetNamespaces(cluster.id, namespaces),
+    onSettled: () => queryClient.invalidateQueries(),
+  });
+  const pick = (namespaces: string[]) => {
+    setDraft(namespaces);
+    save.mutate([...namespaces].sort());
+  };
+  const typed = query.trim();
+  const items = [...new Set([...(known ?? []), ...draft, ...(!known && typed ? [typed] : [])])].sort();
+  const label = scope.length ? scope.join(", ") : "All namespaces";
+
+  return (
+    <Combobox
+      multiple
+      items={items}
+      value={draft}
+      onValueChange={pick}
+      inputValue={query}
+      onInputValueChange={setQuery}
+      onOpenChange={(open) => {
+        if (open) setDraft(scope);
+        else setQuery("");
+      }}
+    >
+      <ComboboxTrigger render={<Button variant="ghost" size="sm" className="max-w-80 text-muted-foreground" title={label} />}>
+        <span className="truncate">{label}</span>
+      </ComboboxTrigger>
+      <ComboboxContent align="end" className="w-72">
+        <ComboboxInput showTrigger={false} placeholder={known ? "Search namespaces" : "Add a namespace by name"} autoFocus>
+          <MagnifyingGlassIcon className="order-first ml-2 size-4 text-muted-foreground" />
+        </ComboboxInput>
+        {known && (
+          <button
+            type="button"
+            className="relative mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center rounded-md py-1 pr-8 pl-1.5 text-left text-sm hover:bg-accent"
+            onClick={() => pick([])}
+          >
+            All namespaces
+            {draft.length === 0 && <CheckIcon className="absolute right-2 size-4" />}
+          </button>
+        )}
+        <ComboboxEmpty>{known ? "No namespace matches." : "Type a namespace you may use."}</ComboboxEmpty>
+        <ComboboxList>
+          {(ns: string) => (
+            <ComboboxItem key={ns} value={ns}>
+              {ns}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+        {save.error && <p className="px-2 pb-2 text-xs text-destructive">{String(save.error)}</p>}
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
+function NamespacePrompt({ cluster }: { cluster: Cluster }) {
   const queryClient = useQueryClient();
   const [value, setValue] = useState(cluster.namespaces?.join(", ") ?? "");
   const save = useMutation({
     mutationFn: (namespaces: string[]) => ClusterService.SetNamespaces(cluster.id, namespaces),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-      onDone();
-    },
+    onSuccess: () => queryClient.invalidateQueries(),
   });
   const namespaces = value.split(/[\s,]+/).filter(Boolean);
 
@@ -254,22 +312,14 @@ function NamespacePrompt({ cluster, forbidden, onDone }: { cluster: Cluster; for
       }}
     >
       <div>
-        <p className="text-sm font-medium">{forbidden ? "Cluster-wide listing is forbidden" : "Namespace scope"}</p>
-        <p className="text-sm text-muted-foreground">
-          Enter the namespaces you may use. They are remembered for this cluster.
-          {!forbidden && " Leave empty to list all namespaces."}
-        </p>
+        <p className="text-sm font-medium">Cluster-wide listing is forbidden</p>
+        <p className="text-sm text-muted-foreground">Enter the namespaces you may use. They are remembered for this cluster.</p>
       </div>
       <div className="flex gap-2">
         <Input autoFocus placeholder="default, payments" value={value} onChange={(e) => setValue(e.target.value)} />
-        <Button type="submit" disabled={(forbidden && namespaces.length === 0) || save.isPending}>
+        <Button type="submit" disabled={namespaces.length === 0 || save.isPending}>
           Save
         </Button>
-        {!forbidden && (
-          <Button type="button" variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        )}
       </div>
       {save.error && <p className="text-sm text-destructive">{String(save.error)}</p>}
     </form>

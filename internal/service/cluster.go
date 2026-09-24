@@ -237,14 +237,11 @@ func (s *Service) CheckReachability(ctx context.Context, clusterID string) (stri
 	return v.GitVersion, nil
 }
 
-// ListNamespaces returns the Cluster's explicit namespace list, or every namespace when none is set.
+// ListNamespaces returns every namespace of the Cluster, whatever its scope, so a scope can be widened again.
 func (s *Service) ListNamespaces(ctx context.Context, clusterID string) ([]string, error) {
 	k, err := s.clusterClient(clusterID)
 	if err != nil {
 		return nil, err
-	}
-	if len(k.cluster.Namespaces) > 0 {
-		return k.cluster.Namespaces, nil
 	}
 	list, err := k.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {

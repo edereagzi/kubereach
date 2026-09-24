@@ -205,6 +205,20 @@ func TestListing_AllNamespacesByDefault(t *testing.T) {
 	}
 }
 
+func TestListNamespaces_ListsBeyondTheScope(t *testing.T) {
+	svc, _, id := newFakeService(t, namespace("default"), namespace("payments"))
+	if err := svc.SetNamespaces(id, []string{"payments"}); err != nil {
+		t.Fatal(err)
+	}
+	namespaces, err := svc.ListNamespaces(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{"default", "payments"}, namespaces); diff != "" {
+		t.Errorf("namespaces mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestListing_ForbiddenThenExplicitNamespaces(t *testing.T) {
 	svc, cs, id := newFakeService(t,
 		namespace("default"), namespace("payments"),
@@ -225,12 +239,8 @@ func TestListing_ForbiddenThenExplicitNamespaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	namespaces, err := svc.ListNamespaces(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if diff := cmp.Diff([]string{"payments"}, namespaces); diff != "" {
-		t.Errorf("namespaces mismatch (-want +got):\n%s", diff)
+	if _, err := svc.ListNamespaces(ctx, id); !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("ListNamespaces with a scope: got %v, want ErrForbidden", err)
 	}
 	services, err := svc.ListServices(ctx, id)
 	if err != nil {
