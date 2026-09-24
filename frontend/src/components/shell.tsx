@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, WarningIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, ScrollIcon, TerminalWindowIcon, WarningIcon } from "@phosphor-icons/react";
 import { ClusterService, RouteService } from "@bindings/internal/bindings";
 import { State, type Cluster } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -183,10 +183,12 @@ function Dock({ cluster }: { cluster: Cluster }) {
       {open && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
       <div className="flex h-9 shrink-0 items-stretch gap-5 px-4">
         <DockButton value="logs">
+          <ScrollIcon />
           Logs
           <LogsLive cluster={cluster} />
         </DockButton>
         <DockButton value="shell">
+          <TerminalWindowIcon />
           Shell
           <ShellCount cluster={cluster} />
         </DockButton>
@@ -208,7 +210,7 @@ function DockButton({ value, children }: { value: DockTab; children: ReactNode }
       aria-pressed={active}
       onClick={() => selectTab(value)}
       className={cn(
-        "relative flex items-center gap-1.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground",
+        "relative flex items-center gap-1.5 text-sm text-muted-foreground outline-none [&_svg]:size-4 hover:text-foreground focus-visible:text-foreground",
         active && "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground",
       )}
     >
