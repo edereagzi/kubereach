@@ -22,7 +22,7 @@ export function ReasonBadge({ reason, className, ...props }: { reason?: string }
   return (
     <Badge
       variant={calmReasons.has(reason) ? "secondary" : "destructive"}
-      className={cn("h-[18px] rounded px-1.5 font-mono text-[11px]", className)}
+      className={cn("h-[18px] rounded px-1.5 font-mono text-[11px]", calmReasons.has(reason) && "bg-foreground/8", className)}
       {...props}
     >
       {reason}

@@ -36,6 +36,32 @@ const terminalFor = (id: string) => {
   return term;
 };
 
+// A terminal goes with its session, however the session left: closed here or with its Cluster.
+useUIStore.subscribe((s, prev) => {
+  if (s.shellSessions === prev.shellSessions) return;
+  terminals.forEach((term, id) => {
+    if (s.shellSessions[id]) return;
+    term.dispose();
+    terminals.delete(id);
+  });
+});
+
+// Binding calls can overtake each other, so one write is in flight per session and keys typed meanwhile follow it together.
+const queuedInput = new Map<string, string>();
+const sendInput = (id: string, data: string) => {
+  const queued = queuedInput.get(id);
+  if (queued !== undefined) {
+    queuedInput.set(id, queued + data);
+    return;
+  }
+  queuedInput.set(id, "");
+  void ShellService.Write(id, data).finally(() => {
+    const next = queuedInput.get(id);
+    queuedInput.delete(id);
+    if (next) sendInput(id, next);
+  });
+};
+
 // Output for a session that was closed is dropped, so a late chunk never revives its terminal.
 export function writeShellOutput({ sessionId, data }: ShellOutput) {
   if (data && useUIStore.getState().shellSessions[sessionId]) {
@@ -99,7 +125,12 @@ export function OpenShell({
     >
       <SelectTrigger
         size="sm"
-        className={cn(size === "xs" && "h-6 px-2 text-xs", variant === "ghost" && "border-transparent bg-transparent dark:bg-transparent", className)}
+        className={cn(
+          "font-medium data-placeholder:text-foreground",
+          size === "xs" && "gap-1 px-2 py-0 text-xs data-[size=sm]:h-6",
+          variant === "ghost" && "border-transparent bg-transparent dark:bg-transparent",
+          className,
+        )}
         title="Open a shell into a pod"
         disabled={items.length === 0 || start.isPending}
       >
@@ -120,13 +151,11 @@ export function OpenShell({
 export function PodShell({ cluster }: { cluster: Cluster }) {
   const { groups, error: listError } = useTargets(cluster);
   const sessions = Object.values(useUIStore((s) => s.shellSessions)).filter((st) => st.target.clusterId === cluster.id);
-  const activeShellId = useUIStore((s) => s.activeShellId);
+  const activeShellId = useUIStore((s) => s.activeShellIds[cluster.id]);
   const { selectShell, closeShell } = useUIStore.getState();
   const active = sessions.find((s) => s.id === activeShellId);
   const start = useStartShell(cluster.id);
   const close = (session: ShellStatus) => {
-    terminals.get(session.id)?.dispose();
-    terminals.delete(session.id);
     closeShell(session.id);
     if (!ended(session)) void ShellService.Stop(session.id);
   };
@@ -210,7 +239,7 @@ function TerminalView({ session }: { session: ShellStatus }) {
     if (term.element) ref.current!.appendChild(term.element);
     else term.open(ref.current!);
     const data = term.onData((d) => {
-      if (!doneRef.current) void ShellService.Write(session.id, d);
+      if (!doneRef.current) sendInput(session.id, d);
     });
     const resize = term.onResize(({ cols, rows }) => void ShellService.Resize(session.id, cols, rows));
     const observer = new ResizeObserver(() => fit.fit());

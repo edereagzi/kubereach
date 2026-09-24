@@ -90,7 +90,8 @@ export function Shell() {
 
 function ClusterList() {
   const { data, error } = useQuery(configQuery);
-  const { selectedClusterId, selectCluster } = useUIStore();
+  const selectedClusterId = useUIStore((s) => s.selectedClusterId);
+  const selectCluster = useUIStore((s) => s.selectCluster);
   const clusters = data?.clusters ?? [];
 
   if (error) {
@@ -265,6 +266,8 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
   const remove = useMutation({
     mutationFn: () => ClusterService.Delete(cluster.id),
     onSuccess: () => {
+      const { shellSessions, closeShell } = useUIStore.getState();
+      for (const s of Object.values(shellSessions)) if (s.target.clusterId === cluster.id) closeShell(s.id);
       selectCluster(null);
       queryClient.invalidateQueries();
     },

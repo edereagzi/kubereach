@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { EventService } from "@bindings/internal/bindings";
 import { State, type Cluster, type EventStatus, type KubeEvent } from "@bindings/internal/service";
@@ -103,7 +103,14 @@ function EventList({ cluster, events }: { cluster: Cluster; events: KubeEvent[] 
   const parentRef = useRef<HTMLDivElement>(null);
   const requestInspect = useUIStore((s) => s.requestInspect);
   const selectTab = useUIStore((s) => s.selectTab);
-  const virtualizer = useVirtualizer({ count: events.length, getScrollElement: () => parentRef.current, estimateSize: () => 28, overscan: 20 });
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 28,
+    overscan: 20,
+    // New events land on top, so a size measured by index would belong to another row after the next batch.
+    getItemKey: useCallback((i: number) => events[i]!.id, [events]),
+  });
   return (
     <div ref={parentRef} className="min-h-0 flex-1 overflow-auto border-t py-1 text-xs">
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>

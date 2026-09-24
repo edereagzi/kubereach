@@ -26,6 +26,9 @@ const maxEvents = 5_000;
 
 type EventBuffer = { events: KubeEvent[]; version: number };
 
+// A closed session's stop is still on its way, so its last transitions arrive after it left the store.
+const closedShells = new Set<string>();
+
 export type ClusterTab = "overview" | "nodes" | "events" | "forwards" | "logs" | "shell";
 
 // An object another tab asks the Overview to open the detail of.
@@ -54,7 +57,7 @@ interface UIState {
   inspectRequest: InspectRequest | null;
   requestInspect: (request: InspectRequest | null) => void;
   shellSessions: Record<string, ShellStatus>;
-  activeShellId: string | null;
+  activeShellIds: Record<string, string>;
   setShellStatus: (status: ShellStatus) => void;
   selectShell: (id: string) => void;
   // An ended session stays on screen until closed, so its last output can be read.
@@ -133,19 +136,36 @@ export const useUIStore = create<UIState>((set) => ({
   inspectRequest: null,
   requestInspect: (request) => set({ inspectRequest: request }),
   shellSessions: {},
-  activeShellId: null,
+  activeShellIds: {},
   setShellStatus: (status) =>
-    set((s) => ({
-      shellSessions: { ...s.shellSessions, [status.id]: status },
-      activeShellId: s.shellSessions[status.id] ? s.activeShellId : status.id,
-    })),
-  selectShell: (id) => set({ activeShellId: id }),
+    set((s) => {
+      if (closedShells.has(status.id)) return {};
+      if (s.shellSessions[status.id]) return { shellSessions: { ...s.shellSessions, [status.id]: status } };
+      return {
+        shellSessions: { ...s.shellSessions, [status.id]: status },
+        activeShellIds: { ...s.activeShellIds, [status.target.clusterId]: status.id },
+      };
+    }),
+  selectShell: (id) =>
+    set((s) => {
+      const session = s.shellSessions[id];
+      return session ? { activeShellIds: { ...s.activeShellIds, [session.target.clusterId]: id } } : {};
+    }),
   closeShell: (id) =>
     set((s) => {
+      const session = s.shellSessions[id];
+      if (!session) return {};
+      closedShells.add(id);
+      const { clusterId } = session.target;
       const shellSessions = { ...s.shellSessions };
       delete shellSessions[id];
-      const activeShellId = s.activeShellId === id ? (Object.keys(shellSessions).at(-1) ?? null) : s.activeShellId;
-      return { shellSessions, activeShellId };
+      const activeShellIds = { ...s.activeShellIds };
+      if (activeShellIds[clusterId] === id) {
+        const next = Object.values(shellSessions).filter((x) => x.target.clusterId === clusterId).at(-1);
+        if (next) activeShellIds[clusterId] = next.id;
+        else delete activeShellIds[clusterId];
+      }
+      return { shellSessions, activeShellIds };
     }),
   hostKeyPrompts: [],
   addHostKeyPrompt: (prompt) => set((s) => ({ hostKeyPrompts: [...s.hostKeyPrompts, prompt] })),

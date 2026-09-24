@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -82,6 +82,7 @@ export function RouteList() {
 
   // A wrong secret is a plain error and keeps the dialog open; a missing one opens or re-targets it.
   const connect = useMutation({
+    mutationKey: ["route"],
     mutationFn: ({ route, secret = "" }: { route: Route; secret?: string }) => RouteService.Connect(route.id, secret),
     onSuccess: () => setCredential(null),
     onError: (error, { route }) => {
@@ -89,7 +90,12 @@ export function RouteList() {
       if (needed) setCredential({ route, ...needed });
     },
   });
-  const stop = useMutation({ mutationFn: (route: Route) => RouteService.Stop(route.id) });
+  const stop = useMutation({ mutationKey: ["route"], mutationFn: ({ route }: { route: Route }) => RouteService.Stop(route.id) });
+  // A mutation's own state only follows its latest call, so each Route's pending call is looked up among all of them.
+  const pending = useMutationState({
+    filters: { mutationKey: ["route"], status: "pending" },
+    select: (m) => (m.state.variables as { route: Route }).route.id,
+  });
   const importSSHConfig = useMutation({
     mutationFn: () => RouteService.ImportSSHConfig(),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
@@ -139,8 +145,8 @@ export function RouteList() {
                 variant="ghost"
                 size="icon-xs"
                 title={up ? "Stop" : "Connect"}
-                disabled={connect.isPending || stop.isPending}
-                onClick={() => (up ? stop.mutate(r) : connect.mutate({ route: r }))}
+                disabled={pending.includes(r.id)}
+                onClick={() => (up ? stop.mutate({ route: r }) : connect.mutate({ route: r }))}
               >
                 {up ? <StopIcon /> : <PlayIcon />}
               </Button>
@@ -154,7 +160,7 @@ export function RouteList() {
           key={credential.target}
           request={credential}
           error={connectError}
-          pending={connect.isPending}
+          pending={pending.includes(credential.route.id)}
           onSubmit={(secret) => connect.mutate({ route: credential.route, secret })}
           onClose={() => setCredential(null)}
         />

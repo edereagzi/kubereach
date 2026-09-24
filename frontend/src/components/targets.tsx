@@ -94,11 +94,12 @@ export function useTargets(cluster: Cluster, overview = false) {
 }
 
 // kind is a Kind, or any short name for one the app has no row for (an event's ReplicaSet, say).
+// The fill is translucent so the badge still shows on a hovered row, which is painted in the muted colour itself.
 export function KindBadge({ kind, className, title }: { kind: Kind | string; className?: string; title?: string }) {
   return (
     <span
       title={title}
-      className={cn("inline-flex h-[18px] w-12 shrink-0 items-center justify-center truncate rounded bg-muted px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
+      className={cn("inline-flex h-[18px] w-12 shrink-0 items-center justify-center truncate rounded bg-foreground/8 px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
     >
       {kind}
     </span>
