@@ -26,6 +26,7 @@ func (c *ClusterService) Import() ([]service.Cluster, error) {
 	home, _ := os.UserHomeDir()
 	paths, err := application.Get().Dialog.OpenFile().
 		SetTitle("Import kubeconfig").
+		AttachToWindow(mainWindow()).
 		SetDirectory(filepath.Join(home, ".kube")).
 		ShowHiddenFiles(true).
 		PromptForMultipleSelection()

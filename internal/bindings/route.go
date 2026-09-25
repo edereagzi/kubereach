@@ -68,10 +68,20 @@ func pickInSSHDir(title string) (string, error) {
 	return pickFile(title, filepath.Join(home, ".ssh"))
 }
 
+// mainWindow is the app's only window. A file dialog attached to it is a sheet on macOS, and on Windows it is owned
+// by the window, so it opens centred over it and blocks it.
+func mainWindow() application.Window {
+	if all := application.Get().Window.GetAll(); len(all) > 0 {
+		return all[0]
+	}
+	return nil
+}
+
 // pickFile opens the native file picker in dir and returns the chosen path, or "" when cancelled.
 func pickFile(title, dir string) (string, error) {
 	return application.Get().Dialog.OpenFile().
 		SetTitle(title).
+		AttachToWindow(mainWindow()).
 		SetDirectory(dir).
 		ShowHiddenFiles(true).
 		PromptForSingleSelection()
