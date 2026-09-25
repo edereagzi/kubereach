@@ -69,6 +69,11 @@ jobs:
           cp build/appicon.png stage/kubereach.png
           tar -czf "dist/kubereach_linux_$(dpkg --print-architecture).tar.gz" -C stage .
 
+      # windows-latest no longer ships NSIS, which builds the installer.
+      - if: runner.os == 'Windows'
+        run: |
+          choco install nsis -y --no-progress
+          echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
       - name: Build Windows binary and installer
         if: runner.os == 'Windows'
         run: wails3 task windows:package
