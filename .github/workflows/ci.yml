@@ -52,7 +52,9 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
-      - run: go install github.com/wailsapp/wails/v3/cmd/wails3
+      # @version installs outside this module, whose go.sum lacks the CLI's dependencies; the version follows go.mod.
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        shell: bash
       - run: wails3 build
       - uses: actions/upload-artifact@v4
         with:
