@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { RolloutState, type Cluster } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
@@ -171,12 +171,12 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
-      {/* Every row is a subgrid of this one, so its columns line up across rows: the verbs column is as wide as the most
-          icons any row shows, and the name gives way before the status column is too narrow for CrashLoopBackOff.
+      {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, badges, figure, verbs.
+          The name takes what is left; badges, figure and verbs are as wide as the widest row needs, the figure at most 16rem.
           The edge columns are auto because a row's padding is laid into them, which a fixed width would not fit. */}
       <div
         className={cn(
-          "grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,22rem)_minmax(8.5rem,1fr)_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
+          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,1fr)_auto_fit-content(16rem)_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
           rescoping && "opacity-50",
         )}
       >
@@ -235,19 +235,26 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   );
 }
 
-// A row is identity and what is wrong. A service's ports and a rollout's readiness are bounded and stay;
-// a pod's containers and ports, a workload's images and a config object's keys are in the detail, where they are acted on.
+// A row is identity, what is wrong, and one short figure: a service's ports, an Ingress's host, a rollout's ready over
+// desired, a CronJob's schedule, a config object's key count or a pod's restarts. The sentence behind a figure is its
+// title; containers, images and keys are in the detail, where they are acted on.
+type Figure = { text: string; title?: string; mono?: boolean; restarts?: boolean };
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
-const meta = (t: Target) => {
-  if (t.kind === "svc") return portsLabel(t.ports);
-  if (t.kind === "pod" || t.kind === "secret") return "";
-  if (t.ingress) return hostsLabel(t.ingress.hosts);
-  if (t.config) return keysLabel(t.config.keys?.length ?? 0);
-  return t.workload ? workloadLabel(t.workload) : "";
+const figure = (t: Target): Figure | null => {
+  if (t.kind === "svc") return { text: portsLabel(t.ports), mono: true };
+  if (t.kind === "pod") return t.restarts ? { text: String(t.restarts), title: restartsLabel(t.restarts, t.lastRestart), restarts: true } : null;
+  if (t.ingress) return { text: hostsLabel(t.ingress.hosts), title: t.ingress.hosts?.join("\n"), mono: true };
+  if (t.config) return { text: keysLabel(t.config.keys?.length ?? 0) };
+  const r = t.workload?.rollout;
+  if (r) return { text: `${r.ready}/${r.desired}`, title: `${r.ready} of ${r.desired} ready` };
+  if (t.workload?.cronJob) return { text: t.workload.cronJob.schedule, title: workloadLabel(t.workload), mono: true };
+  return null;
 };
 
-// Ports, hosts and reasons are identifiers and set in mono; counts such as "1/1 ready" read as words.
+// The figure is right-aligned so figures of one kind line up as a column, and it steps aside for every row at once
+// when the list is narrow (a detail open beside it), rather than being truncated row by row.
 function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluster: Cluster; target: Target; pressure?: string; selected: boolean; onInspect: () => void }) {
+  const f = figure(target);
   return (
     <div
       data-row={target.value}
@@ -265,17 +272,23 @@ function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluste
       >
         {target.name}
       </button>
-      <span className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-1.5">
         {target.kind === "pod" && (
           <>
             <ReasonBadge reason={target.reason} className="cursor-pointer" onClick={onInspect} />
             <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
-            {!!target.restarts && <span className="min-w-0 truncate">{restartsLabel(target.restarts, target.lastRestart)}</span>}
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
         {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
-        <span className={cn("truncate", (target.kind === "svc" || target.ingress) && "font-mono")}>{meta(target)}</span>
+      </span>
+      <span className="flex min-w-0 justify-end text-xs text-muted-foreground tabular-nums">
+        {f && (
+          <span className={cn("hidden min-w-0 items-center gap-1 @2xl:flex", f.mono && "font-mono")} title={f.title ?? f.text}>
+            {f.restarts && <ArrowCounterClockwiseIcon className="size-3 shrink-0" aria-label="restarts" />}
+            <span className="truncate">{f.text}</span>
+          </span>
+        )}
       </span>
       <span className="flex justify-end gap-0.5">
         <TargetVerbs cluster={cluster} target={target} row />
