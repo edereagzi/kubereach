@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
-import { ClusterService, ConfigService } from "@bindings/internal/bindings";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { Browser, System } from "@wailsio/runtime";
+import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,6 +49,7 @@ export function SidebarFooter() {
   });
   const error = exportConfig.error ?? inspect.error;
   const openRoutes = useUIStore((s) => s.openRoutes);
+  const [about, setAbout] = useState(false);
 
   return (
     <div>
@@ -77,11 +79,49 @@ export function SidebarFooter() {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <AppearanceMenu />
+            {/* macOS has About in its application menu (InstallMenu); elsewhere there is no menu bar. */}
+            {(System.IsWindows() || System.IsLinux()) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setAbout(true)}>
+                  <InfoIcon /> About Kubereach
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
       {preview && <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />}
+      {about && <AboutDialog onClose={() => setAbout(false)} />}
     </div>
+  );
+}
+
+// AboutDialog is macOS's native About, drawn here for Windows and Linux.
+function AboutDialog({ onClose }: { onClose: () => void }) {
+  const { data: info } = useQuery({ queryKey: ["about"], queryFn: () => AppService.Info() });
+  const ok = useRef<HTMLButtonElement>(null);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent initialFocus={ok}>
+        <DialogHeader>
+          <DialogTitle>Kubereach {info?.version}</DialogTitle>
+          <DialogDescription>Configuration file:</DialogDescription>
+          <p className="break-all font-mono text-xs">{info?.configPath}</p>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => AppService.Reveal()}>
+            Reveal
+          </Button>
+          <Button variant="outline" disabled={!info} onClick={() => info && Browser.OpenURL(info.repoURL)}>
+            GitHub
+          </Button>
+          <Button ref={ok} onClick={onClose}>
+            OK
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

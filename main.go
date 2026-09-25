@@ -80,7 +80,9 @@ func main() {
 	})
 	bindings.NewTray(app, svc, window)
 	app.RegisterService(application.NewService(bindings.NewWindowTheme(app, window)))
-	bindings.InstallMenu(app, bindings.NewAppService(app, version, configPath).ShowAbout)
+	about := bindings.NewAppService(app, version, configPath)
+	app.RegisterService(application.NewServiceWithOptions(about, typedErrors))
+	bindings.InstallMenu(app, about)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
