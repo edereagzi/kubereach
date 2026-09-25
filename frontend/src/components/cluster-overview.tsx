@@ -239,12 +239,14 @@ const meta = (t: Target) => {
 };
 
 // Ports, hosts and reasons are identifiers and set in mono; counts such as "1/1 ready" read as words.
+// Every row is its own grid, so the columns are sized alike: the status column fits CrashLoopBackOff before the name
+// gives way, and the verbs column is as wide as its three icons, so badges start at the same x on every row.
 function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluster: Cluster; target: Target; pressure?: string; selected: boolean; onInspect: () => void }) {
   return (
     <div
       data-row={target.value}
       className={cn(
-        "group grid h-8 grid-cols-[48px_minmax(96px,22rem)_minmax(5rem,1fr)_auto] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent",
+        "group grid h-8 grid-cols-[48px_minmax(96px,22rem)_minmax(8.5rem,1fr)_4.75rem] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent",
         selected && "bg-accent shadow-[inset_2px_0_0_var(--primary)]",
       )}
     >
