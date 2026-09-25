@@ -40,10 +40,13 @@ func (a *AppService) reveal() {
 	_ = a.app.Env.OpenFileManager(a.configPath, true)
 }
 
-// InstallMenu installs the macOS application menu; Windows and Linux show no menu bar.
+// InstallMenu installs the macOS application menu. Windows and Linux show no menu bar, so Ctrl+Q quits there;
+// without a tray it is the only way to.
 // The About role would open Cocoa's own panel, so About is a plain item wired to ShowAbout.
 func InstallMenu(app *application.App, showAbout func()) {
 	if runtime.GOOS != "darwin" {
+		// App key bindings run inside the webview's key handler; quitting there tears the window down under it.
+		app.KeyBinding.Add("Ctrl+Q", func(application.Window) { go app.Quit() })
 		return
 	}
 	menu := app.Menu.New()

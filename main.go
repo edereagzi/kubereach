@@ -46,6 +46,16 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		OnShutdown: svc.Shutdown,
+		// A second launch would bind the same Saved Forward ports; it brings the running window back and exits instead,
+		// which is also the way back to a hidden window where there is no tray.
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.edereagzi.kubereach",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				for _, w := range application.Get().Window.GetAll() {
+					bindings.ShowWindow(w)
+				}
+			},
+		},
 	})
 
 	svc.Emit = func(name string, data any) { app.Event.Emit(name, data) }

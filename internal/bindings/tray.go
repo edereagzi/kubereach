@@ -52,6 +52,12 @@ func NewTray(app *application.App, svc *service.Service, window *application.Web
 	return t
 }
 
+// ShowWindow brings a hidden or minimised window back to the front.
+func ShowWindow(w application.Window) {
+	w.UnMinimise()
+	w.Show().Focus()
+}
+
 func (t *Tray) open() {
 	t.rebuild()
 	t.tray.OpenMenu()
@@ -100,7 +106,7 @@ func (t *Tray) rebuild() {
 		menu.Add("Nothing running").SetEnabled(false)
 	}
 	menu.AddSeparator()
-	menu.Add("Open").OnClick(func(*application.Context) { t.window.Show().Focus() })
+	menu.Add("Open").OnClick(func(*application.Context) { ShowWindow(t.window) })
 	menu.Add("Quit").SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { t.app.Quit() })
 
 	old := t.menu
