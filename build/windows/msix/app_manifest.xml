@@ -16,7 +16,7 @@
   <Properties>
     <DisplayName>Kubereach</DisplayName>
     <PublisherDisplayName>Eray Dereagzi</PublisherDisplayName>
-    <Description>Access Kubernetes clusters behind SSH bastions</Description>
+    <Description>A Kubernetes desktop app that can connect to clusters through SSH jump hosts</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   
@@ -32,7 +32,7 @@
     <Application Id="com.edereagzi.kubereach" Executable="kubereach" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Kubereach"
-        Description="Access Kubernetes clusters behind SSH bastions"
+        Description="A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

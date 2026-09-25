@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Kubereach
-Comment=Access Kubernetes clusters behind SSH bastions, VPNs and closed networks
+Comment=A Kubernetes desktop app that can connect to clusters through SSH jump hosts
 Exec=kubereach
 Icon=kubereach
 Categories=Development;

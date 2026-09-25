@@ -19,11 +19,15 @@ Darwin)
   echo "Installed $dest/Kubereach.app"
   ;;
 Linux)
-  [ "$(uname -m)" = x86_64 ] || { echo "Unsupported architecture: $(uname -m)" >&2; exit 1; }
+  case "$(uname -m)" in
+  x86_64) arch=amd64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
   bin="$HOME/.local/bin"
   share="$HOME/.local/share"
   mkdir -p "$bin" "$share/applications" "$share/icons"
-  curl -fsSL "$base/kubereach_linux_amd64.tar.gz" | tar -xzf - -C "$tmp"
+  curl -fsSL "$base/kubereach_linux_$arch.tar.gz" | tar -xzf - -C "$tmp"
   mv "$tmp/kubereach" "$bin/kubereach"
   mv "$tmp/kubereach.png" "$share/icons/kubereach.png"
   sed "s|^Exec=.*|Exec=$bin/kubereach|" "$tmp/kubereach.desktop" > "$share/applications/kubereach.desktop"

@@ -8,7 +8,7 @@ info:
   companyName: "Eray Dereagzi"
   productName: "Kubereach"
   productIdentifier: "com.edereagzi.kubereach"
-  description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks"
+  description: "A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
   copyright: "© 2026 Eray Dereagzi"
   comments: "(c) 2026 Eray Dereagzi"
   version: "0.1.0" # The application version

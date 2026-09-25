@@ -1,9 +1,10 @@
 name: Release
 
-# Pushing a v* tag builds all platforms, publishes a GitHub Release and updates
-# the Homebrew cask, Scoop manifest (both in edereagzi/homebrew-tap) and winget.
+# Pushing a v* tag builds all platforms and publishes a GitHub Release.
+# Updating the Homebrew cask, Scoop manifest (both in edereagzi/homebrew-tap)
+# and winget is disabled until builds are signed.
 #
-# Secrets:
+# Secrets (only for the disabled steps):
 #   TAP_GITHUB_TOKEN  fine-grained PAT with contents:write on edereagzi/homebrew-tap
 #   WINGET_TOKEN      classic PAT with public_repo; wingetcreate forks microsoft/winget-pkgs and opens the PR
 
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -36,7 +37,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3
       - run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -63,7 +64,7 @@ jobs:
           mkdir stage
           cp bin/kubereach build/release/kubereach.desktop stage/
           cp build/appicon.png stage/kubereach.png
-          tar -czf dist/kubereach_linux_amd64.tar.gz -C stage .
+          tar -czf "dist/kubereach_linux_$(dpkg --print-architecture).tar.gz" -C stage .
 
       - name: Build Windows binary and installer
         if: runner.os == 'Windows'
@@ -79,7 +80,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ runner.os }}
+          name: dist-${{ runner.os }}-${{ runner.arch }}
           path: dist/
 
   release:
@@ -98,18 +99,26 @@ jobs:
       - run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: build/release/render.sh "$VERSION" dist out
-      - uses: actions/upload-artifact@v4
+      # Disabled until builds are signed: package managers would reject or flag unsigned builds.
+      - name: Render package manifests (disabled)
+        if: false
+        run: build/release/render.sh "$VERSION" dist out
+      - name: Upload winget manifests (disabled)
+        if: false
+        uses: actions/upload-artifact@v4
         with:
           name: winget
           path: out/winget/
 
-      - uses: actions/checkout@v4
+      - name: Check out the tap (disabled)
+        if: false
+        uses: actions/checkout@v4
         with:
           repository: edereagzi/homebrew-tap
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
           path: tap
-      - name: Update Homebrew cask and Scoop manifest
+      - name: Update Homebrew cask and Scoop manifest (disabled)
+        if: false
         run: |
           mkdir -p tap/Casks tap/bucket
           cp out/kubereach.rb tap/Casks/kubereach.rb
@@ -119,7 +128,9 @@ jobs:
           git -c user.name=github-actions -c user.email=github-actions@github.com commit -m "kubereach $VERSION"
           git push
 
+  # Disabled until builds are signed, like the tap update above.
   winget:
+    if: false
     needs: release
     runs-on: windows-latest
     steps:

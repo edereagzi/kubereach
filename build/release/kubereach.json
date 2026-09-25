@@ -1,6 +1,6 @@
 {
     "version": "${VERSION}",
-    "description": "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
+    "description": "A Kubernetes desktop app that can connect to clusters through SSH jump hosts",
     "homepage": "https://github.com/edereagzi/kubereach",
     "license": "Apache-2.0",
     "url": "https://github.com/edereagzi/kubereach/releases/download/v${VERSION}/kubereach_windows_amd64.zip",

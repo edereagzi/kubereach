@@ -10,10 +10,10 @@ version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks"
+description: "A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
 vendor: "Eray Dereagzi"
-homepage: "https://wails.io"
-license: "MIT"
+homepage: "https://github.com/edereagzi/kubereach"
+license: "Apache-2.0"
 release: "1"
 
 contents:

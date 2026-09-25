@@ -18,7 +18,7 @@
         PublisherName="CN=Eray Dereagzi"
         PublisherDisplayName="Eray Dereagzi"
         Version="0.1.0.0"
-        PackageDescription="Access Kubernetes clusters behind SSH bastions">
+        PackageDescription="A Kubernetes desktop app that can connect to clusters through SSH jump hosts">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
@@ -26,7 +26,7 @@
         <Applications>
             <Application
                 Id="com.edereagzi.kubereach"
-                Description="Access Kubernetes clusters behind SSH bastions"
+                Description="A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
                 DisplayName="Kubereach"
                 ExecutableName="kubereach"
                 EntryPoint="Windows.FullTrustApplication">
@@ -43,7 +43,7 @@
             <Framework>false</Framework>
             <DisplayName>Kubereach</DisplayName>
             <PublisherDisplayName>Eray Dereagzi</PublisherDisplayName>
-            <Description>Access Kubernetes clusters behind SSH bastions</Description>
+            <Description>A Kubernetes desktop app that can connect to clusters through SSH jump hosts</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>

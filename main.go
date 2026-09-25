@@ -32,7 +32,7 @@ func main() {
 	}}
 	app := application.New(application.Options{
 		Name:        "Kubereach",
-		Description: "Access Kubernetes clusters behind SSH bastions, VPNs and closed networks",
+		Description: "A Kubernetes desktop app that can connect to clusters through SSH jump hosts",
 		Services: []application.Service{
 			application.NewServiceWithOptions(bindings.NewConfigService(svc), typedErrors),
 			application.NewServiceWithOptions(bindings.NewClusterService(svc), typedErrors),

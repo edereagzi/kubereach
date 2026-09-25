@@ -7,7 +7,7 @@ PublisherSupportUrl: https://github.com/edereagzi/kubereach/issues
 PackageName: Kubereach
 PackageUrl: https://github.com/edereagzi/kubereach
 License: Apache-2.0
-ShortDescription: Access Kubernetes clusters behind SSH bastions, VPNs and closed networks
+ShortDescription: A Kubernetes desktop app that can connect to clusters through SSH jump hosts
 Tags:
   - kubernetes
   - ssh
