@@ -171,9 +171,17 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
-      <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-4 transition-opacity", rescoping && "opacity-50")}>
+      {/* Every row is a subgrid of this one, so its columns line up across rows: the verbs column is as wide as the most
+          icons any row shows, and the name gives way before the status column is too narrow for CrashLoopBackOff.
+          The edge columns are auto because a row's padding is laid into them, which a fixed width would not fit. */}
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,22rem)_minmax(8.5rem,1fr)_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
+          rescoping && "opacity-50",
+        )}
+      >
         {total === 0 && !pending && (
-          <Empty className="justify-start border-0 pt-12">
+          <Empty className="col-span-full justify-start border-0 pt-12">
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
@@ -201,8 +209,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             );
           };
           return (
-            <section key={ns}>
-              <h3 className="sticky top-0 z-10 flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium whitespace-nowrap">
+            <section key={ns} className="col-span-full grid grid-cols-subgrid">
+              <h3 className="sticky top-0 z-10 col-span-full flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium whitespace-nowrap">
                 <span className="truncate">{ns}</span>
                 <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">{counts(running)}</span>
               </h3>
@@ -210,7 +218,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
               {reference.length > 0 && words.length === 0 && (
                 <button
                   type="button"
-                  className="grid h-8 w-full grid-cols-[48px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
+                  className="col-span-full grid h-8 grid-cols-[48px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
                   aria-expanded={open}
                   onClick={() => setUnfolded((u) => ({ ...u, [ns]: !open }))}
                 >
@@ -239,14 +247,12 @@ const meta = (t: Target) => {
 };
 
 // Ports, hosts and reasons are identifiers and set in mono; counts such as "1/1 ready" read as words.
-// Every row is its own grid, so the columns are sized alike: the status column fits CrashLoopBackOff before the name
-// gives way, and the verbs column is as wide as its three icons, so badges start at the same x on every row.
 function TargetLine({ cluster, target, pressure, selected, onInspect }: { cluster: Cluster; target: Target; pressure?: string; selected: boolean; onInspect: () => void }) {
   return (
     <div
       data-row={target.value}
       className={cn(
-        "group grid h-8 grid-cols-[48px_minmax(96px,22rem)_minmax(8.5rem,1fr)_4.75rem] items-center gap-3 px-4 hover:bg-accent focus-within:bg-accent",
+        "group col-span-full grid h-8 grid-cols-subgrid items-center px-4 hover:bg-accent focus-within:bg-accent",
         selected && "bg-accent shadow-[inset_2px_0_0_var(--primary)]",
       )}
     >
