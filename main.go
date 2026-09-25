@@ -45,6 +45,10 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
+		// WebView2 draws classic scrollbars unless asked for Windows 11's thin overlay ones, as macOS and GNOME show.
+		Windows: application.WindowsOptions{
+			EnabledFeatures: []string{"msOverlayScrollbarWinStyle"},
+		},
 		OnShutdown: svc.Shutdown,
 		// A second launch would bind the same Saved Forward ports; it brings the running window back and exits instead,
 		// which is also the way back to a hidden window where there is no tray.
