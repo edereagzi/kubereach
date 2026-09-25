@@ -41,6 +41,14 @@ export function ago(iso: string) {
   return relative.format(Math.round(seconds / size), unit);
 }
 
+// since renders a compact age such as "57s" or "3h" for columns of times, where "ago" would be said on every line.
+export function since(iso: string) {
+  if (isZeroTime(iso)) return "";
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const [unit, size] = ([["d", 86400], ["h", 3600], ["m", 60], ["s", 1]] as const).find(([, s]) => seconds >= s) ?? ["s", 1];
+  return `${Math.floor(seconds / size)}${unit}`;
+}
+
 const stateLabel = (st: ContainerState) => {
   if (!st.status) return "not started";
   const parts = [st.status, st.reason];
@@ -168,7 +176,7 @@ function Conditions({ conditions }: { conditions: PodCondition[] }) {
       {conditions.map((c) => (
         <div key={c.type} className="contents">
           <dt className="font-medium">{c.type}</dt>
-          <dd className={cn("font-mono", c.status !== "True" && "text-destructive")}>{c.status}</dd>
+          <dd className={cn(c.status !== "True" && "text-destructive")}>{c.status}</dd>
           <dd className="truncate text-muted-foreground" title={c.message}>
             {[c.reason, c.message].filter(Boolean).join(": ")}
           </dd>
@@ -201,26 +209,30 @@ function Container({ container: c, usage, onPrevious, pending }: { container: Co
       <div className="flex items-center gap-2">
         <span className="font-mono font-medium">{c.name}</span>
         {c.init && <Badge variant="outline">init</Badge>}
-        <span className="min-w-0 truncate text-muted-foreground" title={c.image}>
+        <span className="min-w-0 truncate font-mono text-muted-foreground" title={c.image}>
           {c.image}
         </span>
         <span className="ml-auto shrink-0 text-muted-foreground">
           {restartsLabel(c.restarts)}
-          {c.restarts > 0 && c.lastState && `, last ${ago(c.lastState.finishedAt)}`}
+          {c.restarts > 0 && c.lastState && ` · last ${ago(c.lastState.finishedAt)}`}
         </span>
       </div>
       <dl className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5">
         <dt className="text-muted-foreground">State</dt>
-        <dd>
+        <dd className="min-w-0">
           {stateLabel(c.state)}
-          {c.state.message && <span className="text-muted-foreground"> — {c.state.message}</span>}
+          {c.state.message && (
+            <p className="line-clamp-2 break-words text-muted-foreground" title={c.state.message}>
+              {c.state.message}
+            </p>
+          )}
         </dd>
         {c.lastState && (
           <>
             <dt className="text-muted-foreground">Previous run</dt>
-            <dd className="flex items-center gap-2">
+            <dd className="flex items-baseline gap-3">
               <span>{stateLabel(c.lastState)}</span>
-              <Button variant="outline" size="xs" className="h-5 text-xs" disabled={pending} onClick={onPrevious}>
+              <Button variant="link" className="h-auto p-0 text-xs" disabled={pending} onClick={onPrevious}>
                 Previous logs
               </Button>
             </dd>
@@ -240,17 +252,17 @@ function Container({ container: c, usage, onPrevious, pending }: { container: Co
 export function Events({ events }: { events: KubeEvent[] }) {
   if (events.length === 0) return <p className="text-xs text-muted-foreground">No recent events.</p>;
   return (
-    <ul className="flex flex-col gap-1 text-xs">
+    <ul className="grid grid-cols-[max-content_max-content_1fr] gap-x-3 gap-y-1.5 text-xs">
       {events.map((e, i) => (
-        <li key={i} className="grid grid-cols-[max-content_max-content_1fr] gap-x-3">
-          <span className="text-muted-foreground" title={new Date(e.time).toLocaleString()}>
-            {ago(e.time)}
+        <li key={i} className="contents">
+          <span className="text-right text-muted-foreground tabular-nums" title={`${ago(e.time)}, ${new Date(e.time).toLocaleString()}`}>
+            {since(e.time)}
           </span>
-          <span className={cn("font-mono", e.type === "Warning" && "text-destructive")}>
+          <span className={cn("font-medium", e.type === "Warning" && "text-destructive")}>
             {e.reason}
-            {e.count > 1 && <span className="text-muted-foreground"> ×{e.count}</span>}
+            {e.count > 1 && <span className="font-normal text-muted-foreground tabular-nums"> ×{e.count}</span>}
           </span>
-          <span className="whitespace-pre-wrap">{e.message}</span>
+          <span className="min-w-0 break-words whitespace-pre-wrap">{e.message}</span>
         </li>
       ))}
     </ul>
