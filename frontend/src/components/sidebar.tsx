@@ -20,7 +20,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { openShellCount, useUIStore } from "@/store";
-import { cn } from "@/lib/utils";
+import { cn, modKey } from "@/lib/utils";
 
 export function Sidebar() {
   const queryClient = useQueryClient();
@@ -73,7 +73,7 @@ export function Sidebar() {
             <MagnifyingGlassIcon />
           </InputGroupAddon>
           <InputGroupAddon align="inline-end">
-            <kbd className="font-sans text-[10px] text-muted-foreground">⌘K</kbd>
+            <kbd className="font-sans text-[10px] text-muted-foreground">{modKey}K</kbd>
           </InputGroupAddon>
         </InputGroup>
       </div>

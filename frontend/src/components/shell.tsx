@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { openShellCount, useUIStore, type DockTab, type MainTab } from "@/store";
-import { cn } from "@/lib/utils";
+import { cn, modKey } from "@/lib/utils";
 
 export function Shell() {
   const routesOpen = useUIStore((s) => s.routesOpen);
@@ -192,7 +192,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
           Shell
           <ShellCount cluster={cluster} />
         </DockButton>
-        <Button variant="ghost" size="icon-xs" className="my-auto ml-auto" title={open ? "Hide panel (⌘J)" : "Show panel (⌘J)"} onClick={() => setDockOpen(!open)}>
+        <Button variant="ghost" size="icon-xs" className="my-auto ml-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
           {open ? <CaretDownIcon /> : <CaretUpIcon />}
         </Button>
       </div>
