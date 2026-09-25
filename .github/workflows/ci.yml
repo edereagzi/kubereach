@@ -43,6 +43,8 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 24
