@@ -444,7 +444,7 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 			backoff = time.Second
 		}
 		if lc.dropped(pod) {
-			s.setLogState(lc, StateReconnecting, cmp.Or(err, errLogsEnded))
+			s.setLogState(lc, StateReconnecting, cmp.Or(err, errContainerStopped))
 		}
 		// A Route that is down, or a container still waiting to start (400), is polled every second so the
 		// stream starts as soon as it can.
@@ -463,7 +463,9 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 	}
 }
 
-var errLogsEnded error = &userError{msg: "The log stream ended"}
+// errContainerStopped is why a body ends without an error: almost always the container exiting, as in a crash loop.
+// The API server closing an idle stream ends it the same way, and is followed again within a second.
+var errContainerStopped error = &userError{msg: "The container stopped; following again when it restarts"}
 
 func (lc *logConn) markTerminating(pod *corev1.Pod) {
 	if pod.DeletionTimestamp == nil {
