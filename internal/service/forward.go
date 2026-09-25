@@ -456,7 +456,7 @@ func (s *Service) acceptForward(ctx context.Context, fc *forwardConn) {
 }
 
 // serveForward carries one local connection over a data stream of the pod connection, the way client-go's
-// port-forward does; the paired error stream reports a pod-side failure such as a refused port.
+// port-forward does; the paired error stream reports a pod-side failure such as a refused port or a deleted pod.
 func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn) {
 	defer func() { _ = c.Close() }()
 	conn, podPort, id, err := s.forwardConnection(ctx, fc)
@@ -481,10 +481,10 @@ func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn)
 		return
 	}
 	defer conn.RemoveStreams(data)
+	errMsg := make(chan []byte, 1)
 	go func() {
-		if msg, _ := io.ReadAll(errStream); len(msg) > 0 {
-			s.updateForward(fc, func(st *ForwardStatus) { st.Error = string(msg) })
-		}
+		msg, _ := io.ReadAll(errStream)
+		errMsg <- msg
 	}()
 	remoteDone := make(chan struct{})
 	go func() {
@@ -497,6 +497,11 @@ func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn)
 	}()
 	select {
 	case <-remoteDone:
+		// As client-go does: reset the data stream first, or the pod may never close the error stream.
+		_ = data.Reset()
+		if msg := <-errMsg; len(msg) > 0 {
+			s.failForward(fc, conn, string(msg))
+		}
 	case <-ctx.Done():
 	}
 }
@@ -629,6 +634,24 @@ func (s *Service) dropForward(fc *forwardConn, conn httpstream.Connection) {
 	fc.mu.Unlock()
 	if dropped {
 		s.updateForward(fc, func(st *ForwardStatus) { st.Pod, st.State, st.Error = "", StateIdle, "" })
+	}
+}
+
+// failForward drops the pod connection after a pod-side error, since the API server keeps a deleted pod's
+// connection open; the next inbound connection resolves a ready pod again. A connection already replaced stays quiet.
+func (s *Service) failForward(fc *forwardConn, conn httpstream.Connection, msg string) {
+	fc.mu.Lock()
+	dropped := fc.conn == conn && !fc.closed
+	if dropped {
+		// Set under the same lock, so a pod dialed next cannot report connected before this error lands.
+		fc.conn = nil
+		fc.status.Pod, fc.status.State, fc.status.Error = "", StateError, msg
+	}
+	status := fc.status
+	fc.mu.Unlock()
+	_ = conn.Close()
+	if dropped {
+		s.Emit(EventForwardState, status)
 	}
 }
 

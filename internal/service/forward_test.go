@@ -31,7 +31,8 @@ import (
 )
 
 // testAPI serves the pod subresources: any pod is running, the log subresource streams seeded and live lines,
-// and port-forward speaks SPDY where every data stream first receives "<pod>:<port>\n" and is then echoed.
+// and port-forward speaks SPDY where every data stream first receives "<pod>:<port>\n" and is then echoed,
+// unless the pod was deleted.
 type testAPI struct {
 	mu    sync.Mutex
 	conns map[string][]httpstream.Connection
@@ -80,14 +81,41 @@ func (a *testAPI) podHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := httpstream.Handshake(r, w, []string{"portforward.k8s.io"}); err != nil {
 		return
 	}
-	conn := spdy.NewResponseUpgrader().UpgradeResponse(w, r, func(s httpstream.Stream, _ <-chan struct{}) error {
-		if s.Headers().Get(corev1.StreamType) == corev1.StreamTypeData {
-			go func() {
-				defer func() { _ = s.Close() }()
-				_, _ = fmt.Fprintf(s, "%s:%s\n", pod, s.Headers().Get(corev1.PortHeader))
-				_, _ = io.Copy(s, s)
-			}()
+	// Like the kubelet, a pair's error stream stays open until its data stream is done.
+	var pairsMu sync.Mutex
+	pairs := map[string]chan struct{}{}
+	pairDone := func(id string) chan struct{} {
+		pairsMu.Lock()
+		defer pairsMu.Unlock()
+		if pairs[id] == nil {
+			pairs[id] = make(chan struct{})
 		}
+		return pairs[id]
+	}
+	conn := spdy.NewResponseUpgrader().UpgradeResponse(w, r, func(s httpstream.Stream, replySent <-chan struct{}) error {
+		a.mu.Lock()
+		gone := a.gone[pod]
+		a.mu.Unlock()
+		done := pairDone(s.Headers().Get(corev1.PortForwardRequestIDHeader))
+		go func() {
+			<-replySent
+			defer func() { _ = s.Close() }()
+			switch s.Headers().Get(corev1.StreamType) {
+			case corev1.StreamTypeError:
+				if gone {
+					// A deleted pod's connection stays open, but the kubelet fails every new stream pair.
+					_, _ = fmt.Fprintf(s, "failed to find sandbox %q in store: not found", pod)
+					return
+				}
+				<-done
+			case corev1.StreamTypeData:
+				defer close(done)
+				if !gone {
+					_, _ = fmt.Fprintf(s, "%s:%s\n", pod, s.Headers().Get(corev1.PortHeader))
+					_, _ = io.Copy(s, s)
+				}
+			}
+		}()
 		return nil
 	})
 	if conn == nil {
@@ -552,6 +580,37 @@ func TestForward_LazyConnectionDropsAfterIdleAndFollowsReplacedPod(t *testing.T)
 	f.waitState(t, service.StateIdle)
 	if dialFails(pf.LocalPort) {
 		t.Error("local port closed after the pod went away")
+	}
+}
+
+func TestForward_DeletedPodIsDroppedAndNextConnectionReachesAnother(t *testing.T) {
+	now := time.Now()
+	ctx := context.Background()
+	f := newForwardFixture(t,
+		selectorService("default", "api", 80, intstr.FromInt32(8080)),
+		pod("default", "api-0", "api", corev1.PodRunning, true, now.Add(-time.Hour)),
+		pod("default", "api-1", "api", corev1.PodRunning, true, now),
+	)
+	pf := f.save(t, service.TargetService, "api", 80, 0)
+	if diff := cmp.Diff([]string{"api-0:8080", "ping"}, pingThroughPort(t, pf.LocalPort)); diff != "" {
+		t.Errorf("bytes through local port mismatch (-want +got):\n%s", diff)
+	}
+	f.waitState(t, service.StateConnected)
+
+	// The API server keeps the deleted pod's connection open; the connection that meets its error drops it.
+	if err := f.cs.CoreV1().Pods("default").Delete(ctx, "api-0", metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	f.api.deletePod("api-0")
+	touchPort(t, pf.LocalPort)
+	if ev := f.waitState(t, service.StateError); !strings.Contains(ev.Error, "failed to find sandbox") {
+		t.Errorf("row after the pod is deleted = %+v, want the sandbox error", ev)
+	}
+	if diff := cmp.Diff([]string{"api-1:8080", "ping"}, pingThroughPort(t, pf.LocalPort)); diff != "" {
+		t.Errorf("bytes after the pod is deleted mismatch (-want +got):\n%s", diff)
+	}
+	if ev := f.waitState(t, service.StateConnected); ev.Pod != "api-1" {
+		t.Errorf("re-resolved pod = %q, want api-1", ev.Pod)
 	}
 }
 
