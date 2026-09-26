@@ -1,12 +1,16 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"unicode/utf8"
 
 	"github.com/pmezard/go-difflib/difflib"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -69,8 +73,9 @@ func (s *Service) GetYAML(ctx context.Context, clusterID string, kind ObjectKind
 	return string(out), err
 }
 
-// EditYAML is the object as the editor opens it: GetYAML's without status, which an update never changes. Its
-// resourceVersion goes back with the edit, so a change made in the meantime is a conflict instead of being overwritten.
+// EditYAML is the object as the editor opens it (see editMap): without status, which an update never changes, and a
+// Secret's values decoded, never masked. Its resourceVersion goes back with the edit, so a change made in the meantime
+// is a conflict instead of being overwritten.
 func (s *Service) EditYAML(ctx context.Context, clusterID string, kind ObjectKind, namespace, name string) (string, error) {
 	c, err := s.objectClient(clusterID, kind, namespace)
 	if err != nil {
@@ -147,6 +152,17 @@ func (s *Service) editedObject(ctx context.Context, clusterID string, kind Objec
 	if status := reflect.ValueOf(obj).Elem().FieldByName("Status"); status.IsValid() {
 		status.SetZero()
 	}
+	// A Secret's text values come back under stringData; they are encoded into data here, as the API server would,
+	// stringData winning over data for the same key.
+	if sec, ok := obj.(*corev1.Secret); ok {
+		if sec.Data == nil && len(sec.StringData) > 0 {
+			sec.Data = map[string][]byte{}
+		}
+		for k, v := range sec.StringData {
+			sec.Data[k] = []byte(v)
+		}
+		sec.StringData = nil
+	}
 	if live, err = c.get(ctx, name); err != nil {
 		err = wrapForbidden(err)
 		return
@@ -160,7 +176,7 @@ func (s *Service) editedObject(ctx context.Context, clusterID string, kind Objec
 
 // unchangedSince reports whether live is still the object original showed, status and resourceVersion aside.
 func unchangedSince(live runtime.Object, original string) bool {
-	now, err := objectMap(live)
+	now, err := editMap(live)
 	if err != nil {
 		return false
 	}
@@ -169,7 +185,6 @@ func unchangedSince(live runtime.Object, original string) bool {
 		return false
 	}
 	for _, m := range []map[string]any{now, then} {
-		delete(m, "status")
 		if md, ok := m["metadata"].(map[string]any); ok {
 			delete(md, "resourceVersion")
 		}
@@ -259,11 +274,52 @@ func objectMap(obj runtime.Object) (map[string]any, error) {
 }
 
 func editText(obj runtime.Object) (string, error) {
-	m, err := objectMap(obj)
+	m, err := editMap(obj)
 	if err != nil {
 		return "", err
 	}
-	delete(m, "status")
 	out, err := yaml.Marshal(m)
+	if _, secret := obj.(*corev1.Secret); secret && m["data"] != nil {
+		// The top-level data key is the only one at the start of a line.
+		out = bytes.Replace(out, []byte("\ndata:\n"), []byte("\n# Values under data are not text and stay base64; text values are under stringData.\ndata:\n"), 1)
+	}
 	return string(out), err
+}
+
+// editMap is obj as the editor shows it: without status, and a Secret's text values decoded under stringData, while
+// a value YAML cannot carry as text stays base64 under data.
+func editMap(obj runtime.Object) (map[string]any, error) {
+	m, err := objectMap(obj)
+	if err != nil {
+		return nil, err
+	}
+	delete(m, "status")
+	if sec, ok := obj.(*corev1.Secret); ok {
+		data, text := map[string]any{}, map[string]any{}
+		for k, v := range sec.Data {
+			if isText(v) {
+				text[k] = string(v)
+			} else {
+				data[k] = base64.StdEncoding.EncodeToString(v)
+			}
+		}
+		delete(m, "data")
+		if len(data) > 0 {
+			m["data"] = data
+		}
+		if len(text) > 0 {
+			m["stringData"] = text
+		}
+	}
+	return m, nil
+}
+
+// isText reports whether v is UTF-8 that YAML writes and reads back exactly; YAML refuses some control characters.
+func isText(v []byte) bool {
+	if !utf8.Valid(v) {
+		return false
+	}
+	out, err := yaml.Marshal(string(v))
+	var back string
+	return err == nil && yaml.Unmarshal(out, &back) == nil && back == string(v)
 }

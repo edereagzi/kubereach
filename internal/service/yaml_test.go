@@ -3,12 +3,14 @@ package service_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/edereagzi/kubereach/internal/service"
+	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -210,5 +212,73 @@ func TestEditYAML_KindWithoutStatus(t *testing.T) {
 	}
 	if got, _ := svc.EditYAML(ctx, id, service.ObjectConfigMap, "default", "app"); !strings.Contains(got, "mode: slow") {
 		t.Errorf("configmap after apply:\n%s", got)
+	}
+}
+
+func TestEditYAML_SecretValuesDecodedAndEncodedBack(t *testing.T) {
+	values := map[string][]byte{
+		"password": []byte("hunter2"),
+		"cert":     []byte("-----BEGIN-----\n  indented: yes\n-----END-----\n"),
+		"empty":    {},
+		"awkward":  []byte("nul\x00 tab\t crlf\r\n trailing  "),
+		"blob":     {0xff, 0x00, 0x01},
+		// UTF-8 that YAML cannot write as text.
+		"del":     []byte("a\x7fb"),
+		"nonchar": []byte("\uFFFE"),
+	}
+	sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "db"}, Type: corev1.SecretTypeOpaque, Data: values}
+	svc, cs, id := newFakeService(t, sec)
+	gvr := corev1.SchemeGroupVersion.WithResource("secrets")
+	playAPIServer(cs, gvr, func(runtime.Object) {})
+	stored := func() map[string][]byte {
+		got, err := cs.Tracker().Get(gvr, "default", "db")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.(*corev1.Secret).Data
+	}
+	ctx := context.Background()
+
+	text, err := svc.EditYAML(ctx, id, service.ObjectSecret, "default", "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Text is shown decoded; the binary value stays base64 under data.
+	for _, want := range []string{"# Values under data are not text", "data:\n  blob: /wAB\n", "  del: YX9i\n", "stringData:\n", "  password: hunter2\n", "  empty: \"\"\n"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("secret edit yaml lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "aHVudGVyMg==") {
+		t.Errorf("secret edit yaml shows an encoded text value:\n%s", text)
+	}
+
+	// Unchanged text round-trips every value byte for byte.
+	if err := svc.ApplyYAML(ctx, id, service.ObjectSecret, "default", "db", text, text); err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(); !cmp.Equal(got, values) {
+		t.Errorf("after an unchanged apply: %s", cmp.Diff(values, got))
+	}
+
+	edited := strings.Replace(text, "password: hunter2", "password: hunter3", 1)
+	diff, err := svc.DiffYAML(ctx, id, service.ObjectSecret, "default", "db", text, edited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diff, "-  password: hunter2\n+  password: hunter3\n") {
+		t.Errorf("diff does not show decoded values:\n%s", diff)
+	}
+	if err := svc.ApplyYAML(ctx, id, service.ObjectSecret, "default", "db", text, edited); err != nil {
+		t.Fatal(err)
+	}
+	want := maps.Clone(values)
+	want["password"] = []byte("hunter3")
+	if got := stored(); !cmp.Equal(got, want) {
+		t.Errorf("after changing one key: %s", cmp.Diff(want, got))
+	}
+	// The password the editor loaded is not the Secret's any more.
+	if err := svc.ApplyYAML(ctx, id, service.ObjectSecret, "default", "db", text, edited); service.Describe(err).Code != "conflict" {
+		t.Errorf("stale secret edit: err = %v, want a conflict", err)
 	}
 }
