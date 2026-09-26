@@ -60,6 +60,9 @@ export function StateDot({ status, hollow = false }: { status?: Status; hollow?:
   );
 }
 
+// The Route's SSH Servers in the order they are reached, as user@host.
+export const serverChain = (route: Route) => (route.servers ?? []).map((s) => (s.user ? `${s.user}@${s.host}` : s.host)).join(" → ");
+
 export const isUp = (s?: RouteStatus) => s?.state === State.StateConnecting || s?.state === State.StateConnected || s?.state === State.StateReconnecting;
 
 // Why a Route is not working: a Connect refused before it started, or the error it stopped on.
@@ -239,7 +242,7 @@ function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="text-sm font-medium">{route.name}</span>
           <span className="truncate text-xs text-muted-foreground">
-            {(route.servers ?? []).map((s) => (s.user ? `${s.user}@${s.host}` : s.host)).join(" → ")}
+            {serverChain(route)}
           </span>
         </div>
         {problem && (

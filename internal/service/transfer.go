@@ -157,7 +157,7 @@ func (s *Service) ImportConfig(path string, remap map[string]string) error {
 		}
 	}
 	for _, c := range p.Clusters {
-		if c.Kubeconfig, _ = resolve(c.Kubeconfig); c.Kubeconfig == "" {
+		if c.Kubeconfig, _ = resolve(c.Kubeconfig); c.Kubeconfig == "" && c.Remote == "" {
 			continue
 		}
 		if _, err := findRoute(cfg, c.RouteID); c.RouteID != "" && err != nil {

@@ -350,7 +350,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate text-base font-semibold">{cluster.name}</span>
         {cluster.context !== cluster.name && (
-          <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.kubeconfig}>
+          <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.remote ? `${cluster.remote} on the SSH server` : cluster.kubeconfig}>
             {cluster.context}
           </span>
         )}
@@ -376,22 +376,25 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
           <DotsThreeIcon weight="bold" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="whitespace-nowrap">
-              Reach through
-              <span className="ml-auto min-w-0 truncate pl-4 text-muted-foreground">{data?.routes?.find((r) => r.id === cluster.route)?.name ?? "Direct"}</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup value={cluster.route} onValueChange={(id) => setRoute.mutate(id as string)}>
-                <DropdownMenuRadioItem value="">Direct</DropdownMenuRadioItem>
-                {data?.routes?.map((r) => (
-                  <DropdownMenuRadioItem key={r.id} value={r.id}>
-                    {r.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          {/* A Cluster read from an SSH server is bound to the Route that reaches that server. */}
+          {!cluster.remote && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="whitespace-nowrap">
+                Reach through
+                <span className="ml-auto min-w-0 truncate pl-4 text-muted-foreground">{data?.routes?.find((r) => r.id === cluster.route)?.name ?? "Direct"}</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={cluster.route} onValueChange={(id) => setRoute.mutate(id as string)}>
+                  <DropdownMenuRadioItem value="">Direct</DropdownMenuRadioItem>
+                  {data?.routes?.map((r) => (
+                    <DropdownMenuRadioItem key={r.id} value={r.id}>
+                      {r.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
           <DropdownMenuItem onClick={() => setRenaming(true)}>Rename…</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

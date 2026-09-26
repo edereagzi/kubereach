@@ -57,7 +57,7 @@ func writeKubeconfig(t *testing.T) string {
 func newFakeService(t *testing.T, objects ...runtime.Object) (*service.Service, *fake.Clientset, string) {
 	t.Helper()
 	cs := fake.NewClientset(objects...)
-	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, []byte, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		return cs, nil, nil
 	})
 	clusters, err := svc.ImportKubeconfigs([]string{writeKubeconfig(t)})
@@ -328,7 +328,7 @@ func TestDeleteCluster_DropsItsForwards(t *testing.T) {
 func TestClusterClient_BuiltOnceUntilTheClusterOrItsKubeconfigChanges(t *testing.T) {
 	builds := 0
 	cs := fake.NewClientset()
-	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, []byte, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		builds++
 		return cs, nil, nil
 	})

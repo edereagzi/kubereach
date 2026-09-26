@@ -185,7 +185,7 @@ func newForwardFixture(t *testing.T, objects ...runtime.Object) *forwardFixture 
 	f := &forwardFixture{cs: fake.NewClientset(objects...), api: newTestAPI(), events: make(chan service.ForwardStatus, 100), path: filepath.Join(t.TempDir(), "kubereach.yaml")}
 	api := httptest.NewServer(http.HandlerFunc(f.api.podHandler))
 	t.Cleanup(api.Close)
-	f.clients = func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	f.clients = func(service.Cluster, []byte, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		return f.cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout}, nil
 	}
 	f.svc = service.New(f.path, f.clients)

@@ -167,3 +167,11 @@ func (c *ClusterService) ScaleWorkload(ctx context.Context, clusterID string, ki
 func (c *ClusterService) RollbackDeployment(ctx context.Context, clusterID, namespace, name string) error {
 	return c.svc.RollbackDeployment(ctx, clusterID, namespace, name)
 }
+
+func (c *ClusterService) RemoteContexts(routeID string) ([]string, error) {
+	return c.svc.RemoteContexts(routeID)
+}
+
+func (c *ClusterService) ImportRemote(routeID, context string) (service.Cluster, error) {
+	return c.svc.ImportRemoteCluster(routeID, context)
+}

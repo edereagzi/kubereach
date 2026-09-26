@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,9 @@ type testSSH struct {
 	forwards []string
 	conns    []*stallConn
 	hold     chan struct{}
+	// outputs is what each command run in a session prints; any other command fails. commands records every one run.
+	outputs  map[string]string
+	commands []string
 }
 
 // stallConn plays a link that died silently.
@@ -145,7 +149,20 @@ func startSSHServerWith(t *testing.T, authorized ssh.PublicKey, password string,
 			s.conns = append(s.conns, sc)
 			return sc
 		},
-		ChannelHandlers: map[string]gliderssh.ChannelHandler{"direct-tcpip": gliderssh.DirectTCPIPHandler},
+		ChannelHandlers: map[string]gliderssh.ChannelHandler{"direct-tcpip": gliderssh.DirectTCPIPHandler, "session": gliderssh.DefaultSessionHandler},
+		Handler: func(sess gliderssh.Session) {
+			s.mu.Lock()
+			s.commands = append(s.commands, sess.RawCommand())
+			out, ok := s.outputs[sess.RawCommand()]
+			s.mu.Unlock()
+			if !ok {
+				_, _ = io.WriteString(sess.Stderr(), sess.RawCommand()+": No such file or directory\n")
+				_ = sess.Exit(1)
+				return
+			}
+			_, _ = io.WriteString(sess, out)
+			_ = sess.Exit(0)
+		},
 	}
 	go func() { _ = srv.Serve(l) }()
 	t.Cleanup(func() { _ = srv.Close() })
@@ -523,7 +540,7 @@ func TestRoute_DialReturnsWhenItsContextIsCancelled(t *testing.T) {
 	priv, pub := newKeyPair(t)
 	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
 	dials := make(chan service.DialFunc, 1)
-	svc := service.New(f.configPath, func(_ service.Cluster, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	svc := service.New(f.configPath, func(_ service.Cluster, _ []byte, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		dials <- dial
 		return fake.NewClientset(), &rest.Config{}, nil
 	})
@@ -903,7 +920,7 @@ func TestRoute_ClientOutlivesARouteRestart(t *testing.T) {
 	priv, pub := newKeyPair(t)
 	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
 	builds := 0
-	svc := service.New(f.configPath, func(_ service.Cluster, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	svc := service.New(f.configPath, func(_ service.Cluster, _ []byte, dial service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		builds++
 		cfg := &rest.Config{Host: f.api.URL, Dial: dial}
 		cs, err := kubernetes.NewForConfig(cfg)

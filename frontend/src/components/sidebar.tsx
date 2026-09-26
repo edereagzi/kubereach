@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowsLeftRightIcon,
+  FileIcon,
+  HardDrivesIcon,
   MagnifyingGlassIcon,
   PathIcon,
   PlusIcon,
@@ -11,13 +13,17 @@ import {
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import type { Cluster } from "@bindings/internal/service";
+import { State, type Cluster, type RouteStatus } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamFor } from "@/components/logs";
-import { isUp, useRouteProblem } from "@/components/routes";
+import { isUp, RouteDialog, serverChain, StateDot, useRouteProblem } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
@@ -43,6 +49,7 @@ export function Sidebar() {
   });
   useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
   const importError = importKubeconfig.error ?? importDropped.error;
+  const [importingRemote, setImportingRemote] = useState(false);
   const fetchingReachability = useIsFetching({ predicate: (q) => q.queryKey[0] === "cluster" && q.queryKey[2] === "reachability" }) > 0;
 
   useEffect(() => {
@@ -64,10 +71,21 @@ export function Sidebar() {
           fetching={fetchingReachability}
           onRefresh={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}
         />
-        <Button variant="ghost" size="icon-sm" title="Add clusters from kubeconfig" disabled={importKubeconfig.isPending} onClick={() => importKubeconfig.mutate()}>
-          <PlusIcon />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="Add clusters" disabled={importKubeconfig.isPending} />}>
+            <PlusIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onClick={() => importKubeconfig.mutate()}>
+              <FileIcon /> From a kubeconfig file…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setImportingRemote(true)}>
+              <HardDrivesIcon /> From an SSH server…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      {importingRemote && <RemoteImportDialog onClose={() => setImportingRemote(false)} />}
       <div className="px-3 pb-2">
         <InputGroup className="h-7 bg-background/60">
           <InputGroupInput ref={filter} placeholder="Filter clusters" value={needle} onChange={(e) => setNeedle(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setNeedle("")} />
@@ -86,6 +104,195 @@ export function Sidebar() {
       </div>
       <SidebarFooter />
     </aside>
+  );
+}
+
+const remoteKubeconfig = "~/.kube/config";
+
+// Adds a Cluster whose kubeconfig stays on the Route's last SSH server and is read there every time the Route connects.
+// Picking a Route connects it; its credential and host key prompts come from RouteConnector as anywhere else.
+function RemoteImportDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data } = useQuery(configQuery);
+  const routes = data?.routes ?? [];
+  const [routeId, setRouteId] = useState(routes[0]?.id ?? "");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [creatingRoute, setCreatingRoute] = useState(false);
+  const route = routes.find((r) => r.id === routeId);
+  const status = useUIStore((s) => s.routeStatuses[routeId]);
+  const requestConnect = useUIStore((s) => s.requestConnect);
+  const selectCluster = useUIStore((s) => s.selectCluster);
+  const problem = useRouteProblem(routeId);
+  const connected = status?.state === State.StateConnected;
+
+  useEffect(() => {
+    if (routeId && !isUp(useUIStore.getState().routeStatuses[routeId])) requestConnect(routeId);
+  }, [routeId, requestConnect]);
+
+  const contexts = useQuery({
+    queryKey: ["remote-contexts", routeId],
+    queryFn: async () => (await ClusterService.RemoteContexts(routeId)) ?? [],
+    enabled: connected,
+    retry: false,
+    gcTime: 0,
+  });
+  const context = picked ?? contexts.data?.[0];
+  const add = useMutation({
+    mutationFn: () => ClusterService.ImportRemote(routeId, context!),
+    onSuccess: async (cluster) => {
+      await queryClient.invalidateQueries({ queryKey: ["config"] });
+      selectCluster(cluster.id);
+      onClose();
+    },
+  });
+  const host = route?.servers?.at(-1)?.host;
+
+  return (
+    <>
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent>
+          <form
+            className="contents"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add.mutate();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Add a cluster from an SSH server</DialogTitle>
+              <DialogDescription>
+                {route ? (
+                  <>
+                    Kubereach reads <span className="font-mono text-foreground">{remoteKubeconfig}</span> on <span className="font-medium text-foreground">{host}</span> each time{" "}
+                    {route.name} connects. Nothing is copied to this computer.
+                  </>
+                ) : (
+                  "The cluster is reached through a route, and its kubeconfig is read on the route's last SSH server. Add a route to that server first."
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            {routes.length > 0 && (
+              <div className="grid gap-1.5">
+                <Label>Route</Label>
+                <Select
+                  value={routeId}
+                  items={routes.map((r) => ({ value: r.id, label: r.name }))}
+                  onValueChange={(id) => {
+                    setRouteId(id ?? "");
+                    setPicked(null);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {routes.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                        <span className="truncate text-muted-foreground">{serverChain(r)}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {route && (
+              <RemoteSource
+                routeName={route.name}
+                status={status}
+                problem={problem}
+                onRetry={() => requestConnect(routeId)}
+                contexts={contexts}
+                context={context}
+                onPick={setPicked}
+              />
+            )}
+            {add.error && <p className="text-sm text-destructive">{errorText(add.error)}</p>}
+            <DialogFooter>
+              {routes.length === 0 ? (
+                <Button type="button" onClick={() => setCreatingRoute(true)}>
+                  <PlusIcon /> New route
+                </Button>
+              ) : (
+                <>
+                  <Button type="button" variant="ghost" onClick={onClose}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={!context || add.isPending}>
+                    Add cluster
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {creatingRoute && <RouteDialog route={null} onClose={() => setCreatingRoute(false)} onSaved={(r) => setRouteId(r.id)} />}
+    </>
+  );
+}
+
+// Where the read stands: connecting the Route, reading the file, then the context to add.
+function RemoteSource({
+  routeName,
+  status,
+  problem,
+  onRetry,
+  contexts,
+  context,
+  onPick,
+}: {
+  routeName: string;
+  status: RouteStatus | undefined;
+  problem: string | undefined;
+  onRetry: () => void;
+  contexts: { data?: string[]; error: unknown };
+  context: string | undefined;
+  onPick: (context: string) => void;
+}) {
+  if (problem) {
+    return (
+      <div className="flex items-start gap-3 text-sm">
+        <p className="min-w-0 flex-1 text-destructive">{problem}</p>
+        <Button type="button" variant="outline" size="xs" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+  if (status?.state !== State.StateConnected) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <StateDot status={status} /> Connecting {routeName}…
+      </p>
+    );
+  }
+  if (contexts.error) return <p className="text-sm text-destructive">{errorText(contexts.error)}</p>;
+  if (!contexts.data) return <p className="animate-pulse text-sm text-muted-foreground">Reading {remoteKubeconfig}…</p>;
+  if (contexts.data.length === 0) return <p className="text-sm text-muted-foreground">{remoteKubeconfig} has no contexts.</p>;
+  if (contexts.data.length === 1) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Context <span className="font-medium text-foreground">{context}</span>
+      </p>
+    );
+  }
+  return (
+    <div className="grid gap-1.5">
+      <Label>Context</Label>
+      <Select value={context} onValueChange={(c) => c && onPick(c)}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {contexts.data.map((c) => (
+            <SelectItem key={c} value={c}>
+              {c}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -116,7 +323,7 @@ function ClusterList({ needle }: { needle: string }) {
       <Empty className="border-0 px-4 py-6">
         <EmptyHeader>
           <EmptyTitle>No clusters</EmptyTitle>
-          <EmptyDescription>Add clusters from a kubeconfig with +, or drop the file here.</EmptyDescription>
+          <EmptyDescription>Add clusters from a kubeconfig or an SSH server with +, or drop a kubeconfig here.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

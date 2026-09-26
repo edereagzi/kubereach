@@ -36,7 +36,7 @@ func newMetricsService(t *testing.T, handler http.HandlerFunc, objects ...runtim
 	api := httptest.NewServer(mux)
 	t.Cleanup(api.Close)
 	cs := fake.NewClientset(objects...)
-	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	svc := service.New(filepath.Join(t.TempDir(), "kubereach.yaml"), func(service.Cluster, []byte, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
 		return cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout}, nil
 	})
 	clusters, err := svc.ImportKubeconfigs([]string{writeKubeconfig(t)})

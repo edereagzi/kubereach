@@ -16,6 +16,12 @@ export interface Cluster {
     "id": string;
     "name": string;
     "kubeconfig": string;
+
+    /**
+     * Remote is the kubeconfig on the Route's last SSH Server, one of remoteSources, read into memory on every connect.
+     * Kubeconfig is empty then.
+     */
+    "remote": string;
     "context": string;
     "route": string;
     "namespaces": string[] | null;

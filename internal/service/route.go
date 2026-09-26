@@ -74,6 +74,9 @@ type routeConn struct {
 	clients routeClients
 	pending bool
 	status  RouteStatus
+	// kubeconfigs are the remote kubeconfigs read over this connection, by source; readMu serialises their reads.
+	kubeconfigs map[string][]byte
+	readMu      sync.Mutex
 }
 
 // unknownHostError carries the key the user is asked to approve.
@@ -112,6 +115,7 @@ func (rc *routeConn) sshClient() *ssh.Client {
 func (rc *routeConn) setClients(c routeClients) {
 	rc.mu.Lock()
 	rc.clients = c
+	rc.kubeconfigs = map[string][]byte{}
 	rc.mu.Unlock()
 }
 
@@ -221,6 +225,9 @@ func (s *Service) SetClusterRoute(clusterID, routeID string) error {
 		if _, err := findRoute(cfg, routeID); err != nil {
 			return err
 		}
+	}
+	if c := cfg.Clusters[i]; c.Remote != "" && routeID != c.RouteID {
+		return userErrorf("%s is read from its Route's SSH server, so it stays on that Route", c.Name)
 	}
 	cfg.Clusters[i].RouteID = routeID
 	return s.saveConfig(cfg)

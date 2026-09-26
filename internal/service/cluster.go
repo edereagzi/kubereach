@@ -27,9 +27,10 @@ import (
 
 var ErrForbidden = errors.New("forbidden")
 
-// ClientFactory builds a clientset and its REST config for a Cluster; dial is nil for direct access.
-// Tests substitute the fake clientset here and point the config at an in-test API server.
-type ClientFactory func(c Cluster, dial DialFunc) (kubernetes.Interface, *rest.Config, error)
+// ClientFactory builds a clientset and its REST config for a Cluster; dial is nil for direct access, and kubeconfig is
+// what was read for a remote Cluster, nil for a local file. Tests substitute the fake clientset here and point the config
+// at an in-test API server.
+type ClientFactory func(c Cluster, kubeconfig []byte, dial DialFunc) (kubernetes.Interface, *rest.Config, error)
 
 type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 
@@ -77,11 +78,17 @@ type kube struct {
 
 // kubeconfigClient uses client-go's standard loader, so exec plugins and OIDC behave as in kubectl.
 // Only the clientset speaks protobuf; the returned config stays JSON for metrics and SPDY.
-func (s *Service) kubeconfigClient(c Cluster, dial DialFunc) (kubernetes.Interface, *rest.Config, error) {
-	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: c.Kubeconfig},
-		&clientcmd.ConfigOverrides{CurrentContext: c.Context},
-	).ClientConfig()
+func (s *Service) kubeconfigClient(c Cluster, kubeconfig []byte, dial DialFunc) (kubernetes.Interface, *rest.Config, error) {
+	var cfg *rest.Config
+	var err error
+	if kubeconfig != nil {
+		cfg, err = remoteRESTConfig(kubeconfig, c.Context)
+	} else {
+		cfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: c.Kubeconfig},
+			&clientcmd.ConfigOverrides{CurrentContext: c.Context},
+		).ClientConfig()
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -388,11 +395,16 @@ func (s *Service) RenameCluster(clusterID, name string) error {
 	return s.saveConfig(cfg)
 }
 
-// clusterClient reuses the Cluster's client until its definition or kubeconfig file changes.
+// clusterClient reuses the Cluster's client until its definition or kubeconfig changes.
 // A Route's live connection is resolved at dial time, so a restarted Route needs no rebuild.
 func (s *Service) clusterClient(clusterID string) (kube, error) {
+	kubeconfig, err := s.clusterKubeconfig(clusterID)
+	if err != nil {
+		return kube{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Loaded again under s.mu: the Cluster may have been deleted while its kubeconfig was read.
 	cfg, err := loadConfig(s.configPath)
 	if err != nil {
 		return kube{}, err
@@ -402,16 +414,16 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 		return kube{}, err
 	}
 	c := cfg.Clusters[i]
+	stamp := kubeconfigStamp{remote: string(kubeconfig)}
+	if fi, err := os.Stat(c.Kubeconfig); c.Remote == "" && err == nil {
+		stamp = kubeconfigStamp{mod: fi.ModTime().UnixNano(), size: fi.Size()}
+	}
 	var dial DialFunc
 	if c.RouteID != "" {
 		if s.routeSSH(c.RouteID) == nil {
 			return kube{}, ErrRouteDown
 		}
 		dial = s.routeDial(c.RouteID)
-	}
-	var stamp kubeconfigStamp
-	if fi, err := os.Stat(c.Kubeconfig); err == nil {
-		stamp = kubeconfigStamp{fi.ModTime().UnixNano(), fi.Size()}
 	}
 	if old, ok := s.kubes[clusterID]; ok {
 		if old.stamp == stamp && reflect.DeepEqual(old.cluster, c) {
@@ -421,7 +433,7 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 		delete(s.kubes, clusterID)
 	}
 	k := kube{cluster: c}
-	if k.client, k.config, err = s.clients(c, dial); err != nil {
+	if k.client, k.config, err = s.clients(c, kubeconfig, dial); err != nil {
 		return kube{}, err
 	}
 	if k.http, err = sharedHTTPClient(k.client, k.config); err != nil {
@@ -432,7 +444,27 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 	return k, nil
 }
 
-type kubeconfigStamp struct{ mod, size int64 }
+// kubeconfigStamp tells a changed kubeconfig: a local file by its modification time and size, a remote one by its content.
+// clusterKubeconfig reads a remote Cluster's kubeconfig without s.mu, which the SSH round trip must not hold up;
+// it is nil for a Cluster whose kubeconfig is a local file.
+func (s *Service) clusterKubeconfig(clusterID string) ([]byte, error) {
+	s.mu.Lock()
+	cfg, err := loadConfig(s.configPath)
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	i, err := findCluster(cfg, clusterID)
+	if err != nil || cfg.Clusters[i].Remote == "" {
+		return nil, err
+	}
+	return s.remoteKubeconfig(cfg.Clusters[i].RouteID, cfg.Clusters[i].Remote)
+}
+
+type kubeconfigStamp struct {
+	mod, size int64
+	remote    string
+}
 
 type cachedKube struct {
 	kube

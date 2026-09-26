@@ -48,9 +48,12 @@ type SSHServer struct {
 }
 
 type Cluster struct {
-	ID         string   `yaml:"id" json:"id"`
-	Name       string   `yaml:"name" json:"name"`
-	Kubeconfig string   `yaml:"kubeconfig" json:"kubeconfig"`
+	ID         string `yaml:"id" json:"id"`
+	Name       string `yaml:"name" json:"name"`
+	Kubeconfig string `yaml:"kubeconfig,omitempty" json:"kubeconfig"`
+	// Remote is the kubeconfig on the Route's last SSH Server, one of remoteSources, read into memory on every connect.
+	// Kubeconfig is empty then.
+	Remote     string   `yaml:"remote,omitempty" json:"remote"`
 	Context    string   `yaml:"context" json:"context"`
 	RouteID    string   `yaml:"route,omitempty" json:"route"`
 	Namespaces []string `yaml:"namespaces,omitempty" json:"namespaces"`
