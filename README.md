@@ -2,7 +2,7 @@
 
 A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 
-> Kubereach is early (v0.3). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
+> Kubereach is early (v0.4). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
 
 ![The overview of a cluster reached through a Route of two SSH servers](docs/screenshots/workload.png)
 
@@ -14,6 +14,7 @@ A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 - Opens shells in containers.
 - Shows events, and pod diagnosis: container states, restarts, previous-run logs and failing conditions.
 - Rollouts: restart and scale workloads, roll back deployments.
+- YAML editing: the Cluster's dry run shows what would change before it is applied, a change made in the meantime is never overwritten, and Secrets are edited with their values decoded.
 - Saved port-forwards that keep their local port and reconnect on their own.
 - A tray menu with what is running and its forwards.
 
@@ -32,8 +33,8 @@ A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 | Routes: the SSH servers a cluster is reached through | Logs from every pod of a workload |
 | ![A crash-looping pod with its exit state and log](docs/screenshots/diagnose.png) | ![A shell in a Postgres pod](docs/screenshots/shell.png) |
 | Pod diagnosis | Shells |
-| ![Saved port-forwards](docs/screenshots/forwards.png) | |
-| Saved port-forwards | |
+| ![Saved port-forwards](docs/screenshots/forwards.png) | ![A deployment's new image in the diff of the Cluster's dry run](docs/screenshots/yaml.png) |
+| Saved port-forwards | YAML editing, checked by a dry run |
 
 ## Install
 
