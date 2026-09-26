@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowCircleUpIcon, ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Browser, System } from "@wailsio/runtime";
 import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
@@ -14,10 +14,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { errorText } from "@/queries";
+import { configQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
 
@@ -47,7 +54,17 @@ export function SidebarFooter() {
     onSuccess: (p) => p && pushImportPreviews([p]),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
   });
-  const error = exportConfig.error ?? inspect.error;
+  // Asked once per launch; the backend skips the request when the check is off or this is a dev build.
+  const { data: release } = useQuery({ queryKey: ["release"], queryFn: () => AppService.NewerRelease(), staleTime: Infinity, retry: false });
+  const { data: config } = useQuery(configQuery);
+  const setUpdateCheck = useMutation({
+    mutationFn: (on: boolean) => ConfigService.SetUpdateCheck(on),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["config"] });
+      queryClient.invalidateQueries({ queryKey: ["release"] });
+    },
+  });
+  const error = exportConfig.error ?? inspect.error ?? setUpdateCheck.error;
   const openRoutes = useUIStore((s) => s.openRoutes);
   const [about, setAbout] = useState(false);
 
@@ -65,8 +82,17 @@ export function SidebarFooter() {
           <DropdownMenuTrigger className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
             <GearIcon />
             Settings
+            {release && <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label="Update available" />}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-56">
+            {release && (
+              <>
+                <DropdownMenuItem onClick={() => Browser.OpenURL(release.url)}>
+                  <ArrowCircleUpIcon className="text-primary" /> Get Kubereach {release.version.replace(/^v/, "")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={openRoutes}>
               <PathIcon /> Routes
             </DropdownMenuItem>
@@ -79,6 +105,13 @@ export function SidebarFooter() {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <AppearanceMenu />
+            <DropdownMenuCheckboxItem
+              checked={!config?.skipUpdateCheck}
+              disabled={!config || setUpdateCheck.isPending}
+              onCheckedChange={(on) => setUpdateCheck.mutate(on)}
+            >
+              <ArrowsClockwiseIcon /> Check for updates
+            </DropdownMenuCheckboxItem>
             {/* macOS has About in its application menu (InstallMenu); elsewhere there is no menu bar. */}
             {(System.IsWindows() || System.IsLinux()) && (
               <>

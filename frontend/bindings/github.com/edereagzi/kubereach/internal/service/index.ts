@@ -49,6 +49,7 @@ export type {
     PodMetrics,
     PodUsage,
     PortForward,
+    Release,
     ResourceUsage,
     Rollout,
     Route,

@@ -41,3 +41,7 @@ export function Load(): $CancellablePromise<service$0.Config> {
 export function PickPath(title: string): $CancellablePromise<string> {
     return $Call.ByID(3048582499, title);
 }
+
+export function SetUpdateCheck(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(967312934, on);
+}

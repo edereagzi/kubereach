@@ -38,6 +38,11 @@ export interface Config {
      * Forwards are the Saved Forwards: Port Forward definitions kept across sessions.
      */
     "forwards": PortForward[] | null;
+
+    /**
+     * SkipUpdateCheck turns off the one request to GitHub at launch that looks for a newer release.
+     */
+    "skipUpdateCheck": boolean;
 }
 
 export interface ContainerDiagnosis {
@@ -498,6 +503,14 @@ export interface PortForward {
     "remotePort": number;
     "localPort": number;
     "enabled": boolean;
+}
+
+/**
+ * Release is a published Kubereach release newer than the running one.
+ */
+export interface Release {
+    "version": string;
+    "url": string;
 }
 
 /**

@@ -21,6 +21,7 @@ A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 - No account and no telemetry.
 - Nothing is installed in the cluster.
 - Passwords and key passphrases are never written to disk; they are kept in memory for the session.
+- At launch it asks GitHub whether a newer release is out. That is the only request it makes on its own, and it can be turned off in Settings with "Check for updates".
 
 ## Screenshots
 

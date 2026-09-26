@@ -84,7 +84,7 @@ func main() {
 	})
 	bindings.NewTray(app, svc, window)
 	app.RegisterService(application.NewService(bindings.NewWindowTheme(app, window)))
-	about := bindings.NewAppService(app, version, configPath)
+	about := bindings.NewAppService(app, svc, version)
 	app.RegisterService(application.NewServiceWithOptions(about, typedErrors))
 	bindings.InstallMenu(app, about)
 

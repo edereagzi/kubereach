@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as service$0 from "../service/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -21,6 +25,13 @@ import * as $models from "./models.js";
  */
 export function Info(): $CancellablePromise<$models.AboutInfo> {
     return $Call.ByID(443785436);
+}
+
+/**
+ * NewerRelease is the latest release when it is newer than this build; nil otherwise.
+ */
+export function NewerRelease(): $CancellablePromise<service$0.Release | null> {
+    return $Call.ByID(4210353642);
 }
 
 /**

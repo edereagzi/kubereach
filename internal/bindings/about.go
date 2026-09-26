@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -16,12 +17,13 @@ const repoURL = "https://github.com/edereagzi/kubereach"
 // since the Windows message box has no buttons but OK.
 type AppService struct {
 	app        *application.App
+	svc        *service.Service
 	version    string
 	configPath string
 }
 
-func NewAppService(app *application.App, version, configPath string) *AppService {
-	return &AppService{app: app, version: version, configPath: configPath}
+func NewAppService(app *application.App, svc *service.Service, version string) *AppService {
+	return &AppService{app: app, svc: svc, version: version, configPath: svc.ConfigPath()}
 }
 
 // AboutInfo is what the About dialog shows.
@@ -34,6 +36,11 @@ type AboutInfo struct {
 // Info is what the frontend's About dialog shows on Windows and Linux.
 func (a *AppService) Info() AboutInfo {
 	return AboutInfo{Version: a.version, ConfigPath: a.configPath, RepoURL: repoURL}
+}
+
+// NewerRelease is the latest release when it is newer than this build; nil otherwise.
+func (a *AppService) NewerRelease() *service.Release {
+	return a.svc.NewerRelease(a.version)
 }
 
 // showAbout opens the native About dialog.
