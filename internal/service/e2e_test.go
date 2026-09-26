@@ -138,7 +138,16 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = svc.StopLogs(deploy.ID) }()
-	before := waitLogStatus(t, states, func(st service.LogStatus) bool { return slices.Contains(st.Pods, coredns.Name) })
+	// Every coredns pod must have joined first: a line may come from any of them, whichever joined last.
+	var corednsPods []string
+	for _, p := range pods {
+		if p.Namespace == "kube-system" && strings.HasPrefix(p.Name, "coredns-") {
+			corednsPods = append(corednsPods, p.Name)
+		}
+	}
+	before := waitLogStatus(t, states, func(st service.LogStatus) bool {
+		return !slices.ContainsFunc(corednsPods, func(p string) bool { return !slices.Contains(st.Pods, p) })
+	})
 	if l := collectLogs(t, logs, deploy.ID, 1); !slices.Contains(before.Pods, l[0].Pod) {
 		t.Fatalf("line from %q, want one of %v", l[0].Pod, before.Pods)
 	}
