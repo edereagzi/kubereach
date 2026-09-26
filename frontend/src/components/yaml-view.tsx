@@ -22,6 +22,7 @@ const objectKind: Record<Kind, ObjectKind> = {
   secret: ObjectKind.ObjectSecret,
   ing: ObjectKind.ObjectIngress,
   pvc: ObjectKind.ObjectPVC,
+  hpa: ObjectKind.ObjectHPA,
   node: ObjectKind.ObjectNode,
 };
 

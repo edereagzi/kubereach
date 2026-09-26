@@ -112,6 +112,14 @@ func (c *ClusterService) DescribePVC(ctx context.Context, clusterID, namespace, 
 	return c.svc.DescribePVC(ctx, clusterID, namespace, name)
 }
 
+func (c *ClusterService) ListHPAs(ctx context.Context, clusterID string) ([]service.KubeHPA, error) {
+	return c.svc.ListHPAs(ctx, clusterID)
+}
+
+func (c *ClusterService) DescribeHPA(ctx context.Context, clusterID, namespace, name string) (service.HPADiagnosis, error) {
+	return c.svc.DescribeHPA(ctx, clusterID, namespace, name)
+}
+
 func (c *ClusterService) ListNodes(ctx context.Context, clusterID string) ([]service.KubeNode, error) {
 	return c.svc.ListNodes(ctx, clusterID)
 }

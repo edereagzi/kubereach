@@ -26,6 +26,7 @@ const (
 	ObjectSecret      ObjectKind = "secret"
 	ObjectIngress     ObjectKind = "ingress"
 	ObjectPVC         ObjectKind = "persistentvolumeclaim"
+	ObjectHPA         ObjectKind = "horizontalpodautoscaler"
 	ObjectNode        ObjectKind = "node"
 )
 
@@ -66,6 +67,8 @@ func (s *Service) GetYAML(ctx context.Context, clusterID string, kind ObjectKind
 		obj, err = k.client.NetworkingV1().Ingresses(namespace).Get(ctx, name, get)
 	case ObjectPVC:
 		obj, err = k.client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, get)
+	case ObjectHPA:
+		obj, err = k.client.AutoscalingV2().HorizontalPodAutoscalers(namespace).Get(ctx, name, get)
 	case ObjectNode:
 		obj, err = k.client.CoreV1().Nodes().Get(ctx, name, get)
 	default:

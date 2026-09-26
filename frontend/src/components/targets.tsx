@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeHPA, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -13,10 +13,10 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { configMapsQuery, ingressesQuery, podsQuery, pvcsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
+import { configMapsQuery, hpasQuery, ingressesQuery, podsQuery, pvcsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "job" | "pvc" | "pod" | "cm" | "secret" | "node";
+export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "job" | "hpa" | "pvc" | "pod" | "cm" | "secret" | "node";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -45,6 +45,8 @@ export type Target = {
   ingress?: KubeIngress;
   // PersistentVolumeClaims only: phase, size and class; the pods that mount it come with the detail.
   pvc?: KubePVC;
+  // HorizontalPodAutoscalers only: range, replicas, metrics and conditions; listed under the workload they scale.
+  hpa?: KubeHPA;
 };
 
 // error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
@@ -60,17 +62,21 @@ export const logKind: Partial<Record<Kind, LogSourceKind>> = {
 export const forwardKind = (kind: Kind) => (kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod);
 export const targetValue = (kind: Kind, namespace: string, name: string) => `${kind}:${namespace}/${name}`;
 
+// rowKind is the row kind of a Kubernetes workload kind, such as Deployment, when the Overview lists that kind.
+export const rowKind = (kubeKind: string) => workloadKind[kubeKind.toLowerCase() as WorkloadKind];
+
 function ownerValue(namespace: string, owner?: PodOwner | null) {
-  const kind = owner && workloadKind[owner.kind.toLowerCase() as WorkloadKind];
+  const kind = owner && rowKind(owner.kind);
   return kind ? targetValue(kind, namespace, owner.name) : undefined;
 }
 
-// overview adds Ingresses, Jobs, PersistentVolumeClaims, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
+// overview adds Ingresses, Jobs, HorizontalPodAutoscalers, PersistentVolumeClaims, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
 export function useTargets(cluster: Cluster, overview = false) {
   const services = useQuery(servicesQuery(cluster.id));
   const workloads = useQuery(workloadsQuery(cluster.id));
   const pods = useQuery(podsQuery(cluster.id));
   const ingresses = useQuery({ ...ingressesQuery(cluster.id), enabled: overview });
+  const hpas = useQuery({ ...hpasQuery(cluster.id), enabled: overview });
   const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: overview });
   const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
   const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
@@ -90,6 +96,7 @@ export function useTargets(cluster: Cluster, overview = false) {
     ...(overview
       ? [
           { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w.namespace, w.name), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) },
+          { label: "Autoscalers", items: (hpas.data ?? []).map((h) => ({ ...make("hpa", h.namespace, h.name), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) })), error: hpas.error },
           { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c.namespace, c.name), pvc: c })), error: pvcs.error },
         ]
       : []),
@@ -105,8 +112,8 @@ export function useTargets(cluster: Cluster, overview = false) {
   return {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
-    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || pvcs.isPending || configMaps.isPending || secrets.isPending)),
-    fetching: [services, workloads, pods, ingresses, pvcs, configMaps, secrets].some((q) => q.isFetching),
+    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || hpas.isPending || pvcs.isPending || configMaps.isPending || secrets.isPending)),
+    fetching: [services, workloads, pods, ingresses, hpas, pvcs, configMaps, secrets].some((q) => q.isFetching),
   };
 }
 

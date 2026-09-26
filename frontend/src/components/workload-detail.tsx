@@ -1,8 +1,9 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { JobResult, RolloutState, type Cluster, type JobState, type KubeWorkload } from "@bindings/internal/service";
+import { hpaLabel } from "@/components/hpa-detail";
 import { ago, Events, PodList, ReasonBadge, Section } from "@/components/pod-detail";
-import { workloadKind, type Target } from "@/components/targets";
+import { rowKind, workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { useUIStore } from "@/store";
 import { WorkloadActions } from "@/components/actions";
@@ -11,7 +12,7 @@ import { CopyButton } from "@/components/copy-button";
 import { RefreshButton } from "@/components/refresh-button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
-import { workloadQuery, errorText } from "@/queries";
+import { hpasQuery, workloadQuery, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // workloadReason is what a row's badge says: the rollout state, why a Job failed, or that a CronJob or Job is suspended.
@@ -58,6 +59,8 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
   const cronJob = w.job?.cronJob;
   const kind = workloadKind[w.kind] ?? "deploy";
   const requestInspect = useUIStore((s) => s.requestInspect);
+  // The autoscaler, if one scales it, is why it runs the replicas it does.
+  const hpa = useQuery(hpasQuery(cluster.id)).data?.find((h) => h.namespace === w.namespace && h.targetName === w.name && rowKind(h.targetKind) === kind);
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
@@ -88,6 +91,23 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
               <dd className="font-mono">
                 {r.desired} desired · {r.updated} updated · {r.ready} ready · {r.available} available
               </dd>
+              {hpa && (
+                <>
+                  <dt className="text-muted-foreground">Autoscaler</dt>
+                  <dd className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      title="Open the HorizontalPodAutoscaler"
+                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "hpa", namespace: hpa.namespace, name: hpa.name })}
+                    >
+                      {hpa.name}
+                    </button>
+                    <span className="font-mono text-muted-foreground">{hpaLabel(hpa)}</span>
+                    <ReasonBadge reason={hpa.problem} />
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">Revision</dt>
               <dd className="font-mono">{r.revision || "—"}</dd>
             </dl>

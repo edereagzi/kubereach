@@ -116,6 +116,20 @@ export const pvcQuery = (clusterId: string, namespace: string, name: string) =>
     retry: false,
   });
 
+export const hpasQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "hpas"],
+    queryFn: async () => (await ClusterService.ListHPAs(clusterId)) ?? [],
+    retry: false,
+  });
+
+export const hpaQuery = (clusterId: string, namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "hpa", namespace, name],
+    queryFn: () => ClusterService.DescribeHPA(clusterId, namespace, name),
+    retry: false,
+  });
+
 export const nodesQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "nodes"],

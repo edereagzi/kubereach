@@ -119,6 +119,38 @@ export interface ForwardTarget {
     "name": string;
 }
 
+/**
+ * HPACondition is one of its status conditions; ScalingActive and AbleToScale say whether it can act, ScalingLimited why it stopped at its range.
+ */
+export interface HPACondition {
+    "type": string;
+    "status": string;
+    "reason": string;
+    "message": string;
+}
+
+/**
+ * HPADiagnosis is an autoscaler with its events, which say when and why it rescaled.
+ */
+export interface HPADiagnosis {
+    "hpa": KubeHPA;
+
+    /**
+     * Events is nil and EventsError set when the events could not be read.
+     */
+    "events": KubeEvent[] | null;
+    "eventsError"?: string;
+}
+
+/**
+ * HPAMetric is one metric the autoscaler scales on, as kubectl prints it: "45%" against "70%". Current is empty while it cannot be read.
+ */
+export interface HPAMetric {
+    "name": string;
+    "current"?: string;
+    "target": string;
+}
+
 export interface HostKeyPrompt {
     "routeId": string;
     "address": string;
@@ -256,6 +288,31 @@ export interface KubeEvent {
     "message": string;
     "count": number;
     "time": string;
+}
+
+/**
+ * KubeHPA is a HorizontalPodAutoscaler in scope: the workload it scales, its range, and what it read and decided.
+ */
+export interface KubeHPA {
+    "namespace": string;
+    "name": string;
+
+    /**
+     * TargetKind is the Kubernetes kind of the scaled workload, such as Deployment.
+     */
+    "targetKind": string;
+    "targetName": string;
+    "min": number;
+    "max": number;
+    "current": number;
+    "desired": number;
+    "metrics": HPAMetric[] | null;
+    "conditions": HPACondition[] | null;
+
+    /**
+     * Problem is the reason it cannot scale its target or read its metrics; a target scaled to zero is not one.
+     */
+    "problem"?: string;
 }
 
 /**
@@ -522,6 +579,7 @@ export enum ObjectKind {
     ObjectSecret = "secret",
     ObjectIngress = "ingress",
     ObjectPVC = "persistentvolumeclaim",
+    ObjectHPA = "horizontalpodautoscaler",
     ObjectNode = "node",
 };
 

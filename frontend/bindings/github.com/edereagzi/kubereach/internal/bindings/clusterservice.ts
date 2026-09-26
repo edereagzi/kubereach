@@ -21,6 +21,10 @@ export function DeletePod(clusterID: string, $namespace: string, name: string): 
     return $Call.ByID(3476169333, clusterID, $namespace, name);
 }
 
+export function DescribeHPA(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.HPADiagnosis> {
+    return $Call.ByID(11390243, clusterID, $namespace, name);
+}
+
 export function DescribeIngress(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.IngressDiagnosis> {
     return $Call.ByID(631144839, clusterID, $namespace, name);
 }
@@ -66,6 +70,10 @@ export function ImportPaths(paths: string[] | null): $CancellablePromise<service
 
 export function ListConfigMaps(clusterID: string): $CancellablePromise<service$0.KubeConfigObject[] | null> {
     return $Call.ByID(2756024224, clusterID);
+}
+
+export function ListHPAs(clusterID: string): $CancellablePromise<service$0.KubeHPA[] | null> {
+    return $Call.ByID(797888649, clusterID);
 }
 
 export function ListIngresses(clusterID: string): $CancellablePromise<service$0.KubeIngress[] | null> {
