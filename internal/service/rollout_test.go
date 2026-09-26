@@ -162,7 +162,7 @@ func TestListWorkloads_Jobs(t *testing.T) {
 		Status: batchv1.JobStatus{Failed: 6, StartTime: &started,
 			Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded", Message: "Job has reached the specified backoff limit", LastTransitionTime: ended}}},
 	}
-	svc, cs, id := newFakeService(t, running, done, failed,
+	svc, _, id := newFakeService(t, running, done, failed,
 		pod("default", "nightly-28942-a", "nightly-28942", corev1.PodRunning, true, diagEpoch), pod("default", "api-1", "api", corev1.PodRunning, true, diagEpoch))
 
 	got, err := svc.ListWorkloads(context.Background(), id)
@@ -190,7 +190,7 @@ func TestListWorkloads_Jobs(t *testing.T) {
 		t.Errorf("job pods = %+v; want nightly-28942-a", d.Pods)
 	}
 
-	svc, cs, id = newFakeService(t, running, deployment("default", "api"))
+	svc, cs, id := newFakeService(t, running, deployment("default", "api"))
 	forbid(cs, "list", "jobs", false)
 	if got, err = svc.ListWorkloads(context.Background(), id); err != nil || len(got) != 1 {
 		t.Errorf("forbidden jobs: workloads = %+v, %v; want the Deployment", got, err)
