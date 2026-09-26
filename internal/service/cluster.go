@@ -58,6 +58,8 @@ type KubePod struct {
 	// Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
 	Requests ResourceUsage `json:"requests"`
 	Limits   ResourceUsage `json:"limits"`
+	// Owner is the pod's controller, a ReplicaSet named as its Deployment where it is one; nil for a pod nothing controls.
+	Owner *PodOwner `json:"owner,omitempty"`
 }
 
 // kube's clientset and REST config share one HTTP client.
@@ -293,7 +295,7 @@ func servicePorts(svc *corev1.Service) []NamedPort {
 }
 
 func kubePod(pod *corev1.Pod) KubePod {
-	kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(pod), Restarts: podRestarts(pod)}
+	kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(pod), Restarts: podRestarts(pod), Owner: listOwner(pod)}
 	kp.Requests, kp.Limits = podResources(pod.Spec)
 	for _, c := range pod.Spec.Containers {
 		for _, p := range c.Ports {
@@ -306,6 +308,19 @@ func kubePod(pod *corev1.Pod) KubePod {
 		}
 	}
 	return kp
+}
+
+// listOwner is podOwner without a request per pod: a Deployment's ReplicaSet is named after it plus the pod-template-hash,
+// which the pod carries. A Job stays a Job, and any other ReplicaSet stays itself.
+func listOwner(pod *corev1.Pod) *PodOwner {
+	ref := metav1.GetControllerOf(pod)
+	if ref == nil {
+		return nil
+	}
+	if hash := pod.Labels["pod-template-hash"]; ref.Kind == "ReplicaSet" && hash != "" && strings.HasSuffix(ref.Name, "-"+hash) {
+		return &PodOwner{Kind: "Deployment", Name: strings.TrimSuffix(ref.Name, "-"+hash)}
+	}
+	return &PodOwner{Kind: ref.Kind, Name: ref.Name}
 }
 
 // ListPods lists pods in scope with their container ports.

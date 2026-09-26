@@ -228,7 +228,7 @@ func TestPodReason_Table(t *testing.T) {
 	}{
 		{"healthy", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{running(true)}}}, ""},
 		{"not ready", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodRunning, ContainerStatuses: []corev1.ContainerStatus{running(false)}}}, "NotReady"},
-		{"succeeded", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodSucceeded}}, ""},
+		{"succeeded", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodSucceeded}}, "Completed"},
 		{"pending", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodPending}}, "Pending"},
 		{"evicted", corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodFailed, Reason: "Evicted"}}, "Evicted"},
 		{"terminating", corev1.Pod{ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &metav1.Time{Time: diagEpoch}}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}, "Terminating"},

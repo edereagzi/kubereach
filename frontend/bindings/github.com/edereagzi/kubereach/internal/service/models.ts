@@ -277,6 +277,11 @@ export interface KubePod {
      */
     "requests": ResourceUsage;
     "limits": ResourceUsage;
+
+    /**
+     * Owner is the pod's controller, a ReplicaSet named as its Deployment where it is one; nil for a pod nothing controls.
+     */
+    "owner"?: PodOwner | null;
 }
 
 export interface KubeService {
@@ -500,7 +505,8 @@ export interface PodMetrics {
 }
 
 /**
- * PodOwner is what runs a pod, by its Kubernetes kind: the Deployment or CronJob above a ReplicaSet or Job where there is one.
+ * PodOwner is what runs a pod, by its Kubernetes kind. A diagnosis names the Deployment or CronJob above a ReplicaSet or Job
+ * where there is one; a pod list, which fetches nothing per pod, only the Deployment.
  */
 export interface PodOwner {
     "kind": string;

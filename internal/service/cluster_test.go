@@ -493,3 +493,43 @@ func TestRenameCluster_KeepsContextAndSurvivesReimport(t *testing.T) {
 		t.Fatal("expected error for unknown cluster")
 	}
 }
+
+// A row is grouped under the workload a user manages, read from the pod alone: a ReplicaSet's name is its Deployment's
+// plus the pod-template-hash, so no ReplicaSet is fetched.
+func TestListPods_Owner(t *testing.T) {
+	controller := func(kind, name string) []metav1.OwnerReference {
+		yes := true
+		return []metav1.OwnerReference{{Kind: kind, Name: name, Controller: &yes}}
+	}
+	pod := func(name string, labels map[string]string, owners []metav1.OwnerReference) *corev1.Pod {
+		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: name, Labels: labels, OwnerReferences: owners}}
+	}
+	svc, _, cluster := newFakeService(t,
+		pod("api-7c9d4b-x2kqp", map[string]string{"pod-template-hash": "7c9d4b"}, controller("ReplicaSet", "api-7c9d4b")),
+		pod("bare-rs-q1w2e", nil, controller("ReplicaSet", "bare-rs")),
+		pod("postgres-0", nil, controller("StatefulSet", "postgres")),
+		pod("node-exporter-abcde", nil, controller("DaemonSet", "node-exporter")),
+		pod("nightly-28942-m2n8v", nil, controller("Job", "nightly-28942")),
+		pod("debug", nil, nil),
+	)
+
+	pods, err := svc.ListPods(context.Background(), cluster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]*service.PodOwner{}
+	for _, p := range pods {
+		got[p.Name] = p.Owner
+	}
+	want := map[string]*service.PodOwner{
+		"api-7c9d4b-x2kqp":    {Kind: "Deployment", Name: "api"},
+		"bare-rs-q1w2e":       {Kind: "ReplicaSet", Name: "bare-rs"},
+		"postgres-0":          {Kind: "StatefulSet", Name: "postgres"},
+		"node-exporter-abcde": {Kind: "DaemonSet", Name: "node-exporter"},
+		"nightly-28942-m2n8v": {Kind: "Job", Name: "nightly-28942"},
+		"debug":               nil,
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("owners mismatch (-want +got):\n%s", diff)
+	}
+}

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubeWorkload, type NamedPort, type ResourceUsage } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -35,6 +35,8 @@ export type Target = {
   lastRestart?: string;
   requests?: ResourceUsage;
   limits?: ResourceUsage;
+  // Pods only: the value of the workload row the pod is listed under, when one runs it.
+  owner?: string;
   // Workloads only: rollout state, or the CronJob's schedule.
   workload?: KubeWorkload;
   // ConfigMaps only: the keys, never the values. Secrets: nothing beyond the name.
@@ -55,6 +57,14 @@ export const logKind: Partial<Record<Kind, LogSourceKind>> = {
 };
 export const forwardKind = (kind: Kind) => (kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod);
 export const targetValue = (kind: Kind, namespace: string, name: string) => `${kind}:${namespace}/${name}`;
+
+// A CronJob names each Job it starts after itself and the minute it was scheduled for (eight digits since 1989), so a run's
+// pods go under the CronJob.
+function ownerValue(namespace: string, owner?: PodOwner | null) {
+  if (!owner) return undefined;
+  const [kind, name] = owner.kind === "Job" ? ["cron" as const, owner.name.match(/^(.+)-\d{8,}$/)?.[1]] : [workloadKind[owner.kind.toLowerCase() as WorkloadKind], owner.name];
+  return kind && name ? targetValue(kind, namespace, name) : undefined;
+}
 
 // overview adds Ingresses, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
 export function useTargets(cluster: Cluster, overview = false) {
@@ -77,7 +87,7 @@ export function useTargets(cluster: Cluster, overview = false) {
   const groups: TargetGroup[] = [
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits })) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
   ];
   if (overview) {
     groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i.namespace, i.name), ingress: i })), error: ingresses.error });

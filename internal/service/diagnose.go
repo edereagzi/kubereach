@@ -31,7 +31,8 @@ type PodDiagnosis struct {
 	EventsError string      `json:"eventsError,omitempty"`
 }
 
-// PodOwner is what runs a pod, by its Kubernetes kind: the Deployment or CronJob above a ReplicaSet or Job where there is one.
+// PodOwner is what runs a pod, by its Kubernetes kind. A diagnosis names the Deployment or CronJob above a ReplicaSet or Job
+// where there is one; a pod list, which fetches nothing per pod, only the Deployment.
 type PodOwner struct {
 	Kind string `json:"kind"`
 	Name string `json:"name"`
@@ -215,7 +216,7 @@ func eventTime(e corev1.Event) time.Time {
 }
 
 // PodReason is the one word that says what is wrong with a pod, in kubectl's order of precedence;
-// it is empty for a pod that is running and ready or has completed.
+// it is empty for a pod that is running and ready, and "Completed" for one that has finished cleanly, as kubectl says.
 func PodReason(pod *corev1.Pod) string {
 	if pod.DeletionTimestamp != nil {
 		return "Terminating"
@@ -241,7 +242,7 @@ func PodReason(pod *corev1.Pod) string {
 		}
 		return ""
 	case corev1.PodSucceeded:
-		return ""
+		return "Completed"
 	case corev1.PodPending:
 		for _, c := range pod.Status.Conditions {
 			if c.Type == corev1.PodScheduled && c.Status == corev1.ConditionFalse && c.Reason != "" {
