@@ -467,6 +467,15 @@ export interface PodDiagnosis {
     "phase": string;
     "reason": string;
     "node": string;
+    "ip": string;
+
+    /**
+     * Created is what kubectl's age counts from; StartedAt is when the kubelet took the pod, zero while it is unscheduled.
+     */
+    "created": string;
+    "startedAt": string;
+    "owner"?: PodOwner | null;
+    "labels"?: { [_ in string]?: string } | null;
     "conditions": PodCondition[] | null;
     "containers": ContainerDiagnosis[] | null;
 
@@ -483,6 +492,14 @@ export interface PodDiagnosis {
 export interface PodMetrics {
     "available": boolean;
     "pods": PodUsage[] | null;
+}
+
+/**
+ * PodOwner is what runs a pod, by its Kubernetes kind: the Deployment or CronJob above a ReplicaSet or Job where there is one.
+ */
+export interface PodOwner {
+    "kind": string;
+    "name": string;
 }
 
 export interface PodUsage {

@@ -47,6 +47,7 @@ export type {
     PodCondition,
     PodDiagnosis,
     PodMetrics,
+    PodOwner,
     PodUsage,
     PortForward,
     Release,

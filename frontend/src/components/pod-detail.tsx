@@ -1,9 +1,9 @@
-import type { ComponentProps, ReactNode } from "react";
+import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, PodCondition, ResourceUsage } from "@bindings/internal/service";
+import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 import { DeletePodAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
-import { portsLabel, type Target } from "@/components/targets";
+import { portsLabel, workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
 import { RefreshButton } from "@/components/refresh-button";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { podMetricsQuery, podQuery, podUsageKey, errorText } from "@/queries";
+import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // States that are normal passage or a deliberate choice rather than a fault; a complete rollout has nothing to say on a row.
@@ -115,7 +116,43 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
   const metrics = useQuery(podMetricsQuery(cluster.id));
   const usage = metrics.data?.get(podUsageKey(target.namespace, target.name));
   const startLogs = useStartLogs(cluster);
+  const requestInspect = useUIStore((s) => s.requestInspect);
+  const selectTab = useUIStore((s) => s.selectTab);
   const d = pod.data;
+  // WorkloadKind values are the lowercased Kubernetes kinds, so an owner the Overview lists has a Kind here; a bare Job does not.
+  const owner = d?.owner;
+  const ownerKind = owner && workloadKind[owner.kind.toLowerCase() as WorkloadKind];
+  // The node's detail lives on the Nodes tab and shares this panel, so leaving for it closes the pod.
+  const openNode = (node: string) => {
+    requestInspect({ clusterId: cluster.id, kind: "node", namespace: "", name: node });
+    selectTab("nodes");
+    onClose();
+  };
+  const facts: ReactNode[] = d
+    ? [
+        d.phase,
+        owner &&
+          (ownerKind ? (
+            <Link title={`Open the ${owner.kind}`} onClick={() => requestInspect({ clusterId: cluster.id, kind: ownerKind, namespace: target.namespace, name: owner.name })}>
+              {owner.kind} {owner.name}
+            </Link>
+          ) : (
+            `${owner.kind} ${owner.name}`
+          )),
+        d.node && (
+          <>
+            on{" "}
+            <Link title="Open the node" onClick={() => openNode(d.node)}>
+              {d.node}
+            </Link>
+          </>
+        ),
+        d.ip,
+        <span title={isZeroTime(d.startedAt) ? "Not started yet" : `Started ${new Date(d.startedAt).toLocaleString()}`}>age {since(d.created)}</span>,
+        target.ports.length > 0 && portsLabel(target.ports),
+        d.events?.[0] && `last event ${ago(d.events[0].time)}`,
+      ].filter(Boolean)
+    : [];
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
@@ -127,11 +164,16 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
           <RefreshButton fetching={pod.isFetching} onRefresh={() => pod.refetch()} />
         </InspectorTitle>
         <InspectorDescription className="flex flex-wrap items-center gap-x-3">
-          {d
-            ? [d.phase, d.node && `on ${d.node}`, target.ports.length > 0 && portsLabel(target.ports), d.events?.[0] && `last event ${ago(d.events[0].time)}`]
-                .filter(Boolean)
-                .join(" · ")
-            : "Loading…"}
+          <span>
+            {d
+              ? facts.map((f, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && " · "}
+                    {f}
+                  </Fragment>
+                ))
+              : "Loading…"}
+          </span>
           {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
         </InspectorDescription>
         <div className="flex flex-wrap gap-1.5">
@@ -159,6 +201,11 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
             <Section title="Conditions">
               <Conditions conditions={d.conditions ?? []} />
             </Section>
+            {d.labels && Object.keys(d.labels).length > 0 && (
+              <Section title="Labels">
+                <Labels labels={d.labels} />
+              </Section>
+            )}
             <Section title="Events">
               {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
             </Section>
@@ -166,6 +213,29 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
         )}
       </DetailTabs>
     </Inspector>
+  );
+}
+
+// A link inside a line of muted text, told apart by its colour.
+function Link({ className, ...props }: ComponentProps<"button">) {
+  return <button type="button" className={cn("text-foreground hover:underline", className)} {...props} />;
+}
+
+// Labels are looked up rather than read, so they fold behind their keys.
+function Labels({ labels }: { labels: { [_ in string]?: string } }) {
+  const entries = Object.entries(labels);
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer truncate text-muted-foreground select-none hover:text-foreground">{entries.map(([k]) => k).join(", ")}</summary>
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 pt-1.5 font-mono">
+        {entries.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-muted-foreground">{k}</dt>
+            <dd className="min-w-0 break-all">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 

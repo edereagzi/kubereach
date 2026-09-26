@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
@@ -68,6 +68,15 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   const rows = useRef<KubeNode[]>([]);
   rows.current = nodes.data ?? [];
   useInspectorWalk(rows, inspecting, (n) => n.name, setInspecting);
+  const inspectRequest = useUIStore((s) => s.inspectRequest);
+  const requestInspect = useUIStore((s) => s.requestInspect);
+
+  // A pod's detail asked for its node; it opens once the list has it, and a node not listed is dropped.
+  useEffect(() => {
+    if (inspectRequest?.kind !== "node" || inspectRequest.clusterId !== cluster.id || nodes.isPending) return;
+    setInspecting(nodes.data?.find((n) => n.name === inspectRequest.name) ?? null);
+    requestInspect(null);
+  }, [inspectRequest, nodes.data, nodes.isPending, cluster.id, requestInspect]);
 
   if (nodes.error) {
     return (

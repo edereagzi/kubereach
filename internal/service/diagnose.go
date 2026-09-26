@@ -13,16 +13,28 @@ import (
 
 // PodDiagnosis is why a pod is in its state: phase, conditions, each container's state and the pod's events newest first.
 type PodDiagnosis struct {
-	Namespace  string               `json:"namespace"`
-	Name       string               `json:"name"`
-	Phase      string               `json:"phase"`
-	Reason     string               `json:"reason"`
-	Node       string               `json:"node"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	Phase     string `json:"phase"`
+	Reason    string `json:"reason"`
+	Node      string `json:"node"`
+	IP        string `json:"ip"`
+	// Created is what kubectl's age counts from; StartedAt is when the kubelet took the pod, zero while it is unscheduled.
+	Created    time.Time            `json:"created"`
+	StartedAt  time.Time            `json:"startedAt"`
+	Owner      *PodOwner            `json:"owner,omitempty"`
+	Labels     map[string]string    `json:"labels,omitempty"`
 	Conditions []PodCondition       `json:"conditions"`
 	Containers []ContainerDiagnosis `json:"containers"`
 	// Events is nil and EventsError set when the events could not be listed; the rest of the diagnosis still stands.
 	Events      []KubeEvent `json:"events"`
 	EventsError string      `json:"eventsError,omitempty"`
+}
+
+// PodOwner is what runs a pod, by its Kubernetes kind: the Deployment or CronJob above a ReplicaSet or Job where there is one.
+type PodOwner struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 type PodCondition struct {
@@ -79,7 +91,11 @@ func (s *Service) DescribePod(ctx context.Context, clusterID, namespace, name st
 	if err != nil {
 		return PodDiagnosis{}, wrapForbidden(err)
 	}
-	d := PodDiagnosis{Namespace: pod.Namespace, Name: pod.Name, Phase: string(pod.Status.Phase), Reason: PodReason(pod), Node: pod.Spec.NodeName}
+	d := PodDiagnosis{Namespace: pod.Namespace, Name: pod.Name, Phase: string(pod.Status.Phase), Reason: PodReason(pod), Node: pod.Spec.NodeName,
+		IP: pod.Status.PodIP, Created: pod.CreationTimestamp.Time, Owner: podOwner(ctx, k, pod), Labels: pod.Labels}
+	if pod.Status.StartTime != nil {
+		d.StartedAt = pod.Status.StartTime.Time
+	}
 	for _, c := range pod.Status.Conditions {
 		d.Conditions = append(d.Conditions, PodCondition{Type: string(c.Type), Status: string(c.Status), Reason: c.Reason, Message: c.Message})
 	}
@@ -89,6 +105,30 @@ func (s *Service) DescribePod(ctx context.Context, clusterID, namespace, name st
 		d.EventsError = errorMessage(err)
 	}
 	return d, nil
+}
+
+// podOwner follows a pod's controller one step up where users manage the level above: a ReplicaSet to its Deployment
+// and a Job to its CronJob. An intermediate owner that cannot be read, or has no controller, is the owner itself.
+func podOwner(ctx context.Context, k kube, pod *corev1.Pod) *PodOwner {
+	ref := metav1.GetControllerOf(pod)
+	if ref == nil {
+		return nil
+	}
+	var parent *metav1.OwnerReference
+	switch ref.Kind {
+	case "ReplicaSet":
+		if rs, err := k.client.AppsV1().ReplicaSets(pod.Namespace).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
+			parent = metav1.GetControllerOf(rs)
+		}
+	case "Job":
+		if job, err := k.client.BatchV1().Jobs(pod.Namespace).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
+			parent = metav1.GetControllerOf(job)
+		}
+	}
+	if parent != nil {
+		ref = parent
+	}
+	return &PodOwner{Kind: ref.Kind, Name: ref.Name}
 }
 
 func describeContainers(specs []corev1.Container, statuses []corev1.ContainerStatus, init bool) []ContainerDiagnosis {

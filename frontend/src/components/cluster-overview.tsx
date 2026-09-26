@@ -70,9 +70,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const inspectRequest = useUIStore((s) => s.inspectRequest);
   const requestInspect = useUIStore((s) => s.requestInspect);
 
-  // Another tab asked for an object's detail; it opens once the lists have it, and a request for nothing listed is dropped.
+  // Another tab asked for an object's detail (a node's is the Nodes tab's); it opens once the lists have it, and a request for nothing listed is dropped.
   useEffect(() => {
-    if (!inspectRequest || inspectRequest.clusterId !== cluster.id || pending) return;
+    if (!inspectRequest || inspectRequest.clusterId !== cluster.id || inspectRequest.kind === "node" || pending) return;
     setInspecting(liveGroups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
     requestInspect(null);
   }, [inspectRequest, pending, liveGroups, cluster.id, requestInspect]);

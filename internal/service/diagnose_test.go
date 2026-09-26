@@ -7,6 +7,8 @@ import (
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -145,6 +147,73 @@ func TestDescribePod_Unschedulable(t *testing.T) {
 	}
 	if _, err := svc.DescribePod(context.Background(), id, "default", "missing"); err == nil {
 		t.Fatal("missing pod described without error")
+	}
+}
+
+func controlledBy(kind, name string) []metav1.OwnerReference {
+	yes := true
+	return []metav1.OwnerReference{{Kind: kind, Name: name, Controller: &yes}}
+}
+
+// The owner is what the user manages: a ReplicaSet leads to its Deployment and a Job to its CronJob; anything else,
+// or an intermediate owner that cannot be read, is the pod's own controller.
+func TestDescribePod_Owner(t *testing.T) {
+	pod := func(name string, owners []metav1.OwnerReference) *corev1.Pod {
+		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: name, OwnerReferences: owners}}
+	}
+	svc, cs, id := newFakeService(t,
+		&appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-7d9f", OwnerReferences: controlledBy("Deployment", "api")}},
+		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "backup-2915", OwnerReferences: controlledBy("CronJob", "backup")}},
+		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "migrate"}},
+		pod("api-7d9f-x", controlledBy("ReplicaSet", "api-7d9f")),
+		pod("db-0", controlledBy("StatefulSet", "db")),
+		pod("agent-x", controlledBy("DaemonSet", "agent")),
+		pod("backup-2915-x", controlledBy("Job", "backup-2915")),
+		pod("migrate-x", controlledBy("Job", "migrate")),
+		pod("orphan-x", controlledBy("ReplicaSet", "gone")),
+		pod("static", nil),
+	)
+	cases := map[string]*service.PodOwner{
+		"api-7d9f-x":    {Kind: "Deployment", Name: "api"},
+		"db-0":          {Kind: "StatefulSet", Name: "db"},
+		"agent-x":       {Kind: "DaemonSet", Name: "agent"},
+		"backup-2915-x": {Kind: "CronJob", Name: "backup"},
+		"migrate-x":     {Kind: "Job", Name: "migrate"},
+		"orphan-x":      {Kind: "ReplicaSet", Name: "gone"},
+		"static":        nil,
+	}
+	for name, want := range cases {
+		got, err := svc.DescribePod(context.Background(), id, "default", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(want, got.Owner); diff != "" {
+			t.Errorf("%s: owner mismatch (-want +got):\n%s", name, diff)
+		}
+	}
+
+	forbid(cs, "get", "replicasets", false)
+	got, err := svc.DescribePod(context.Background(), id, "default", "api-7d9f-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (&service.PodOwner{Kind: "ReplicaSet", Name: "api-7d9f"}); !cmp.Equal(want, got.Owner) {
+		t.Errorf("owner with ReplicaSets forbidden = %+v, want the ReplicaSet itself", got.Owner)
+	}
+}
+
+func TestDescribePod_IPAgeAndLabels(t *testing.T) {
+	started := metav1.NewTime(diagEpoch)
+	svc, _, id := newFakeService(t, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-0", Labels: map[string]string{"app": "api"}, CreationTimestamp: metav1.NewTime(diagEpoch.Add(-time.Minute))},
+		Status:     corev1.PodStatus{PodIP: "10.0.3.4", StartTime: &started},
+	})
+	got, err := svc.DescribePod(context.Background(), id, "default", "api-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IP != "10.0.3.4" || !got.Created.Equal(diagEpoch.Add(-time.Minute)) || !got.StartedAt.Equal(diagEpoch) || !cmp.Equal(got.Labels, map[string]string{"app": "api"}) {
+		t.Errorf("diagnosis = ip %q created %v started %v labels %v, want 10.0.3.4, a minute before %v, app=api", got.IP, got.Created, got.StartedAt, got.Labels, diagEpoch)
 	}
 }
 
