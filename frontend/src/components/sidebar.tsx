@@ -3,6 +3,7 @@ import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/
 import {
   ArrowsLeftRightIcon,
   MagnifyingGlassIcon,
+  PathIcon,
   PlusIcon,
   ScrollIcon,
   TerminalWindowIcon,
@@ -10,9 +11,10 @@ import {
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import { State, type Cluster } from "@bindings/internal/service";
+import type { Cluster } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamFor } from "@/components/logs";
+import { isUp, useRouteProblem } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
@@ -145,6 +147,7 @@ function ClusterRow({ cluster }: { cluster: Cluster }) {
         <ReachabilityDot cluster={cluster} />
         <span className="min-w-0 flex-1 truncate">{cluster.name}</span>
         <Activity cluster={cluster} />
+        <RouteMark cluster={cluster} />
       </button>
     </li>
   );
@@ -180,15 +183,27 @@ function Activity({ cluster }: { cluster: Cluster }) {
   );
 }
 
+// A Cluster behind a Route says so, since that Route being down is the usual reason the Cluster cannot be reached.
+function RouteMark({ cluster }: { cluster: Cluster }) {
+  const { data } = useQuery(configQuery);
+  const status = useUIStore((s) => (cluster.route ? s.routeStatuses[cluster.route] : undefined));
+  const problem = useRouteProblem(cluster.route ?? "");
+  const route = data?.routes?.find((r) => r.id === cluster.route);
+  if (!route) return null;
+  const state = isUp(status) ? status?.state : "not connected";
+  return (
+    <span className="shrink-0 text-muted-foreground [&_svg]:size-3.5" title={`Through ${route.name}, ${state}${problem ? `: ${problem}` : ""}`}>
+      <PathIcon />
+    </span>
+  );
+}
+
 // Unreachable is the normal state of a cluster whose Route is down, so it is a hollow ring rather than an error colour.
 function ReachabilityDot({ cluster }: { cluster: Cluster }) {
   const { status, fetchStatus, error, data } = useQuery(reachabilityQuery(cluster.id));
-  const { data: config } = useQuery(configQuery);
-  const routeDown = useUIStore((s) => !!cluster.route && s.routeStatuses[cluster.route]?.state !== State.StateConnected);
-  const route = config?.routes?.find((r) => r.id === cluster.route);
   return (
     <span
-      title={routeDown && route ? `Reached through ${route.name}, which is not connected` : reachabilityLabel(status, error, data)}
+      title={reachabilityLabel(status, error, data)}
       className={cn(
         "size-2 shrink-0 rounded-full",
         fetchStatus === "fetching" && "animate-pulse",
