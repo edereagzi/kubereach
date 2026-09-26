@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowCounterClockwiseIcon, CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { JobResult, RolloutState, type Cluster, type Rollout } from "@bindings/internal/service";
+import { JobResult, RolloutState, type Cluster, type KubeHPA, type Rollout } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
-import { HPADetail, hpaLabel, metricsTitle } from "@/components/hpa-detail";
+import { HPADetail, metricsLabel, metricsTitle } from "@/components/hpa-detail";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useInspectorWalk } from "@/components/inspector";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
@@ -138,6 +138,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const workloads = new Set(everything.filter((t) => t.workload).map((t) => t.value));
   const childrenOf = new Map<string, Target[]>();
   for (const t of everything) if (t.owner && workloads.has(t.owner) && !finished(t)) childrenOf.set(t.owner, [...(childrenOf.get(t.owner) ?? []), t]);
+  const scaledBy = new Map(everything.flatMap((t) => (t.hpa && t.owner ? [[t.owner, t.hpa] as const] : [])));
   const shows = (t: Target): boolean => passing.has(t.value) || (childrenOf.get(t.value) ?? []).some(shows);
   const filtering = words.length > 0 || problems;
   // Counted over the scope, not the search: typing a name must not make the alarm go quiet.
@@ -224,6 +225,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
                 cluster={cluster}
                 target={t}
                 pressure={pressure(t)}
+                scaledBy={scaledBy.get(t.value)}
                 done={finished(t)}
                 selected={t.value === inspecting?.value}
                 onInspect={() => setInspecting(t)}
@@ -283,7 +285,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 
 // A row is identity, what is wrong, and its state: a rollout's ready over desired, whether a pod runs or has finished
 // and how often it restarted, or one short figure: a service's ports, an Ingress's host, a CronJob's schedule, a claim's size
-// and class, an autoscaler's replicas within its range, or a config object's key count. The sentence behind a figure is its title; containers, images and keys are in the detail, where they are acted on.
+// and class, what drives an autoscaler, or a config object's key count. The sentence behind a figure is its title; containers, images and keys are in the detail, where they are acted on.
 type Figure = { text: string; title?: string; mono?: boolean };
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const figure = (t: Target): Figure | null => {
@@ -291,22 +293,31 @@ const figure = (t: Target): Figure | null => {
   if (t.ingress) return { text: hostsLabel(t.ingress.hosts), title: t.ingress.hosts?.join("\n"), mono: true };
   if (t.config) return { text: keysLabel(t.config.keys?.length ?? 0) };
   if (t.pvc) return { text: pvcLabel(t.pvc), mono: true };
-  if (t.hpa) return { text: hpaLabel(t.hpa), title: metricsTitle(t.hpa), mono: true };
+  if (t.hpa) return { text: metricsLabel(t.hpa), title: metricsTitle(t.hpa), mono: true };
   if (t.workload?.cronJob) return { text: t.workload.cronJob.schedule, title: workloadLabel(t.workload), mono: true };
   return null;
 };
 
 // Ready over desired, with one tick per replica where there is room: the gap is what is missing, red when the rollout is stuck.
+// An autoscaled workload's strip runs on to its maximum, the replicas it may still add drawn as stubs on the baseline.
 const maxTicks = 12;
-function Replicas({ rollout: r }: { rollout: Rollout }) {
+function Replicas({ rollout: r, scaledBy: h }: { rollout: Rollout; scaledBy?: KubeHPA }) {
   const stuck = r.state === RolloutState.RolloutStuck;
-  const ticks = Math.min(r.desired, maxTicks);
-  const filled = r.desired > maxTicks ? Math.round((r.ready * maxTicks) / r.desired) : r.ready;
+  const slots = Math.max(r.desired, h?.max ?? 0);
+  const ticks = Math.min(slots, maxTicks);
+  const scale = (n: number) => (slots > maxTicks ? Math.round((n * maxTicks) / slots) : n);
+  const [filled, wanted] = [scale(r.ready), scale(r.desired)];
   return (
-    <span className={cn("flex items-center gap-2", stuck && "text-destructive")} title={`${r.ready} of ${r.desired} ready`}>
+    <span
+      className={cn("flex items-center gap-2", stuck && "text-destructive")}
+      title={`${r.ready} of ${r.desired} ready${h ? `, autoscaled between ${h.min} and ${h.max}` : ""}`}
+    >
       <span className="hidden h-2.5 gap-px @2xl:flex" aria-hidden>
         {Array.from({ length: ticks }, (_, i) => (
-          <span key={i} className={cn("w-1 rounded-[1px]", i < filled ? "bg-foreground/55" : stuck ? "bg-destructive/70" : "bg-foreground/15")} />
+          <span
+            key={i}
+            className={cn("w-1 rounded-[1px]", i < filled ? "bg-foreground/55" : i >= wanted ? "h-px self-end bg-foreground/30" : stuck ? "bg-destructive/70" : "bg-foreground/15")}
+          />
         ))}
       </span>
       {r.ready}/{r.desired}
@@ -324,6 +335,7 @@ function TargetLine({
   cluster,
   target,
   pressure,
+  scaledBy,
   done,
   selected,
   onInspect,
@@ -333,6 +345,8 @@ function TargetLine({
   cluster: Cluster;
   target: Target;
   pressure?: string;
+  // The autoscaler of a workload, whose range its replica ticks run to.
+  scaledBy?: KubeHPA;
   // Finished: a Job that succeeded or a pod of one, listed muted in the namespace's fold.
   done: boolean;
   selected: boolean;
@@ -386,7 +400,7 @@ function TargetLine({
         {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
       </span>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {target.workload?.rollout && <Replicas rollout={target.workload.rollout} />}
+        {target.workload?.rollout && <Replicas rollout={target.workload.rollout} scaledBy={scaledBy} />}
         {job && (
           <span className={cn("flex min-w-0 items-center gap-1", job.result === JobResult.JobFailed && "text-destructive")} title={job.message || undefined}>
             {job.result === JobResult.JobComplete && <CheckIcon className="size-3 shrink-0" weight="bold" />}
