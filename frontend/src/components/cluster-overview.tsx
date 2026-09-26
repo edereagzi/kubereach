@@ -195,11 +195,13 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           </p>
         ))}
       {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, badges, figure, age, verbs.
-          The name takes what is left; badges, figure, age and verbs are as wide as the widest row needs, the figure at most 16rem.
+          The name takes what is left, but never less than 40% of the list (at most 12rem): when the list is narrow, one long reason
+          such as BackoffLimitExceeded must not squeeze every name, so the badges give way and truncate, their reason in the title.
+          Badges, figure, age and verbs are otherwise as wide as the widest row needs, the figure at most 16rem.
           The edge columns are auto because a row's padding is laid into them, which a fixed width would not fit. */}
       <div
         className={cn(
-          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,1fr)_auto_fit-content(16rem)_auto_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
+          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(min(12rem,40%),1fr)_auto_fit-content(16rem)_auto_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
           rescoping && "opacity-50",
         )}
       >
