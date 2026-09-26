@@ -44,7 +44,7 @@ type LogSource struct {
 	Namespace string        `json:"namespace"`
 	Kind      LogSourceKind `json:"kind"`
 	Name      string        `json:"name"`
-	// Container narrows a pod source to one of its containers, init containers included.
+	// Container narrows the source to one of its containers, init containers included; for a workload, in every pod.
 	Container string `json:"container,omitempty"`
 	// Previous reads the last terminated run once instead of following the current one.
 	Previous bool `json:"previous,omitempty"`
@@ -75,11 +75,13 @@ const EventLogState = "logs:state"
 type LogStatus struct {
 	ID     string    `json:"id"`
 	Source LogSource `json:"source"`
-	// Pods are the pods currently followed; Containers is the union of their containers.
+	// Pods are the pods currently followed; Containers is the union of their followed containers.
 	Pods       []string `json:"pods"`
 	Containers []string `json:"containers"`
-	State      State    `json:"state"`
-	Error      string   `json:"error,omitempty"`
+	// AllContainers are the source's containers, init containers first, that Container can name.
+	AllContainers []string `json:"allContainers"`
+	State         State    `json:"state"`
+	Error         string   `json:"error,omitempty"`
 	// Deleted marks a workload that no longer exists; its pods are still followed should it come back.
 	Deleted bool `json:"deleted,omitempty"`
 }
@@ -96,6 +98,8 @@ const (
 )
 
 type logConn struct {
+	// k is the stream's Cluster, where a followed pod's status is read.
+	k      kube
 	cancel context.CancelFunc
 	done   chan struct{}
 	lines  chan LogLine
@@ -115,15 +119,15 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 	if src.Namespace == "" || src.Name == "" {
 		return LogStatus{}, userErrorf("Logs need a namespace and a name")
 	}
-	if (src.Previous || src.Container != "") && src.Kind != LogSourcePod {
-		return LogStatus{}, userErrorf("Previous logs and a single container are read from a single pod")
+	if src.Previous && src.Kind != LogSourcePod {
+		return LogStatus{}, userErrorf("Previous logs are read from a single pod")
 	}
 	k, err := s.clusterClient(src.ClusterID)
 	if err != nil {
 		return LogStatus{}, err
 	}
 	var selector *metav1.LabelSelector
-	var containers []corev1.Container
+	var spec corev1.PodSpec
 	var workload cache.ListerWatcher
 	var workloadType runtime.Object
 	switch src.Kind {
@@ -132,22 +136,14 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 		if err != nil {
 			return LogStatus{}, err
 		}
-		containers = pod.Spec.Containers
-		if src.Container != "" {
-			all := slices.Concat(pod.Spec.InitContainers, pod.Spec.Containers)
-			i := slices.IndexFunc(all, func(c corev1.Container) bool { return c.Name == src.Container })
-			if i < 0 {
-				return LogStatus{}, userErrorf("Pod %s has no container %s", src.Name, src.Container)
-			}
-			containers = all[i : i+1]
-		}
+		spec = pod.Spec
 	case LogSourceDeployment:
 		client := k.client.AppsV1().Deployments(src.Namespace)
 		d, err := client.Get(ctx, src.Name, metav1.GetOptions{})
 		if err != nil {
 			return LogStatus{}, err
 		}
-		selector, containers = d.Spec.Selector, d.Spec.Template.Spec.Containers
+		selector, spec = d.Spec.Selector, d.Spec.Template.Spec
 		workload, workloadType = namedListWatch(client, src.Name), &appsv1.Deployment{}
 	case LogSourceStatefulSet:
 		client := k.client.AppsV1().StatefulSets(src.Namespace)
@@ -155,7 +151,7 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 		if err != nil {
 			return LogStatus{}, err
 		}
-		selector, containers = ss.Spec.Selector, ss.Spec.Template.Spec.Containers
+		selector, spec = ss.Spec.Selector, ss.Spec.Template.Spec
 		workload, workloadType = namedListWatch(client, src.Name), &appsv1.StatefulSet{}
 	case LogSourceDaemonSet:
 		client := k.client.AppsV1().DaemonSets(src.Namespace)
@@ -163,10 +159,19 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 		if err != nil {
 			return LogStatus{}, err
 		}
-		selector, containers = ds.Spec.Selector, ds.Spec.Template.Spec.Containers
+		selector, spec = ds.Spec.Selector, ds.Spec.Template.Spec
 		workload, workloadType = namedListWatch(client, src.Name), &appsv1.DaemonSet{}
 	default:
 		return LogStatus{}, fmt.Errorf("unknown log source kind %q", src.Kind)
+	}
+	all := slices.Concat(spec.InitContainers, spec.Containers)
+	containers := spec.Containers
+	if src.Container != "" {
+		i := slices.IndexFunc(all, func(c corev1.Container) bool { return c.Name == src.Container })
+		if i < 0 {
+			return LogStatus{}, userErrorf("%s %s has no container %s", src.Kind, src.Name, src.Container)
+		}
+		containers = all[i : i+1]
 	}
 	var podSelector labels.Selector
 	if selector != nil {
@@ -182,11 +187,11 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 		return LogStatus{}, err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	status := LogStatus{ID: newID(), Source: src, Pods: []string{}, Containers: containerNames(containers), State: StateIdle}
+	status := LogStatus{ID: newID(), Source: src, Pods: []string{}, Containers: containerNames(containers), AllContainers: containerNames(all), State: StateIdle}
 	if selector == nil {
 		status.Pods = []string{src.Name}
 	}
-	lc := &logConn{cancel: cancel, done: make(chan struct{}), lines: make(chan LogLine, logBatchMax), status: status, pods: map[string]context.CancelFunc{}, terminating: map[string]bool{}}
+	lc := &logConn{k: k, cancel: cancel, done: make(chan struct{}), lines: make(chan LogLine, logBatchMax), status: status, pods: map[string]context.CancelFunc{}, terminating: map[string]bool{}}
 	var replaced []*logConn
 	s.mu.Lock()
 	for id, old := range s.logs {
@@ -355,8 +360,15 @@ type plainListWatch struct{ *cache.ListWatch }
 
 func (plainListWatch) IsWatchListSemanticsUnSupported() bool { return true }
 
+// A chosen container is followed in the pods that have it; a pod of another revision without it contributes nothing.
 func (s *Service) followWorkloadPod(ctx context.Context, lc *logConn, pods corev1client.PodInterface, pod *corev1.Pod) {
 	containers := containerNames(pod.Spec.Containers)
+	if c := lc.status.Source.Container; c != "" {
+		containers = nil
+		if slices.Contains(containerNames(slices.Concat(pod.Spec.InitContainers, pod.Spec.Containers)), c) {
+			containers = []string{c}
+		}
+	}
 	podCtx, cancel := context.WithCancel(ctx)
 	lc.mu.Lock()
 	if lc.pods[pod.Name] != nil {
@@ -440,6 +452,9 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 		if lc.status.Source.Previous && (opened || apierrors.IsBadRequest(err)) {
 			return nil
 		}
+		if opened && err == nil && initCompleted(ctx, lc.k, lc.status.Source.Namespace, pod, container) {
+			return nil
+		}
 		if opened {
 			backoff = time.Second
 		}
@@ -461,6 +476,22 @@ func (s *Service) followContainer(ctx context.Context, lc *logConn, pods corev1c
 		case <-time.After(wait):
 		}
 	}
+}
+
+// initCompleted reports an init container that finished successfully and so will not run again. A restartable
+// (sidecar) init container lives as long as the pod and is followed like any other; a failed one is retried by the kubelet.
+func initCompleted(ctx context.Context, k kube, namespace, pod, container string) bool {
+	p, err := k.client.CoreV1().Pods(namespace).Get(ctx, pod, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	i := slices.IndexFunc(p.Spec.InitContainers, func(c corev1.Container) bool { return c.Name == container })
+	if i < 0 || p.Spec.InitContainers[i].RestartPolicy != nil {
+		return false
+	}
+	return slices.ContainsFunc(p.Status.InitContainerStatuses, func(st corev1.ContainerStatus) bool {
+		return st.Name == container && st.State.Terminated != nil && st.State.Terminated.ExitCode == 0
+	})
 }
 
 // errContainerStopped is why a body ends without an error: almost always the container exiting, as in a crash loop.

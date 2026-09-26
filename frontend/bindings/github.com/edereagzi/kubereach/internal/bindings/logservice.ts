@@ -9,6 +9,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as service$0 from "../service/models.js";
 
+/**
+ * Save asks where to save and writes text there; "" when cancelled. The text is the panel's rendering, so the service has
+ * nothing to add and the file is written here.
+ */
+export function Save(name: string, text: string): $CancellablePromise<string> {
+    return $Call.ByID(3702400616, name, text);
+}
+
 export function Start(src: service$0.LogSource): $CancellablePromise<service$0.LogStatus> {
     return $Call.ByID(4070863999, src);
 }

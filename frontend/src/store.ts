@@ -69,6 +69,8 @@ interface UIState {
   clearLogs: (streamId: string) => void;
   logWrap: boolean;
   toggleLogWrap: () => void;
+  logTimestamps: boolean;
+  toggleLogTimestamps: () => void;
   eventStreams: Record<string, EventStatus>;
   setEventStatus: (status: EventStatus) => void;
   eventBuffers: Record<string, EventBuffer>;
@@ -142,6 +144,8 @@ export const useUIStore = create<UIState>((set) => ({
   logBuffers: {},
   logWrap: false,
   toggleLogWrap: () => set((s) => ({ logWrap: !s.logWrap })),
+  logTimestamps: false,
+  toggleLogTimestamps: () => set((s) => ({ logTimestamps: !s.logTimestamps })),
   appendLogs: ({ streamId, lines }) =>
     set((s) => {
       const buffer = s.logBuffers[streamId] ?? { lines: [], version: 0 };

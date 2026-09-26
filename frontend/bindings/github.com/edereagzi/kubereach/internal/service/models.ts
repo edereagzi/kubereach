@@ -328,7 +328,7 @@ export interface LogSource {
     "name": string;
 
     /**
-     * Container narrows a pod source to one of its containers, init containers included.
+     * Container narrows the source to one of its containers, init containers included; for a workload, in every pod.
      */
     "container"?: string;
 
@@ -355,10 +355,15 @@ export interface LogStatus {
     "source": LogSource;
 
     /**
-     * Pods are the pods currently followed; Containers is the union of their containers.
+     * Pods are the pods currently followed; Containers is the union of their followed containers.
      */
     "pods": string[] | null;
     "containers": string[] | null;
+
+    /**
+     * AllContainers are the source's containers, init containers first, that Container can name.
+     */
+    "allContainers": string[] | null;
     "state": State;
     "error"?: string;
 

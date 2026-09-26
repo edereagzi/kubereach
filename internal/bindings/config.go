@@ -26,22 +26,27 @@ func (c *ConfigService) SetUpdateCheck(on bool) error {
 
 // Export asks where to save and writes the configuration there; "" when cancelled.
 func (c *ConfigService) Export() (string, error) {
+	path, err := promptSave("Export configuration", "kubereach-export.yaml")
+	if err != nil || path == "" {
+		return "", err
+	}
+	return path, c.svc.ExportConfig(path)
+}
+
+// promptSave asks where to save, starting in the home directory; "" when cancelled.
+func promptSave(title, filename string) (string, error) {
 	// SetOptions is the only way to title a save dialog; the title shows on Windows and Linux, the message on macOS.
 	home, _ := os.UserHomeDir()
 	dialog := application.Get().Dialog.SaveFile()
 	dialog.SetOptions(&application.SaveFileDialogOptions{
 		CanCreateDirectories: true,
-		Title:                "Export configuration",
-		Message:              "Export configuration",
+		Title:                title,
+		Message:              title,
 		Directory:            home,
-		Filename:             "kubereach-export.yaml",
+		Filename:             filename,
 		Window:               mainWindow(),
 	})
-	path, err := dialog.PromptForSingleSelection()
-	if err != nil || path == "" {
-		return "", err
-	}
-	return path, c.svc.ExportConfig(path)
+	return dialog.PromptForSingleSelection()
 }
 
 // InspectImport opens the native file picker and previews the chosen file; nil when cancelled.

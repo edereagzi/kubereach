@@ -500,6 +500,89 @@ func TestLogs_PreviousRunIsReadOnceAndStaysReadable(t *testing.T) {
 	}
 }
 
+func TestLogs_InitContainerOfAPodCanBeRead(t *testing.T) {
+	pod := twoContainerPod("default", "api-0")
+	pod.Spec.InitContainers = []corev1.Container{{Name: "migrate"}}
+	f := newForwardFixture(t, pod)
+	batches, _ := logEvents(f.svc)
+	f.api.seedLogs("api-0", "migrate", "applied 3 migrations")
+	f.api.seedLogs("api-0", "app", "not asked for")
+
+	stream, err := f.svc.StartLogs(context.Background(), service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "migrate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stream.Containers, []string{"migrate"}) || !slices.Equal(stream.AllContainers, []string{"migrate", "app", "sidecar"}) {
+		t.Errorf("stream = %+v, want migrate followed and every container, init first, to choose from", stream)
+	}
+	if diff := cmp.Diff([]string{"migrate: applied 3 migrations"}, texts(collectLogs(t, batches, stream.ID, 1))); diff != "" {
+		t.Errorf("lines (-want +got):\n%s", diff)
+	}
+	if err := f.svc.StopLogs(stream.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A completed init container will not run again, so its log ending ends the stream rather than waiting for a restart.
+func TestLogs_CompletedInitContainerEndsTheStream(t *testing.T) {
+	pod := twoContainerPod("default", "api-0")
+	pod.Spec.InitContainers = []corev1.Container{{Name: "migrate"}}
+	pod.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "migrate", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "Completed"}}}}
+	f := newForwardFixture(t, pod)
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-0", "migrate", "applied 3 migrations")
+
+	stream, err := f.svc.StartLogs(context.Background(), service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourcePod, Name: "api-0", Container: "migrate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectLogs(t, batches, stream.ID, 1)
+	f.api.mu.Lock()
+	f.api.endFollows("api-0")
+	f.api.mu.Unlock()
+	if ended := waitLogState(t, states, service.StateIdle); ended.Error != "" {
+		t.Errorf("ended stream = %+v, want idle without error", ended)
+	}
+	if err := f.svc.StopLogs(stream.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogs_WorkloadContainerAppliesToEveryPod(t *testing.T) {
+	f := newForwardFixture(t, deployment("default", "api"), twoContainerPod("default", "api-a"), twoContainerPod("default", "api-b"))
+	batches, states := logEvents(f.svc)
+	f.api.seedLogs("api-a", "app", "a app")
+	f.api.seedLogs("api-a", "sidecar", "a side")
+	f.api.seedLogs("api-b", "app", "b app")
+	f.api.seedLogs("api-b", "sidecar", "b side")
+
+	src := service.LogSource{ClusterID: f.cluster, Namespace: "default", Kind: service.LogSourceDeployment, Name: "api", Container: "sidecar"}
+	stream, err := f.svc.StartLogs(context.Background(), src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stream.Containers, []string{"sidecar"}) || !slices.Equal(stream.AllContainers, []string{"app", "sidecar"}) {
+		t.Errorf("stream = %+v, want sidecar followed out of app and sidecar", stream)
+	}
+	waitLogPods(t, states, "api-a", "api-b")
+	got := texts(collectLogs(t, batches, stream.ID, 2))
+	slices.Sort(got)
+	if diff := cmp.Diff([]string{"sidecar: a side", "sidecar: b side"}, got); diff != "" {
+		t.Errorf("lines (-want +got):\n%s", diff)
+	}
+	if st := f.svc.LogStatuses(); len(st) != 1 || !slices.Equal(st[0].Containers, []string{"sidecar"}) {
+		t.Errorf("statuses = %+v, want only sidecar followed", st)
+	}
+	if err := f.svc.StopLogs(stream.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	src.Container = "nope"
+	if _, err := f.svc.StartLogs(context.Background(), src); err == nil {
+		t.Fatal("unknown container of a workload started without error")
+	}
+}
+
 func TestLogs_OverLongLineIsCutAndTheStreamGoesOn(t *testing.T) {
 	f := newForwardFixture(t, twoContainerPod("default", "api-0"))
 	batches, _ := logEvents(f.svc)

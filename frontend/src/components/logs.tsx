@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, MagnifyingGlassIcon, TextAlignLeftIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, ClockIcon, MagnifyingGlassIcon, TextAlignLeftIcon, XIcon } from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
 import { LogSourceKind, type Cluster, type LogLine, type LogStatus } from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
@@ -10,7 +10,7 @@ import { KindBadge, logKind, TargetPicker, useTargets, type Kind, type Target } 
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { ComboboxTrigger } from "@/components/ui/combobox";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { podsQuery, errorText } from "@/queries";
@@ -42,11 +42,17 @@ const shownElsewhere = new Set(["level", "lvl", "severity", "msg", "message", "t
 const inlineFields = (l: LogLine) =>
   Object.entries(l.fields ?? {}).filter(([k, v]) => !shownElsewhere.has(k) && !(k === "hostname" && v === l.pod));
 
-type Columns = { showPod: boolean; showContainer: boolean };
+type Columns = { showTime: boolean; showPod: boolean; showContainer: boolean };
+const columns = (stream: LogStatus, showTime: boolean): Columns => ({
+  showTime,
+  showPod: stream.source.kind !== LogSourceKind.LogSourcePod,
+  showContainer: (stream.containers?.length ?? 0) > 1,
+});
 type Segment = { text: string; className?: string; title?: string };
 // A row is drawn as plain text with real spaces between its parts, so a selection copies exactly what is on screen.
-const segments = (l: LogLine, { showPod, showContainer }: Columns): Segment[] => {
-  const out: Segment[] = [{ text: formatTime(l.time), className: "text-muted-foreground/70" }];
+const segments = (l: LogLine, { showTime, showPod, showContainer }: Columns): Segment[] => {
+  const out: Segment[] = [];
+  if (showTime) out.push({ text: formatTime(l.time), className: "text-muted-foreground/70" });
   if (showPod) out.push({ text: podSuffix(l.pod), className: podColor(l.pod), title: l.pod });
   if (showContainer) out.push({ text: l.container, className: "text-muted-foreground" });
   if (!l.fields) return [...out, { text: l.text }];
@@ -133,7 +139,6 @@ export function Logs({ cluster }: { cluster: Cluster }) {
                 · {stream.pods?.length ?? 0} {stream.pods?.length === 1 ? "pod" : "pods"}
               </span>
             )}
-            {stream.source.container && <span className="text-muted-foreground">· {stream.source.container}</span>}
             {stream.source.previous && <span className="text-muted-foreground">· previous run</span>}
           </>
         ) : (
@@ -162,11 +167,11 @@ export function Logs({ cluster }: { cluster: Cluster }) {
   );
 }
 
-type ViewState = { hidden: string[]; query: string; regex: boolean };
+type ViewState = { query: string; regex: boolean };
 
 // StreamPanel owns the view state of one stream; a new stream remounts it clean.
 function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; picker: ReactNode; shell: ReactNode; error: unknown }) {
-  const [view, setView] = useState<ViewState>({ hidden: [], query: "", regex: false });
+  const [view, setView] = useState<ViewState>({ query: "", regex: false });
   const patch = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -190,31 +195,42 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
   const clearLogs = useUIStore((s) => s.clearLogs);
   const wrap = useUIStore((s) => s.logWrap);
   const toggleWrap = useUIStore((s) => s.toggleLogWrap);
+  const timestamps = useUIStore((s) => s.logTimestamps);
+  const toggleTimestamps = useUIStore((s) => s.toggleLogTimestamps);
   const stop = useMutation({ mutationFn: () => LogService.Stop(stream.id) });
-  const containers = stream.containers ?? [];
+  // Another container is another stream: the choice is the source's, so a workload applies it to every pod.
+  const follow = useMutation({ mutationFn: (container: string) => LogService.Start({ ...stream.source, container }) });
+  // Save writes what the view shows: the filtered lines, drawn with the columns on screen.
+  const save = useMutation({
+    mutationFn: () => {
+      const lines = useUIStore.getState().logBuffers[stream.id]?.lines ?? [];
+      const { matcher } = compile(view);
+      const cols = columns(stream, timestamps);
+      return LogService.Save(stream.source.name, (matcher ? lines.filter(matcher) : lines).map((l) => `${lineText(l, cols)}\n`).join(""));
+    },
+  });
+  const containers = stream.allContainers ?? [];
   return (
     <>
       <Button variant="ghost" size="icon-sm" title="Stop following" disabled={stop.isPending} onClick={() => stop.mutate()}>
         <XIcon />
       </Button>
-      {/* One menu rather than a toggle per container, so a pod with several keeps the toolbar on one line. */}
       {containers.length > 1 && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="shrink-0" />}>
-            {view.hidden.length === 0 ? "All containers" : `${containers.length - view.hidden.length} of ${containers.length} containers`}
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="shrink-0" disabled={follow.isPending} />}>
+            <span className={cn(stream.source.container && "font-mono text-xs")}>{stream.source.container || "All containers"}</span>
             <CaretDownIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {containers.map((c) => (
-              <DropdownMenuCheckboxItem
-                key={c}
-                className="font-mono text-xs"
-                checked={!view.hidden.includes(c)}
-                onCheckedChange={(on) => patch({ hidden: on ? view.hidden.filter((h) => h !== c) : [...view.hidden, c] })}
-              >
-                {c}
-              </DropdownMenuCheckboxItem>
-            ))}
+            <DropdownMenuRadioGroup value={stream.source.container ?? ""} onValueChange={(c) => follow.mutate(c)}>
+              <DropdownMenuRadioItem value="">All containers</DropdownMenuRadioItem>
+              <DropdownMenuSeparator />
+              {containers.map((c) => (
+                <DropdownMenuRadioItem key={c} value={c} className="font-mono text-xs">
+                  {c}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -241,12 +257,19 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
+      <Button variant={timestamps ? "secondary" : "ghost"} size="icon-sm" title="Show timestamps" aria-pressed={timestamps} onClick={toggleTimestamps}>
+        <ClockIcon />
+      </Button>
       <Button variant={wrap ? "secondary" : "ghost"} size="icon-sm" title="Wrap long lines" aria-pressed={wrap} onClick={toggleWrap}>
         <TextAlignLeftIcon />
+      </Button>
+      <Button variant="ghost" size="sm" className="text-muted-foreground" title="Save the lines shown to a file" disabled={save.isPending} onClick={() => save.mutate()}>
+        Save
       </Button>
       <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => clearLogs(stream.id)}>
         Clear
       </Button>
+      {(follow.error || save.error) && <span className="text-xs text-destructive">{errorText(follow.error ?? save.error)}</span>}
     </>
   );
 }
@@ -279,28 +302,24 @@ function compile({ query, regex }: ViewState): { matcher: ((l: LogLine) => boole
 
 function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
   const buffer = useUIStore((s) => s.logBuffers[stream.id]);
-  const showPod = stream.source.kind !== LogSourceKind.LogSourcePod;
-  const showContainer = (stream.containers?.length ?? 0) > 1;
+  const cols = columns(stream, useUIStore((s) => s.logTimestamps));
   const lines = buffer?.lines ?? [];
   const { matcher, error } = useMemo(() => compile(view), [view.query, view.regex]);
   // The buffer is appended in place, so version is its change signal.
   const version = buffer?.version ?? 0;
   // ponytail: full rescan per batch; incremental filtering if 50k lines with a regex ever lags.
-  const filtered = useMemo(() => {
-    if (!matcher && view.hidden.length === 0) return lines;
-    return lines.filter((l) => !view.hidden.includes(l.container) && (!matcher || matcher(l)));
-  }, [lines, version, matcher, view.hidden]);
+  const filtered = useMemo(() => (matcher ? lines.filter(matcher) : lines), [lines, version, matcher]);
 
   return (
     <>
       {error && <p className="px-4 pb-1 text-xs text-destructive">{error}</p>}
-      <LogList lines={filtered} total={lines.length} version={version} showPod={showPod} showContainer={showContainer} />
+      <LogList lines={filtered} total={lines.length} version={version} cols={cols} />
     </>
   );
 }
 
 // Rows never wrap, but a message can carry its own newlines, so every row is measured rather than assumed one line.
-function LogList({ lines, total, version, showPod, showContainer }: { lines: LogLine[]; total: number; version: number; showPod: boolean; showContainer: boolean }) {
+function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: number; version: number; cols: Columns }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
   const wrap = useUIStore((s) => s.logWrap);
@@ -364,7 +383,7 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
         onCopy={(e) => {
           if (!allSelected.current) return;
           e.preventDefault();
-          e.clipboardData.setData("text/plain", lines.map((l) => lineText(l, { showPod, showContainer })).join("\n"));
+          e.clipboardData.setData("text/plain", lines.map((l) => lineText(l, cols)).join("\n"));
         }}
       >
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -372,7 +391,7 @@ function LogList({ lines, total, version, showPod, showContainer }: { lines: Log
             const line = lines[item.index]!;
             const open = expanded.has(line);
             const full = shownInFull.has(line);
-            const all = segments(line, { showPod, showContainer });
+            const all = segments(line, cols);
             const { segs, hidden } = full ? { segs: all, hidden: 0 } : clip(all);
             const fields = line.fields ? Object.entries(line.fields) : [];
             const width = Math.max(0, ...fields.map(([k]) => k.length));
