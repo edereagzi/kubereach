@@ -8,7 +8,7 @@ import { AddForward, forwardsFor } from "@/components/forwards";
 import { HPADetail, metricsLabel, metricsTitle } from "@/components/hpa-detail";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useInspectorWalk } from "@/components/inspector";
-import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
+import { PodDetail, ReasonBadge, restartsLabel, since, usagePressure } from "@/components/pod-detail";
 import { PVCDetail, pvcLabel, pvcReason } from "@/components/pvc-detail";
 import { jobLabel, WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDetail } from "@/components/yaml-view";
@@ -22,7 +22,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Toggle } from "@/components/ui/toggle";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
-import { cn } from "@/lib/utils";
+import { cn, isZeroTime } from "@/lib/utils";
 
 // The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
 // Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
@@ -194,12 +194,12 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
-      {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, badges, figure, verbs.
-          The name takes what is left; badges, figure and verbs are as wide as the widest row needs, the figure at most 16rem.
+      {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, badges, figure, age, verbs.
+          The name takes what is left; badges, figure, age and verbs are as wide as the widest row needs, the figure at most 16rem.
           The edge columns are auto because a row's padding is laid into them, which a fixed width would not fit. */}
       <div
         className={cn(
-          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,1fr)_auto_fit-content(16rem)_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
+          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(96px,1fr)_auto_fit-content(16rem)_auto_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
           rescoping && "opacity-50",
         )}
       >
@@ -329,8 +329,8 @@ function Replicas({ rollout: r, scaledBy: h }: { rollout: Rollout; scaledBy?: Ku
 type Depth = 0 | 1 | 2;
 const indent: Record<Depth, string> = { 0: "pl-5", 1: "ml-1.5 border-l pl-8", 2: "ml-1.5 border-l pl-13" };
 
-// Ready counts, restarts, a Job's run and a finished pod stay when the list is narrow (a detail open beside it); ticks, "running"
-// and figures step aside for every row at once, rather than being truncated row by row.
+// Ready counts, restarts, a Job's run and a finished pod stay when the list is narrow (a detail open beside it); ticks, "running",
+// figures and ages step aside for every row at once, rather than being truncated row by row.
 function TargetLine({
   cluster,
   target,
@@ -424,6 +424,14 @@ function TargetLine({
         {f && (
           <span className={cn("hidden min-w-0 @2xl:flex", f.mono && "font-mono")} title={f.title ?? f.text}>
             <span className="truncate">{f.text}</span>
+          </span>
+        )}
+      </span>
+      {/* Always laid out, so the verbs keep their column when the age steps aside. */}
+      <span className="flex justify-end text-xs text-muted-foreground tabular-nums">
+        {target.created && !isZeroTime(target.created) && (
+          <span className="hidden @2xl:inline" title={new Date(target.created).toLocaleString()}>
+            {since(target.created)}
           </span>
         )}
       </span>

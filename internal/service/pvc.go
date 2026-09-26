@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +20,8 @@ type KubePVC struct {
 	StorageClass string   `json:"storageClass,omitempty"`
 	Volume       string   `json:"volume,omitempty"`
 	AccessModes  []string `json:"accessModes,omitempty"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 // PVCDiagnosis is a claim with the pods that mount it.
@@ -93,7 +96,7 @@ func volumeClaim(p *corev1.Pod, v corev1.Volume) string {
 }
 
 func kubePVC(c *corev1.PersistentVolumeClaim) KubePVC {
-	o := KubePVC{Namespace: c.Namespace, Name: c.Name, Phase: string(c.Status.Phase), Volume: c.Spec.VolumeName}
+	o := KubePVC{Namespace: c.Namespace, Name: c.Name, Phase: string(c.Status.Phase), Volume: c.Spec.VolumeName, Created: c.CreationTimestamp.Time}
 	if c.Spec.StorageClassName != nil {
 		o.StorageClass = *c.Spec.StorageClassName
 	}

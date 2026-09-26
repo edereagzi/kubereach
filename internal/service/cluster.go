@@ -37,6 +37,8 @@ type KubeService struct {
 	Namespace string      `json:"namespace"`
 	Name      string      `json:"name"`
 	Ports     []NamedPort `json:"ports"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 // NamedPort is a service port or a container port.
@@ -46,8 +48,10 @@ type NamedPort struct {
 }
 
 type KubePod struct {
-	Namespace  string      `json:"namespace"`
-	Name       string      `json:"name"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	// Created is when the object was created, for its age.
+	Created    time.Time   `json:"created"`
 	Containers []string    `json:"containers"`
 	Ports      []NamedPort `json:"ports"`
 	// Reason is what is wrong with the pod, empty when nothing is; see PodReason.
@@ -271,7 +275,7 @@ func (s *Service) ListServices(ctx context.Context, clusterID string) ([]KubeSer
 			return nil, err
 		}
 		for _, svc := range svcs {
-			out = append(out, KubeService{Namespace: svc.Namespace, Name: svc.Name, Ports: servicePorts(svc)})
+			out = append(out, KubeService{Namespace: svc.Namespace, Name: svc.Name, Ports: servicePorts(svc), Created: svc.CreationTimestamp.Time})
 		}
 	}
 	slices.SortFunc(out, func(a, b KubeService) int {
@@ -295,7 +299,7 @@ func servicePorts(svc *corev1.Service) []NamedPort {
 }
 
 func kubePod(pod *corev1.Pod) KubePod {
-	kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(pod), Restarts: podRestarts(pod), Owner: listOwner(pod)}
+	kp := KubePod{Namespace: pod.Namespace, Name: pod.Name, Containers: containerNames(pod.Spec.Containers), Reason: PodReason(pod), Restarts: podRestarts(pod), Owner: listOwner(pod), Created: pod.CreationTimestamp.Time}
 	kp.Requests, kp.Limits = podResources(pod.Spec)
 	for _, c := range pod.Spec.Containers {
 		for _, p := range c.Ports {

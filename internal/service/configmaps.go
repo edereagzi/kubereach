@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 	"unicode/utf8"
 
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +23,8 @@ type KubeConfigObject struct {
 	Type string            `json:"type,omitempty"`
 	Keys []string          `json:"keys"`
 	Data map[string]string `json:"data,omitempty"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 func (s *Service) ListConfigMaps(ctx context.Context, clusterID string) ([]KubeConfigObject, error) {
@@ -58,7 +61,7 @@ func (s *Service) ListSecrets(ctx context.Context, clusterID string) ([]KubeConf
 	}
 	out := make([]KubeConfigObject, 0, len(objs))
 	for _, o := range objs {
-		out = append(out, KubeConfigObject{Namespace: o.Namespace, Name: o.Name})
+		out = append(out, KubeConfigObject{Namespace: o.Namespace, Name: o.Name, Created: o.CreationTimestamp.Time})
 	}
 	sortConfigObjects(out)
 	return out, nil
@@ -95,7 +98,7 @@ func sortConfigObjects(out []KubeConfigObject) {
 }
 
 func configMapObject(cm *corev1.ConfigMap, withData bool) KubeConfigObject {
-	o := KubeConfigObject{Namespace: cm.Namespace, Name: cm.Name}
+	o := KubeConfigObject{Namespace: cm.Namespace, Name: cm.Name, Created: cm.CreationTimestamp.Time}
 	o.Keys = slices.Collect(maps.Keys(cm.Data))
 	for k := range cm.BinaryData {
 		o.Keys = append(o.Keys, k)
@@ -112,7 +115,7 @@ func configMapObject(cm *corev1.ConfigMap, withData bool) KubeConfigObject {
 }
 
 func secretObject(sec *corev1.Secret) KubeConfigObject {
-	o := KubeConfigObject{Namespace: sec.Namespace, Name: sec.Name, Type: string(sec.Type), Keys: slices.Sorted(maps.Keys(sec.Data)), Data: make(map[string]string, len(sec.Data))}
+	o := KubeConfigObject{Namespace: sec.Namespace, Name: sec.Name, Created: sec.CreationTimestamp.Time, Type: string(sec.Type), Keys: slices.Sorted(maps.Keys(sec.Data)), Data: make(map[string]string, len(sec.Data))}
 	for k, v := range sec.Data {
 		o.Data[k] = textValue(v)
 	}

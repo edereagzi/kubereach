@@ -43,6 +43,8 @@ type KubeWorkload struct {
 	Rollout    *Rollout            `json:"rollout,omitempty"`
 	CronJob    *CronJobState       `json:"cronJob,omitempty"`
 	Job        *JobState           `json:"job,omitempty"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 // WorkloadContainer is one container of the pod template, init containers first; Tag is the version a row shows, read from Image.
@@ -251,7 +253,7 @@ func deploymentWorkload(d *appsv1.Deployment) KubeWorkload {
 	default:
 		r.State = RolloutComplete
 	}
-	return KubeWorkload{Namespace: d.Namespace, Name: d.Name, Kind: WorkloadDeployment, Containers: workloadContainers(d.Spec.Template.Spec), Rollout: r}
+	return KubeWorkload{Namespace: d.Namespace, Name: d.Name, Kind: WorkloadDeployment, Containers: workloadContainers(d.Spec.Template.Spec), Rollout: r, Created: d.CreationTimestamp.Time}
 }
 
 func statefulSetWorkload(ss *appsv1.StatefulSet) KubeWorkload {
@@ -273,7 +275,7 @@ func statefulSetWorkload(ss *appsv1.StatefulSet) KubeWorkload {
 	case st.UpdateRevision != st.CurrentRevision:
 		r.State = RolloutProgressing
 	}
-	return KubeWorkload{Namespace: ss.Namespace, Name: ss.Name, Kind: WorkloadStatefulSet, Containers: workloadContainers(ss.Spec.Template.Spec), Rollout: r}
+	return KubeWorkload{Namespace: ss.Namespace, Name: ss.Name, Kind: WorkloadStatefulSet, Containers: workloadContainers(ss.Spec.Template.Spec), Rollout: r, Created: ss.CreationTimestamp.Time}
 }
 
 func daemonSetWorkload(ds *appsv1.DaemonSet) KubeWorkload {
@@ -282,7 +284,7 @@ func daemonSetWorkload(ds *appsv1.DaemonSet) KubeWorkload {
 	if ds.Spec.UpdateStrategy.Type != appsv1.OnDeleteDaemonSetStrategyType && (ds.Generation > st.ObservedGeneration || r.Updated < r.Desired || r.Available < r.Desired) {
 		r.State = RolloutProgressing
 	}
-	return KubeWorkload{Namespace: ds.Namespace, Name: ds.Name, Kind: WorkloadDaemonSet, Containers: workloadContainers(ds.Spec.Template.Spec), Rollout: r}
+	return KubeWorkload{Namespace: ds.Namespace, Name: ds.Name, Kind: WorkloadDaemonSet, Containers: workloadContainers(ds.Spec.Template.Spec), Rollout: r, Created: ds.CreationTimestamp.Time}
 }
 
 func cronJobWorkload(cj *batchv1.CronJob) KubeWorkload {
@@ -290,7 +292,7 @@ func cronJobWorkload(cj *batchv1.CronJob) KubeWorkload {
 	if cj.Status.LastScheduleTime != nil {
 		c.LastScheduled = cj.Status.LastScheduleTime.Time
 	}
-	return KubeWorkload{Namespace: cj.Namespace, Name: cj.Name, Kind: WorkloadCronJob, Containers: workloadContainers(cj.Spec.JobTemplate.Spec.Template.Spec), CronJob: c}
+	return KubeWorkload{Namespace: cj.Namespace, Name: cj.Name, Kind: WorkloadCronJob, Containers: workloadContainers(cj.Spec.JobTemplate.Spec.Template.Spec), CronJob: c, Created: cj.CreationTimestamp.Time}
 }
 
 func jobWorkload(j *batchv1.Job) KubeWorkload {
@@ -316,7 +318,7 @@ func jobWorkload(j *batchv1.Job) KubeWorkload {
 	if ref := metav1.GetControllerOf(j); ref != nil && ref.Kind == "CronJob" {
 		s.CronJob = ref.Name
 	}
-	return KubeWorkload{Namespace: j.Namespace, Name: j.Name, Kind: WorkloadJob, Containers: workloadContainers(j.Spec.Template.Spec), Job: s}
+	return KubeWorkload{Namespace: j.Namespace, Name: j.Name, Kind: WorkloadJob, Containers: workloadContainers(j.Spec.Template.Spec), Job: s, Created: j.CreationTimestamp.Time}
 }
 
 func workloadContainers(spec corev1.PodSpec) []WorkloadContainer {

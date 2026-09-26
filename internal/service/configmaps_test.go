@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
@@ -61,7 +62,7 @@ func TestSecrets_ListedByNameOnlyReadOnGet(t *testing.T) {
 			_, _ = w.Write([]byte(`{"kind":"SecretList","apiVersion":"v1","metadata":{"resourceVersion":"1"},"items":[` + secret + `]}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"kind":"PartialObjectMetadataList","apiVersion":"meta.k8s.io/v1","metadata":{"resourceVersion":"1"},"items":[{"metadata":{"namespace":"default","name":"db","resourceVersion":"1"}}]}`))
+		_, _ = w.Write([]byte(`{"kind":"PartialObjectMetadataList","apiVersion":"meta.k8s.io/v1","metadata":{"resourceVersion":"1"},"items":[{"metadata":{"namespace":"default","name":"db","resourceVersion":"1","creationTimestamp":"2026-02-03T04:05:06Z"}}]}`))
 	})
 	mux.HandleFunc("/api/v1/namespaces/default/secrets/db", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -75,7 +76,7 @@ func TestSecrets_ListedByNameOnlyReadOnGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]service.KubeConfigObject{{Namespace: "default", Name: "db"}}, secrets); diff != "" {
+	if diff := cmp.Diff([]service.KubeConfigObject{{Namespace: "default", Name: "db", Created: time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)}}, secrets); diff != "" {
 		t.Errorf("secrets (-want +got):\n%s", diff)
 	}
 	if fullList.Load() {

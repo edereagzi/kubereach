@@ -269,6 +269,11 @@ export interface KubeConfigObject {
     "type"?: string;
     "keys": string[] | null;
     "data"?: { [_ in string]?: string } | null;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 /**
@@ -313,6 +318,11 @@ export interface KubeHPA {
      * Problem is the reason it cannot scale its target or read its metrics; a target scaled to zero is not one.
      */
     "problem"?: string;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 /**
@@ -324,6 +334,11 @@ export interface KubeIngress {
     "name": string;
     "hosts"?: string[] | null;
     "problem"?: string;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 /**
@@ -370,11 +385,21 @@ export interface KubePVC {
     "storageClass"?: string;
     "volume"?: string;
     "accessModes"?: string[] | null;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 export interface KubePod {
     "namespace": string;
     "name": string;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
     "containers": string[] | null;
     "ports": NamedPort[] | null;
 
@@ -405,6 +430,11 @@ export interface KubeService {
     "namespace": string;
     "name": string;
     "ports": NamedPort[] | null;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 /**
@@ -419,6 +449,11 @@ export interface KubeWorkload {
     "rollout"?: Rollout | null;
     "cronJob"?: CronJobState | null;
     "job"?: JobState | null;
+
+    /**
+     * Created is when the object was created, for its age.
+     */
+    "created": string;
 }
 
 export interface LogBatch {

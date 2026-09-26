@@ -27,6 +27,8 @@ export type Target = {
   name: string;
   ports: NamedPort[];
   containers: string[];
+  // When the object was created; the Overview shows its age.
+  created?: string;
   // Set when the row stands for one container of a pod rather than the pod itself.
   container?: string;
   // Pods only: what is wrong, how often it restarted, and what its containers ask for.
@@ -80,7 +82,7 @@ export function useTargets(cluster: Cluster, overview = false) {
   const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: overview });
   const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
   const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
-  const make = (kind: Kind, namespace: string, name: string, ports: NamedPort[] = [], containers: string[] = []): Target => ({
+  const make = (kind: Kind, { namespace, name, created }: { namespace: string; name: string; created: string }, ports: NamedPort[] = [], containers: string[] = []): Target => ({
     value: targetValue(kind, namespace, name),
     label: `${namespace}/${name}`,
     kind,
@@ -88,25 +90,26 @@ export function useTargets(cluster: Cluster, overview = false) {
     name,
     ports,
     containers,
+    created,
   });
   // Listed the way a request travels and an incident is traced: in at the Ingress, out at the pod.
   const groups: TargetGroup[] = [
-    { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
-    { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
+    { label: "Services", items: (services.data ?? []).map((s) => make("svc", s, s.ports ?? [])) },
+    { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w), workload: w })) },
     ...(overview
       ? [
-          { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w.namespace, w.name), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) },
-          { label: "Autoscalers", items: (hpas.data ?? []).map((h) => ({ ...make("hpa", h.namespace, h.name), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) })), error: hpas.error },
-          { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c.namespace, c.name), pvc: c })), error: pvcs.error },
+          { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) },
+          { label: "Autoscalers", items: (hpas.data ?? []).map((h) => ({ ...make("hpa", h), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) })), error: hpas.error },
+          { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c), pvc: c })), error: pvcs.error },
         ]
       : []),
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
   ];
   if (overview) {
-    groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i.namespace, i.name), ingress: i })), error: ingresses.error });
+    groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i), ingress: i })), error: ingresses.error });
     groups.push(
-      { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => ({ ...make("cm", c.namespace, c.name), config: c })), error: configMaps.error },
-      { label: "Secrets", items: (secrets.data ?? []).map((c) => ({ ...make("secret", c.namespace, c.name), config: c })), error: secrets.error },
+      { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => ({ ...make("cm", c), config: c })), error: configMaps.error },
+      { label: "Secrets", items: (secrets.data ?? []).map((c) => ({ ...make("secret", c), config: c })), error: secrets.error },
     );
   }
   return {

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"time"
 
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -22,6 +23,8 @@ type KubeIngress struct {
 	Name      string   `json:"name"`
 	Hosts     []string `json:"hosts,omitempty"`
 	Problem   string   `json:"problem,omitempty"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 // IngressPath is one rule of an Ingress followed to the pods that serve it. Host and Path are empty for the default backend.
@@ -91,7 +94,7 @@ func (s *Service) DescribeIngress(ctx context.Context, clusterID, namespace, nam
 }
 
 func ingressObject(ing *networkingv1.Ingress) KubeIngress {
-	o := KubeIngress{Namespace: ing.Namespace, Name: ing.Name}
+	o := KubeIngress{Namespace: ing.Namespace, Name: ing.Name, Created: ing.CreationTimestamp.Time}
 	for _, r := range ing.Spec.Rules {
 		if r.Host != "" && !slices.Contains(o.Hosts, r.Host) {
 			o.Hosts = append(o.Hosts, r.Host)

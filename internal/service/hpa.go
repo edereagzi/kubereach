@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,8 @@ type KubeHPA struct {
 	Conditions []HPACondition `json:"conditions"`
 	// Problem is the reason it cannot scale its target or read its metrics; a target scaled to zero is not one.
 	Problem string `json:"problem,omitempty"`
+	// Created is when the object was created, for its age.
+	Created time.Time `json:"created"`
 }
 
 // HPAMetric is one metric the autoscaler scales on, as kubectl prints it: "45%" against "70%". Current is empty while it cannot be read.
@@ -98,6 +101,7 @@ func kubeHPA(h *autoscalingv2.HorizontalPodAutoscaler) KubeHPA {
 		TargetKind: h.Spec.ScaleTargetRef.Kind, TargetName: h.Spec.ScaleTargetRef.Name,
 		Min: 1, Max: h.Spec.MaxReplicas,
 		Current: h.Status.CurrentReplicas, Desired: h.Status.DesiredReplicas,
+		Created: h.CreationTimestamp.Time,
 	}
 	if h.Spec.MinReplicas != nil {
 		o.Min = *h.Spec.MinReplicas
