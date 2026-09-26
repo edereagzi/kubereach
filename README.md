@@ -2,13 +2,14 @@
 
 A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 
-> Kubereach is early (v0.4). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
+> Kubereach is early (v0.5). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
 
 ![The overview of a cluster reached through a Route of two SSH servers](docs/screenshots/workload.png)
 
 ## What it does
 
 - Reaches clusters directly or through a Route: one or more SSH servers, each dialled through the previous one.
+- Adds a cluster from an SSH server without copying its kubeconfig: the one k3s, rke2, k0s, microk8s or kubeadm wrote, or `~/.kube/config`, is read into memory each time the Route connects, with sudo when needed.
 - An overview of each namespace: pods under the workload that runs them with its ready count, Jobs, volume claims and autoscalers, and a Problems filter.
 - Follows logs from a single pod or from every pod of a workload, with filtering.
 - Opens shells in containers.
@@ -22,7 +23,7 @@ A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 
 - No account and no telemetry.
 - Nothing is installed in the cluster.
-- Passwords and key passphrases are never written to disk; they are kept in memory for the session.
+- Passwords, key passphrases, sudo passwords and kubeconfigs read from SSH servers are never written to disk; they are kept in memory for the session.
 - At launch it asks GitHub whether a newer release is out. That is the only request it makes on its own, and it can be turned off in Settings with "Check for updates".
 
 ## Screenshots
