@@ -11,8 +11,12 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
+// EventOpenCluster asks the window to show a Cluster's Overview; it carries the Cluster's ID.
+const EventOpenCluster = "tray:open-cluster"
+
 func init() {
 	application.RegisterEvent[application.Void](service.EventConfigChanged)
+	application.RegisterEvent[string](EventOpenCluster)
 }
 
 // trayIcon is the coloured mark; trayTemplateIcon is its monochrome form, which macOS tints to match the menu bar.
@@ -63,8 +67,8 @@ func (t *Tray) open() {
 	t.tray.OpenMenu()
 }
 
-// rebuild creates the menu: every Cluster reachable through an active Route, or a direct one with an enabled forward,
-// with its enabled forwards beneath it; a forward opens in the browser.
+// rebuild creates the menu: every Cluster, with its Route's state when that is not connected and its enabled forwards beneath it;
+// a Cluster opens its Overview and a forward can be opened in the browser or have its address copied.
 func (t *Tray) rebuild() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -75,9 +79,12 @@ func (t *Tray) rebuild() {
 			routeState[st.RouteID] = st.State
 		}
 	}
+	forwardState := map[string]service.State{}
+	for _, st := range t.svc.ForwardStatuses() {
+		forwardState[st.Forward.ID] = st.State
+	}
 
 	menu := t.app.NewMenu()
-	listed := false
 	for _, c := range cfg.Clusters {
 		var forwards []service.PortForward
 		for _, pf := range cfg.Forwards {
@@ -85,25 +92,36 @@ func (t *Tray) rebuild() {
 				forwards = append(forwards, pf)
 			}
 		}
-		// Behind a Route the Cluster is reachable only while the Route is up; a direct Cluster is running when it forwards.
-		state, viaRoute := routeState[c.RouteID]
-		if c.RouteID != "" && !viaRoute || c.RouteID == "" && len(forwards) == 0 {
-			continue
-		}
-		listed = true
+		// A Cluster behind a Route says so only while the Route is not connected; a direct one is always reachable.
 		label := c.Name
-		if viaRoute && state != service.StateConnected {
-			label += "  – " + string(state)
+		if c.RouteID != "" {
+			if state, up := routeState[c.RouteID]; !up {
+				label += "  – not connected"
+			} else if state != service.StateConnected {
+				label += "  – " + string(state)
+			}
 		}
-		menu.Add(label).SetEnabled(false)
+		menu.Add(label).OnClick(func(*application.Context) {
+			ShowWindow(t.window)
+			t.app.Event.Emit(EventOpenCluster, c.ID)
+		})
 		for _, pf := range forwards {
-			url := fmt.Sprintf("http://localhost:%d", pf.LocalPort)
-			menu.Add(fmt.Sprintf("    localhost:%d  %s/%s", pf.LocalPort, pf.Target.Namespace, pf.Target.Name)).
-				OnClick(func(*application.Context) { _ = t.app.Browser.OpenURL(url) })
+			address := fmt.Sprintf("localhost:%d", pf.LocalPort)
+			scheme := "http"
+			if pf.RemotePort == 443 || pf.RemotePort == 8443 {
+				scheme = "https"
+			}
+			label := fmt.Sprintf("    %s  %s/%s", address, pf.Target.Namespace, pf.Target.Name)
+			if forwardState[pf.ID] == service.StateError {
+				label += "  – error"
+			}
+			sub := menu.AddSubmenu(label)
+			sub.Add("Open in browser").OnClick(func(*application.Context) { _ = t.app.Browser.OpenURL(scheme + "://" + address) })
+			sub.Add("Copy address").OnClick(func(*application.Context) { t.app.Clipboard.SetText(address) })
 		}
 	}
-	if !listed {
-		menu.Add("Nothing running").SetEnabled(false)
+	if len(cfg.Clusters) == 0 {
+		menu.Add("No clusters added").SetEnabled(false)
 	}
 	menu.AddSeparator()
 	menu.Add("Open").OnClick(func(*application.Context) { ShowWindow(t.window) })

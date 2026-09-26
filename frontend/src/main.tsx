@@ -22,6 +22,8 @@ const {
   setShellStatus,
   addHostKeyPrompt,
   removeHostKeyPrompt,
+  selectCluster,
+  selectTab,
 } = useUIStore.getState();
 
 // Any state change after a host key prompt means the prompt was answered or the Route was stopped.
@@ -43,6 +45,10 @@ Events.On("events:state", ({ data }) => setEventStatus(data));
 Events.On("events:batch", ({ data }) => appendEvents(data));
 Events.On("shell:state", ({ data }) => setShellStatus(data));
 Events.On("shell:output", ({ data }) => writeShellOutput(data));
+Events.On("tray:open-cluster", ({ data }) => {
+  selectCluster(data);
+  selectTab("overview");
+});
 RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));
 ForwardService.Statuses().then((statuses) => statuses?.forEach(setForwardStatus));
 LogService.Statuses().then((statuses) => statuses?.forEach(setLogStatus));

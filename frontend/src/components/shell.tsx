@@ -75,8 +75,8 @@ function ClusterTabs() {
 
   return (
     <>
-      <ClusterHeader cluster={cluster} />
-      <RouteBanner cluster={cluster} />
+      <ClusterHeader key={`header-${cluster.id}`} cluster={cluster} />
+      <RouteBanner key={`banner-${cluster.id}`} cluster={cluster} />
       <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as MainTab)} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-9 w-full shrink-0 justify-start gap-5 border-b px-4">
           <TabsTrigger value="overview" className="flex-none px-0">
