@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -112,7 +113,12 @@ func (rc *routeConn) kubeconfig(source, cmd string) ([]byte, error) {
 	}
 	data, err := runRemote(client, cmd)
 	if err != nil {
-		return nil, &userError{msg: "Reading " + source + " on the SSH server failed", err: err}
+		msg := "Reading " + source + " on the SSH server failed"
+		var remote *remoteError
+		if errors.As(err, &remote) {
+			msg += ": " + remote.stderr
+		}
+		return nil, &userError{msg: msg, err: err}
 	}
 	rc.mu.Lock()
 	if len(rc.clients) > 0 && rc.clients.last() == client {
@@ -122,7 +128,16 @@ func (rc *routeConn) kubeconfig(source, cmd string) ([]byte, error) {
 	return data, nil
 }
 
-// runRemote runs cmd in a session on client and returns what it printed; a failure carries what it printed on stderr.
+// remoteError is a command that failed on the SSH server, with what it printed on stderr.
+type remoteError struct {
+	stderr string
+	err    error
+}
+
+func (e *remoteError) Error() string { return e.stderr }
+func (e *remoteError) Unwrap() error { return e.err }
+
+// runRemote runs cmd in a session on client and returns what it printed.
 func runRemote(client *ssh.Client, cmd string) ([]byte, error) {
 	sess, err := client.NewSession()
 	if err != nil {
@@ -133,7 +148,7 @@ func runRemote(client *ssh.Client, cmd string) ([]byte, error) {
 	sess.Stderr = &stderr
 	out, err := sess.Output(cmd)
 	if msg := strings.TrimSpace(stderr.String()); err != nil && msg != "" {
-		return nil, &userError{msg: msg, err: err}
+		return nil, &remoteError{stderr: msg, err: err}
 	}
 	return out, err
 }

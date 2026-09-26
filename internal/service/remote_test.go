@@ -95,8 +95,9 @@ func TestRemoteKubeconfig_MissingFileNamesThePath(t *testing.T) {
 	f.ssh.outputs = nil
 	f.ssh.mu.Unlock()
 	_, err := f.svc.RemoteContexts(f.route.ID)
-	if err == nil || !strings.Contains(err.Error(), "~/.kube/config") {
-		t.Errorf("err = %v, want one naming ~/.kube/config", err)
+	// The message the UI shows carries the server's own reason, not just that the read failed.
+	if msg := service.Describe(err).Message; !strings.Contains(msg, "~/.kube/config") || !strings.Contains(msg, "No such file or directory") {
+		t.Errorf("message = %q, want the path and the server's reason", msg)
 	}
 }
 
