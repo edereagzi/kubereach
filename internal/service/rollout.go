@@ -22,6 +22,7 @@ const (
 	WorkloadStatefulSet WorkloadKind = "statefulset"
 	WorkloadDaemonSet   WorkloadKind = "daemonset"
 	WorkloadCronJob     WorkloadKind = "cronjob"
+	WorkloadJob         WorkloadKind = "job"
 )
 
 type RolloutState string
@@ -32,7 +33,8 @@ const (
 	RolloutComplete    RolloutState = "complete"
 )
 
-// KubeWorkload is a Deployment, StatefulSet, DaemonSet or CronJob in scope; Rollout is set for the first three, CronJob for the last.
+// KubeWorkload is a Deployment, StatefulSet, DaemonSet, CronJob or Job in scope; Rollout is set for the first three,
+// CronJob and Job for their kind.
 type KubeWorkload struct {
 	Namespace  string              `json:"namespace"`
 	Name       string              `json:"name"`
@@ -40,6 +42,7 @@ type KubeWorkload struct {
 	Containers []WorkloadContainer `json:"containers"`
 	Rollout    *Rollout            `json:"rollout,omitempty"`
 	CronJob    *CronJobState       `json:"cronJob,omitempty"`
+	Job        *JobState           `json:"job,omitempty"`
 }
 
 // WorkloadContainer is one container of the pod template, init containers first; Tag is the version a row shows, read from Image.
@@ -70,6 +73,33 @@ type CronJobState struct {
 	LastScheduled time.Time `json:"lastScheduled"`
 }
 
+// JobResult is where a Job stands, read from its Complete and Failed conditions as kubectl does.
+type JobResult string
+
+const (
+	JobRunning  JobResult = "running"
+	JobComplete JobResult = "complete"
+	JobFailed   JobResult = "failed"
+)
+
+// JobState is one run: its pods by outcome against the completions it needs, and when it started and ended.
+type JobState struct {
+	Result JobResult `json:"result"`
+	// Reason and Message are the Failed condition's, such as BackoffLimitExceeded.
+	Reason      string `json:"reason,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Completions int32  `json:"completions"`
+	Active      int32  `json:"active"`
+	Succeeded   int32  `json:"succeeded"`
+	Failed      int32  `json:"failed"`
+	Suspend     bool   `json:"suspend"`
+	// StartedAt is zero until the controller starts the Job, FinishedAt while it runs.
+	StartedAt  time.Time `json:"startedAt"`
+	FinishedAt time.Time `json:"finishedAt"`
+	// CronJob is the CronJob that started it, empty for a Job created by hand.
+	CronJob string `json:"cronJob,omitempty"`
+}
+
 type WorkloadDiagnosis struct {
 	Workload KubeWorkload `json:"workload"`
 	// Pods are the pods its selector matches; a CronJob's pods belong to its Jobs and are not listed.
@@ -79,7 +109,7 @@ type WorkloadDiagnosis struct {
 	EventsError string      `json:"eventsError,omitempty"`
 }
 
-// ListWorkloads lists Deployments, StatefulSets, DaemonSets and CronJobs in scope with their rollout state.
+// ListWorkloads lists Deployments, StatefulSets, DaemonSets, CronJobs and Jobs in scope with their rollout or run state.
 func (s *Service) ListWorkloads(ctx context.Context, clusterID string) ([]KubeWorkload, error) {
 	k, err := s.clusterClient(clusterID)
 	if err != nil {
@@ -99,15 +129,21 @@ func (s *Service) ListWorkloads(ctx context.Context, clusterID string) ([]KubeWo
 	if err != nil {
 		return nil, err
 	}
-	// A role that reads apps but not batch still gets its Deployments; the CronJobs of a namespace it may not read are
-	// simply absent, so each namespace is watched on its own.
+	// A role that reads apps but not batch still gets its Deployments; the CronJobs and Jobs of a namespace it may not read
+	// are simply absent, so each namespace is watched on its own.
 	var cronJobs []*batchv1.CronJob
+	var jobs []*batchv1.Job
 	for _, ns := range scope {
 		got, err := cached(ctx, k, "cronjobs/"+ns, kinds, []string{ns}, &batchv1.CronJob{}, func(ns string) listWatcher[*batchv1.CronJobList] { return k.client.BatchV1().CronJobs(ns) })
 		if err != nil && !errors.Is(err, ErrForbidden) {
 			return nil, err
 		}
 		cronJobs = append(cronJobs, got...)
+		runs, err := cached(ctx, k, "jobs/"+ns, kinds, []string{ns}, &batchv1.Job{}, func(ns string) listWatcher[*batchv1.JobList] { return k.client.BatchV1().Jobs(ns) })
+		if err != nil && !errors.Is(err, ErrForbidden) {
+			return nil, err
+		}
+		jobs = append(jobs, runs...)
 	}
 	var out []KubeWorkload
 	for _, d := range deployments {
@@ -121,6 +157,9 @@ func (s *Service) ListWorkloads(ctx context.Context, clusterID string) ([]KubeWo
 	}
 	for _, cj := range cronJobs {
 		out = append(out, cronJobWorkload(cj))
+	}
+	for _, j := range jobs {
+		out = append(out, jobWorkload(j))
 	}
 	slices.SortFunc(out, func(a, b KubeWorkload) int {
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name), cmp.Compare(a.Kind, b.Kind))
@@ -163,6 +202,12 @@ func (s *Service) DescribeWorkload(ctx context.Context, clusterID string, kind W
 			return WorkloadDiagnosis{}, wrapForbidden(err)
 		}
 		d.Workload, meta, eventKind = cronJobWorkload(obj), obj, "CronJob"
+	case WorkloadJob:
+		obj, err := k.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return WorkloadDiagnosis{}, wrapForbidden(err)
+		}
+		d.Workload, meta, eventKind, selector = jobWorkload(obj), obj, "Job", obj.Spec.Selector
 	default:
 		return WorkloadDiagnosis{}, fmt.Errorf("unknown workload kind %q", kind)
 	}
@@ -246,6 +291,32 @@ func cronJobWorkload(cj *batchv1.CronJob) KubeWorkload {
 		c.LastScheduled = cj.Status.LastScheduleTime.Time
 	}
 	return KubeWorkload{Namespace: cj.Namespace, Name: cj.Name, Kind: WorkloadCronJob, Containers: workloadContainers(cj.Spec.JobTemplate.Spec.Template.Spec), CronJob: c}
+}
+
+func jobWorkload(j *batchv1.Job) KubeWorkload {
+	st := j.Status
+	s := &JobState{Result: JobRunning, Completions: replicas(j.Spec.Completions), Active: st.Active, Succeeded: st.Succeeded, Failed: st.Failed, Suspend: j.Spec.Suspend != nil && *j.Spec.Suspend}
+	if st.StartTime != nil {
+		s.StartedAt = st.StartTime.Time
+	}
+	for _, c := range st.Conditions {
+		if c.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch c.Type {
+		case batchv1.JobComplete:
+			s.Result, s.FinishedAt = JobComplete, c.LastTransitionTime.Time
+			if st.CompletionTime != nil {
+				s.FinishedAt = st.CompletionTime.Time
+			}
+		case batchv1.JobFailed:
+			s.Result, s.Reason, s.Message, s.FinishedAt = JobFailed, c.Reason, c.Message, c.LastTransitionTime.Time
+		}
+	}
+	if ref := metav1.GetControllerOf(j); ref != nil && ref.Kind == "CronJob" {
+		s.CronJob = ref.Name
+	}
+	return KubeWorkload{Namespace: j.Namespace, Name: j.Name, Kind: WorkloadJob, Containers: workloadContainers(j.Spec.Template.Spec), Job: s}
 }
 
 func workloadContainers(spec corev1.PodSpec) []WorkloadContainer {

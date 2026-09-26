@@ -1,14 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowCounterClockwiseIcon, CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { RolloutState, type Cluster, type Rollout } from "@bindings/internal/service";
+import { JobResult, RolloutState, type Cluster, type Rollout } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useInspectorWalk } from "@/components/inspector";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
-import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
+import { jobLabel, WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDetail } from "@/components/yaml-view";
 import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
@@ -37,14 +37,12 @@ const matches = (words: string[], group: string, t: Target) => {
 };
 
 // Passage states a pod goes through on its way up or out, and the end of one that finished cleanly; any other reason,
-// a pod against a limit, and a stuck rollout are problems.
+// a pod against a limit, a stuck rollout and a failed Job are problems.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating", "Completed"]);
-// A finished pod stays listed only until its Job is cleaned up, so each namespace folds them behind one line.
-const finished = (t: Target) => t.kind === "pod" && t.reason === "Completed";
 const isProblem = (t: Target, pressure?: string) => {
   if (t.kind === "pod") return !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")));
   if (t.ingress) return !!t.ingress.problem;
-  return t.workload?.rollout?.state === RolloutState.RolloutStuck;
+  return t.workload?.rollout?.state === RolloutState.RolloutStuck || t.workload?.job?.result === JobResult.JobFailed;
 };
 
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
@@ -60,10 +58,15 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const { groups } = settled.current;
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
   const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
+  // A Job that succeeded, and its pods, stay listed only until the Job is cleaned up, so each namespace folds them behind one line.
+  // A pod it retried after an error is part of that run, not a problem of its own.
+  const succeeded = new Set(groups.flatMap((g) => g.items).filter((t) => t.workload?.job?.result === JobResult.JobComplete).map((t) => t.value));
+  const finished = (t: Target) => succeeded.has(t.value) || (t.kind === "pod" && (t.reason === "Completed" || (!!t.owner && succeeded.has(t.owner))));
+  const problem = (t: Target) => !finished(t) && isProblem(t, pressure(t));
   const [problems, setProblems] = useState(false);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
-  // Workloads whose pods are folded away, by row value; open is the default, and a filter shows its matches regardless.
-  const [hiddenPods, setHiddenPods] = useState<Record<string, boolean>>({});
+  // Workloads whose pods or runs are folded away, by row value; open is the default, and a filter shows its matches regardless.
+  const [hiddenChildren, setHiddenChildren] = useState<Record<string, boolean>>({});
   const [needle, setNeedle] = useState("");
   const [forwarding, setForwarding] = useState<Target | null>(null);
   const [inspecting, setInspecting] = useState<Target | null>(null);
@@ -113,7 +116,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   }
 
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || isProblem(t, pressure(t))) && matches(words, g.label, t)) }));
+  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || problem(t)) && matches(words, g.label, t)) }));
   const byNamespace = new Map<string, TargetGroup[]>();
   for (const ns of settled.current.namespaces) byNamespace.set(ns, []);
   for (const g of shown) {
@@ -125,15 +128,16 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     }
   }
   const total = shown.reduce((n, g) => n + g.items.length, 0);
-  // A pod goes under the workload that runs it; the workload stays in view while any of its pods matches.
+  // A pod goes under the workload or Job that runs it, and a Job under its CronJob; a row stays in view while anything under it matches.
   const passing = new Set(shown.flatMap((g) => g.items.map((t) => t.value)));
   const everything = groups.flatMap((g) => g.items);
   const workloads = new Set(everything.filter((t) => t.workload).map((t) => t.value));
-  const podsOf = new Map<string, Target[]>();
-  for (const t of everything) if (t.owner && workloads.has(t.owner) && !finished(t)) podsOf.set(t.owner, [...(podsOf.get(t.owner) ?? []), t]);
+  const childrenOf = new Map<string, Target[]>();
+  for (const t of everything) if (t.owner && workloads.has(t.owner) && !finished(t)) childrenOf.set(t.owner, [...(childrenOf.get(t.owner) ?? []), t]);
+  const shows = (t: Target): boolean => passing.has(t.value) || (childrenOf.get(t.value) ?? []).some(shows);
   const filtering = words.length > 0 || problems;
   // Counted over the scope, not the search: typing a name must not make the alarm go quiet.
-  const problemCount = groups.reduce((n, g) => n + g.items.filter((t) => isProblem(t, pressure(t))).length, 0);
+  const problemCount = groups.reduce((n, g) => n + g.items.filter(problem).length, 0);
   shownRows.current = [];
 
   return (
@@ -161,7 +165,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           size="sm"
           pressed={problems}
           onPressedChange={setProblems}
-          title="Only pods, workloads and ingresses that are not healthy"
+          title="Only pods, workloads, jobs and ingresses that are not healthy"
           className="aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
         >
           Problems
@@ -197,7 +201,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts or Ingresses that reach no pod." : "This scope has no services, workloads, pods, ingresses, configmaps or secrets."}
+                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -206,7 +210,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           if (kinds.length === 0) return null;
           const done = kinds.flatMap((g) => g.items).filter(finished);
           const reference = kinds.filter((g) => folded(g.label));
-          const line = (t: Target, depth: 0 | 1 = 0, pods?: Target[]) => {
+          const line = (t: Target, depth: Depth = 0, children?: Target[]) => {
             shownRows.current.push(t);
             return (
               <TargetLine
@@ -214,25 +218,25 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
                 cluster={cluster}
                 target={t}
                 pressure={pressure(t)}
+                done={finished(t)}
                 selected={t.value === inspecting?.value}
                 onInspect={() => setInspecting(t)}
                 depth={depth}
-                fold={pods?.length ? { open: filtering || !hiddenPods[t.value], toggle: () => setHiddenPods((h) => ({ ...h, [t.value]: !h[t.value] })) } : undefined}
+                fold={children?.length ? { open: filtering || !hiddenChildren[t.value], toggle: () => setHiddenChildren((h) => ({ ...h, [t.value]: !h[t.value] })) } : undefined}
               />
             );
           };
           // The header counts what is shown, a workload kept for its matching pods included.
           const live = everything.filter((t) => t.namespace === ns && t.kind !== "cm" && t.kind !== "secret" && !finished(t));
           const shownLive = new Set<string>();
-          const rows = live
-            .filter((t) => !(t.owner && workloads.has(t.owner)))
-            .flatMap((t) => {
-              const pods = (podsOf.get(t.value) ?? []).filter((p) => passing.has(p.value));
-              if (!passing.has(t.value) && !pods.length) return [];
-              const open = filtering || !hiddenPods[t.value];
-              for (const x of [t, ...(open ? pods : [])]) shownLive.add(x.value);
-              return [line(t, 0, pods), ...(open ? pods.map((p) => line(p, 1)) : [])];
-            });
+          const tree = (t: Target, depth: Depth): ReactNode[] => {
+            if (!shows(t)) return [];
+            const children = (childrenOf.get(t.value) ?? []).filter(shows);
+            shownLive.add(t.value);
+            const open = filtering || !hiddenChildren[t.value];
+            return [line(t, depth, children), ...(open ? children.flatMap((c) => tree(c, (depth + 1) as Depth)) : [])];
+          };
+          const rows = live.filter((t) => !(t.owner && workloads.has(t.owner))).flatMap((t) => tree(t, 0));
           const running = groups.filter((g) => !folded(g.label)).map((g) => ({ ...g, items: g.items.filter((t) => t.namespace === ns && shownLive.has(t.value)) }));
           const foldLine = (key: string, list: Target[], label: string) => {
             if (!list.length) return null;
@@ -261,7 +265,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
                 <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">{counts(running.filter((g) => g.items.length))}</span>
               </h3>
               {rows}
-              {foldLine(`${ns}:finished`, done, `${counts([{ label: "Pods", items: done }])} finished`)}
+              {foldLine(`${ns}:finished`, done, `${counts([{ label: "Jobs", items: done.filter((t) => t.kind === "job") }, { label: "Pods", items: done.filter((t) => t.kind === "pod") }].filter((g) => g.items.length))} finished`)}
               {foldLine(ns, reference.flatMap((g) => g.items), counts(reference))}
             </section>
           );
@@ -302,13 +306,17 @@ function Replicas({ rollout: r }: { rollout: Rollout }) {
   );
 }
 
-// Names sit one step in so a workload's caret has room left of its name, and its pods one more step behind a guide line.
-// Ready counts, restarts and a finished pod stay when the list is narrow (a detail open beside it); ticks, "running" and
-// figures step aside for every row at once, rather than being truncated row by row.
+// Names sit one step in so a workload's caret has room left of its name, and each level under it one more step behind a guide line.
+type Depth = 0 | 1 | 2;
+const indent: Record<Depth, string> = { 0: "pl-5", 1: "ml-1.5 border-l pl-8", 2: "ml-1.5 border-l pl-13" };
+
+// Ready counts, restarts, a Job's run and a finished pod stay when the list is narrow (a detail open beside it); ticks, "running"
+// and figures step aside for every row at once, rather than being truncated row by row.
 function TargetLine({
   cluster,
   target,
   pressure,
+  done,
   selected,
   onInspect,
   depth,
@@ -317,13 +325,16 @@ function TargetLine({
   cluster: Cluster;
   target: Target;
   pressure?: string;
+  // Finished: a Job that succeeded or a pod of one, listed muted in the namespace's fold.
+  done: boolean;
   selected: boolean;
   onInspect: () => void;
-  depth: 0 | 1;
+  depth: Depth;
   fold?: { open: boolean; toggle: () => void };
 }) {
   const f = figure(target);
-  const done = finished(target);
+  const job = target.workload?.job;
+  const completed = target.kind === "pod" && target.reason === "Completed";
   return (
     <div
       data-row={target.value}
@@ -333,13 +344,13 @@ function TargetLine({
       )}
     >
       <KindBadge kind={target.kind} />
-      <span className={cn("flex min-w-0 items-center self-stretch", depth ? "ml-1.5 border-l pl-8" : "pl-5")}>
+      <span className={cn("flex min-w-0 items-center self-stretch", indent[depth])}>
         {fold && (
           <button
             type="button"
             className="-ml-5 flex w-5 shrink-0 text-muted-foreground hover:text-foreground"
             aria-expanded={fold.open}
-            aria-label={`${fold.open ? "Hide" : "Show"} the pods of ${target.name}`}
+            aria-label={`${fold.open ? "Hide" : "Show"} the ${target.kind === "cron" ? "runs" : "pods"} of ${target.name}`}
             onClick={fold.toggle}
           >
             {fold.open ? <CaretDownIcon className="size-3" /> : <CaretRightIcon className="size-3" />}
@@ -347,7 +358,7 @@ function TargetLine({
         )}
         <button
           type="button"
-          className={cn("truncate text-left hover:underline", target.workload && "font-medium", done && "text-muted-foreground")}
+          className={cn("truncate text-left hover:underline", target.workload && !depth && "font-medium", done && "text-muted-foreground")}
           title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : target.ingress ? `What does ${target.name} reach?` : `Why is ${target.name} in this state?`}
           onClick={onInspect}
         >
@@ -357,7 +368,7 @@ function TargetLine({
       <span className="flex min-w-0 items-center gap-1.5">
         {target.kind === "pod" && (
           <>
-            <ReasonBadge reason={done ? undefined : target.reason} className="cursor-pointer" onClick={onInspect} />
+            <ReasonBadge reason={completed ? undefined : target.reason} className="cursor-pointer" onClick={onInspect} />
             <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
           </>
         )}
@@ -366,7 +377,13 @@ function TargetLine({
       </span>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
         {target.workload?.rollout && <Replicas rollout={target.workload.rollout} />}
-        {done ? (
+        {job && (
+          <span className={cn("flex min-w-0 items-center gap-1", job.result === JobResult.JobFailed && "text-destructive")} title={job.message || undefined}>
+            {job.result === JobResult.JobComplete && <CheckIcon className="size-3 shrink-0" weight="bold" />}
+            <span className="truncate">{jobLabel(job)}</span>
+          </span>
+        )}
+        {completed ? (
           <span className="flex items-center gap-1">
             <CheckIcon className="size-3" weight="bold" />
             completed

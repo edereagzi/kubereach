@@ -20,6 +20,7 @@ const (
 	ObjectStatefulSet ObjectKind = "statefulset"
 	ObjectDaemonSet   ObjectKind = "daemonset"
 	ObjectCronJob     ObjectKind = "cronjob"
+	ObjectJob         ObjectKind = "job"
 	ObjectService     ObjectKind = "service"
 	ObjectConfigMap   ObjectKind = "configmap"
 	ObjectSecret      ObjectKind = "secret"
@@ -52,6 +53,8 @@ func (s *Service) GetYAML(ctx context.Context, clusterID string, kind ObjectKind
 		obj, err = k.client.AppsV1().DaemonSets(namespace).Get(ctx, name, get)
 	case ObjectCronJob:
 		obj, err = k.client.BatchV1().CronJobs(namespace).Get(ctx, name, get)
+	case ObjectJob:
+		obj, err = k.client.BatchV1().Jobs(namespace).Get(ctx, name, get)
 	case ObjectService:
 		obj, err = k.client.CoreV1().Services(namespace).Get(ctx, name, get)
 	case ObjectConfigMap:

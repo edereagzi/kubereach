@@ -181,6 +181,49 @@ export interface IngressPod {
 }
 
 /**
+ * JobResult is where a Job stands, read from its Complete and Failed conditions as kubectl does.
+ */
+export enum JobResult {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    JobRunning = "running",
+    JobComplete = "complete",
+    JobFailed = "failed",
+};
+
+/**
+ * JobState is one run: its pods by outcome against the completions it needs, and when it started and ended.
+ */
+export interface JobState {
+    "result": JobResult;
+
+    /**
+     * Reason and Message are the Failed condition's, such as BackoffLimitExceeded.
+     */
+    "reason"?: string;
+    "message"?: string;
+    "completions": number;
+    "active": number;
+    "succeeded": number;
+    "failed": number;
+    "suspend": boolean;
+
+    /**
+     * StartedAt is zero until the controller starts the Job, FinishedAt while it runs.
+     */
+    "startedAt": string;
+    "finishedAt": string;
+
+    /**
+     * CronJob is the CronJob that started it, empty for a Job created by hand.
+     */
+    "cronJob"?: string;
+}
+
+/**
  * KubeConfigObject is a ConfigMap or a Secret. A ConfigMap row carries its keys and a Secret row its name only; Data, and a
  * Secret's type and keys, are filled by GetConfigMap and GetSecret. Nothing here is logged or written to disk.
  */
@@ -291,7 +334,8 @@ export interface KubeService {
 }
 
 /**
- * KubeWorkload is a Deployment, StatefulSet, DaemonSet or CronJob in scope; Rollout is set for the first three, CronJob for the last.
+ * KubeWorkload is a Deployment, StatefulSet, DaemonSet, CronJob or Job in scope; Rollout is set for the first three,
+ * CronJob and Job for their kind.
  */
 export interface KubeWorkload {
     "namespace": string;
@@ -300,6 +344,7 @@ export interface KubeWorkload {
     "containers": WorkloadContainer[] | null;
     "rollout"?: Rollout | null;
     "cronJob"?: CronJobState | null;
+    "job"?: JobState | null;
 }
 
 export interface LogBatch {
@@ -454,6 +499,7 @@ export enum ObjectKind {
     ObjectStatefulSet = "statefulset",
     ObjectDaemonSet = "daemonset",
     ObjectCronJob = "cronjob",
+    ObjectJob = "job",
     ObjectService = "service",
     ObjectConfigMap = "configmap",
     ObjectSecret = "secret",
@@ -505,8 +551,7 @@ export interface PodMetrics {
 }
 
 /**
- * PodOwner is what runs a pod, by its Kubernetes kind. A diagnosis names the Deployment or CronJob above a ReplicaSet or Job
- * where there is one; a pod list, which fetches nothing per pod, only the Deployment.
+ * PodOwner is what runs a pod, by its Kubernetes kind, with a ReplicaSet named as the Deployment above it where there is one.
  */
 export interface PodOwner {
     "kind": string;
@@ -696,4 +741,5 @@ export enum WorkloadKind {
     WorkloadStatefulSet = "statefulset",
     WorkloadDaemonSet = "daemonset",
     WorkloadCronJob = "cronjob",
+    WorkloadJob = "job",
 };

@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RolloutState, type Cluster, type KubeWorkload } from "@bindings/internal/service";
+import { JobResult, RolloutState, type Cluster, type JobState, type KubeWorkload } from "@bindings/internal/service";
 import { ago, Events, ReasonBadge, restartsLabel, Section } from "@/components/pod-detail";
 import { workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
@@ -14,15 +14,40 @@ import { DetailTabs } from "@/components/yaml-view";
 import { workloadQuery, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
 
-// workloadReason is what a row's badge says: the rollout state, or that the CronJob is suspended.
-export const workloadReason = (w: KubeWorkload) => w.rollout?.state ?? (w.cronJob?.suspend ? "suspended" : undefined);
+// workloadReason is what a row's badge says: the rollout state, why a Job failed, or that a CronJob or Job is suspended.
+export const workloadReason = (w: KubeWorkload) =>
+  w.rollout?.state ?? (w.job?.result === JobResult.JobFailed ? w.job.reason || "failed" : w.cronJob?.suspend || w.job?.suspend ? "suspended" : undefined);
 
-// workloadLabel is the row's one-line summary: ready over desired, or a CronJob's schedule and last run. The images are in the detail.
+// workloadLabel is the row's one-line summary: ready over desired, a CronJob's schedule and last run, or a Job's run. The images are in the detail.
 export function workloadLabel(w: KubeWorkload) {
+  if (w.job) return jobLabel(w.job);
   const state = w.rollout
     ? [`${w.rollout.ready}/${w.rollout.desired} ready`]
     : [w.cronJob?.schedule, w.cronJob && !isZeroTime(w.cronJob.lastScheduled) && `last run ${ago(w.cronJob.lastScheduled)}`];
   return state.filter(Boolean).join(" · ");
+}
+
+// took is how long a Job ran, or has run so far, in its two largest units: "42s", "1m 12s", "3h 5m".
+const spans = [["d", 86400], ["h", 3600], ["m", 60], ["s", 1]] as const;
+function took(j: JobState) {
+  const end = isZeroTime(j.finishedAt) ? Date.now() : new Date(j.finishedAt).getTime();
+  const s = Math.max(0, Math.round((end - new Date(j.startedAt).getTime()) / 1000));
+  const i = spans.findIndex(([, size]) => s >= size);
+  if (i < 0) return "0s";
+  const [[unit, size], next] = [spans[i], spans[i + 1]];
+  const rest = next ? Math.floor((s % size) / next[1]) : 0;
+  return `${Math.floor(s / size)}${unit}${rest ? ` ${rest}${next[0]}` : ""}`;
+}
+
+// jobLabel is a Job's state as its row says it; completions are counted where more than one is needed, or the run failed.
+export function jobLabel(j: JobState) {
+  const count = `${j.succeeded}/${j.completions} · `;
+  const time = isZeroTime(j.startedAt) ? "" : ` in ${took(j)}`;
+  if (j.result === JobResult.JobComplete) return `succeeded${time}`;
+  if (j.result === JobResult.JobFailed) return `${count}failed${j.failed ? ` ${j.failed}×` : ""}${time}`;
+  const many = j.completions > 1 ? count : "";
+  if (j.suspend) return `${many}suspended`;
+  return isZeroTime(j.startedAt) ? `${many}not started` : `${many}running ${took(j)}`;
 }
 
 export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster: Cluster; target: Target; workload: KubeWorkload; onClose: () => void }) {
@@ -30,6 +55,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
   const d = q.data;
   const w = d?.workload ?? workload;
   const r = w.rollout;
+  const cronJob = w.job?.cronJob;
   const kind = workloadKind[w.kind] ?? "deploy";
   const requestInspect = useUIStore((s) => s.requestInspect);
   return (
@@ -64,6 +90,38 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
               </dd>
               <dt className="text-muted-foreground">Revision</dt>
               <dd className="font-mono">{r.revision || "—"}</dd>
+            </dl>
+          </Section>
+        )}
+        {w.job && (
+          <Section title="Run">
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
+              <dt className="text-muted-foreground">State</dt>
+              <dd className={cn(w.job.result === JobResult.JobFailed && "text-destructive")}>
+                {jobLabel(w.job)}
+                {w.job.message && <span className="text-muted-foreground"> — {w.job.message}</span>}
+              </dd>
+              <dt className="text-muted-foreground">Pods</dt>
+              <dd className="font-mono">
+                {w.job.completions} needed · {w.job.active} active · {w.job.succeeded} succeeded · {w.job.failed} failed
+              </dd>
+              <dt className="text-muted-foreground">Started</dt>
+              <dd>{isZeroTime(w.job.startedAt) ? "not yet" : `${ago(w.job.startedAt)} (${new Date(w.job.startedAt).toLocaleString()})`}</dd>
+              {cronJob && (
+                <>
+                  <dt className="text-muted-foreground">CronJob</dt>
+                  <dd>
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      title="Open the CronJob"
+                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "cron", namespace: w.namespace, name: cronJob })}
+                    >
+                      {cronJob}
+                    </button>
+                  </dd>
+                </>
+              )}
             </dl>
           </Section>
         )}

@@ -16,6 +16,7 @@ const objectKind: Record<Kind, ObjectKind> = {
   sts: ObjectKind.ObjectStatefulSet,
   ds: ObjectKind.ObjectDaemonSet,
   cron: ObjectKind.ObjectCronJob,
+  job: ObjectKind.ObjectJob,
   pod: ObjectKind.ObjectPod,
   cm: ObjectKind.ObjectConfigMap,
   secret: ObjectKind.ObjectSecret,

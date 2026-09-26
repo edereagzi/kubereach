@@ -119,7 +119,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
   const requestInspect = useUIStore((s) => s.requestInspect);
   const selectTab = useUIStore((s) => s.selectTab);
   const d = pod.data;
-  // WorkloadKind values are the lowercased Kubernetes kinds, so an owner the Overview lists has a Kind here; a bare Job does not.
+  // WorkloadKind values are the lowercased Kubernetes kinds, so an owner the Overview lists has a Kind here; a bare ReplicaSet does not.
   const owner = d?.owner;
   const ownerKind = owner && workloadKind[owner.kind.toLowerCase() as WorkloadKind];
   // The node's detail lives on the Nodes tab and shares this panel, so leaving for it closes the pod.

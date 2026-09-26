@@ -31,8 +31,7 @@ type PodDiagnosis struct {
 	EventsError string      `json:"eventsError,omitempty"`
 }
 
-// PodOwner is what runs a pod, by its Kubernetes kind. A diagnosis names the Deployment or CronJob above a ReplicaSet or Job
-// where there is one; a pod list, which fetches nothing per pod, only the Deployment.
+// PodOwner is what runs a pod, by its Kubernetes kind, with a ReplicaSet named as the Deployment above it where there is one.
 type PodOwner struct {
 	Kind string `json:"kind"`
 	Name string `json:"name"`
@@ -108,26 +107,17 @@ func (s *Service) DescribePod(ctx context.Context, clusterID, namespace, name st
 	return d, nil
 }
 
-// podOwner follows a pod's controller one step up where users manage the level above: a ReplicaSet to its Deployment
-// and a Job to its CronJob. An intermediate owner that cannot be read, or has no controller, is the owner itself.
+// podOwner follows a ReplicaSet up to its Deployment, which users manage; a ReplicaSet that cannot be read, or has no
+// controller, is the owner itself. A Job is listed, and names its CronJob in its own detail.
 func podOwner(ctx context.Context, k kube, pod *corev1.Pod) *PodOwner {
 	ref := metav1.GetControllerOf(pod)
 	if ref == nil {
 		return nil
 	}
-	var parent *metav1.OwnerReference
-	switch ref.Kind {
-	case "ReplicaSet":
-		if rs, err := k.client.AppsV1().ReplicaSets(pod.Namespace).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
-			parent = metav1.GetControllerOf(rs)
+	if ref.Kind == "ReplicaSet" {
+		if rs, err := k.client.AppsV1().ReplicaSets(pod.Namespace).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil && metav1.GetControllerOf(rs) != nil {
+			ref = metav1.GetControllerOf(rs)
 		}
-	case "Job":
-		if job, err := k.client.BatchV1().Jobs(pod.Namespace).Get(ctx, ref.Name, metav1.GetOptions{}); err == nil {
-			parent = metav1.GetControllerOf(job)
-		}
-	}
-	if parent != nil {
-		ref = parent
 	}
 	return &PodOwner{Kind: ref.Kind, Name: ref.Name}
 }

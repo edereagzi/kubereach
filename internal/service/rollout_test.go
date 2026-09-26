@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
@@ -72,7 +73,7 @@ func TestDescribeWorkload_Deployments(t *testing.T) {
 	if _, err := svc.DescribeWorkload(ctx, id, service.WorkloadDeployment, "default", "missing"); err == nil {
 		t.Error("missing deployment described without error")
 	}
-	if _, err := svc.DescribeWorkload(ctx, id, "job", "default", "worker"); err == nil {
+	if _, err := svc.DescribeWorkload(ctx, id, "replicaset", "default", "worker"); err == nil {
 		t.Error("unknown kind described without error")
 	}
 
@@ -135,5 +136,63 @@ func TestListWorkloads_StatefulSetDaemonSetCronJob(t *testing.T) {
 	forbid(cs, "list", "cronjobs", false)
 	if got, err = svc.ListWorkloads(context.Background(), id); err != nil || len(got) != 2 {
 		t.Errorf("forbidden cronjobs: workloads = %+v, %v; want the other two", got, err)
+	}
+}
+
+// A Job is running until its Complete or Failed condition says otherwise; its pods are the ones its selector matches.
+func TestListWorkloads_Jobs(t *testing.T) {
+	yes, three := true, int32(3)
+	started, ended := metav1.NewTime(diagEpoch), metav1.NewTime(diagEpoch.Add(42*time.Second))
+	template := corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "report", Image: "acme/report:1.2"}}}}
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "nightly-28942"}}
+	running := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "nightly-28942", OwnerReferences: controlledBy("CronJob", "nightly")},
+		Spec:       batchv1.JobSpec{Completions: &three, Selector: selector, Template: template},
+		Status:     batchv1.JobStatus{Active: 1, Succeeded: 1, StartTime: &started},
+	}
+	done := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "migrate", OwnerReferences: []metav1.OwnerReference{{Kind: "Deployment", Name: "not-its-controller"}}},
+		Spec:       batchv1.JobSpec{Template: template},
+		Status: batchv1.JobStatus{Succeeded: 1, StartTime: &started, CompletionTime: &ended,
+			Conditions: []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}},
+	}
+	failed := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "seed"},
+		Spec:       batchv1.JobSpec{Suspend: &yes, Template: template},
+		Status: batchv1.JobStatus{Failed: 6, StartTime: &started,
+			Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded", Message: "Job has reached the specified backoff limit", LastTransitionTime: ended}}},
+	}
+	svc, cs, id := newFakeService(t, running, done, failed,
+		pod("default", "nightly-28942-a", "nightly-28942", corev1.PodRunning, true, diagEpoch), pod("default", "api-1", "api", corev1.PodRunning, true, diagEpoch))
+
+	got, err := svc.ListWorkloads(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	containers := []service.WorkloadContainer{{Name: "report", Image: "acme/report:1.2", Tag: "1.2"}}
+	want := []service.KubeWorkload{
+		{Namespace: "default", Name: "migrate", Kind: service.WorkloadJob, Containers: containers, Job: &service.JobState{Result: service.JobComplete, Completions: 1, Succeeded: 1, StartedAt: diagEpoch, FinishedAt: ended.Time}},
+		{Namespace: "default", Name: "nightly-28942", Kind: service.WorkloadJob, Containers: containers, Job: &service.JobState{Result: service.JobRunning, Completions: 3, Active: 1, Succeeded: 1, StartedAt: diagEpoch, CronJob: "nightly"}},
+		{Namespace: "default", Name: "seed", Kind: service.WorkloadJob, Containers: containers, Job: &service.JobState{Result: service.JobFailed, Reason: "BackoffLimitExceeded", Message: "Job has reached the specified backoff limit", Completions: 1, Failed: 6, Suspend: true, StartedAt: diagEpoch, FinishedAt: ended.Time}},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("workloads (-want +got):\n%s", diff)
+	}
+
+	d, err := svc.DescribeWorkload(context.Background(), id, service.WorkloadJob, "default", "nightly-28942")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(want[1], d.Workload); diff != "" {
+		t.Errorf("job diagnosis (-want +got):\n%s", diff)
+	}
+	if len(d.Pods) != 1 || d.Pods[0].Name != "nightly-28942-a" {
+		t.Errorf("job pods = %+v; want nightly-28942-a", d.Pods)
+	}
+
+	svc, cs, id = newFakeService(t, running, deployment("default", "api"))
+	forbid(cs, "list", "jobs", false)
+	if got, err = svc.ListWorkloads(context.Background(), id); err != nil || len(got) != 1 {
+		t.Errorf("forbidden jobs: workloads = %+v, %v; want the Deployment", got, err)
 	}
 }

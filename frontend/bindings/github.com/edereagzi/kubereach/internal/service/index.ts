@@ -3,6 +3,7 @@
 
 export {
     AuthMethod,
+    JobResult,
     LogSourceKind,
     ObjectKind,
     RolloutState,
@@ -27,6 +28,7 @@ export type {
     IngressDiagnosis,
     IngressPath,
     IngressPod,
+    JobState,
     KubeConfigObject,
     KubeEvent,
     KubeIngress,

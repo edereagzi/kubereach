@@ -8,7 +8,6 @@ import (
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -155,7 +154,7 @@ func controlledBy(kind, name string) []metav1.OwnerReference {
 	return []metav1.OwnerReference{{Kind: kind, Name: name, Controller: &yes}}
 }
 
-// The owner is what the user manages: a ReplicaSet leads to its Deployment and a Job to its CronJob; anything else,
+// The owner is what the Overview lists: a ReplicaSet leads to its Deployment, a Job is itself; anything else,
 // or an intermediate owner that cannot be read, is the pod's own controller.
 func TestDescribePod_Owner(t *testing.T) {
 	pod := func(name string, owners []metav1.OwnerReference) *corev1.Pod {
@@ -163,8 +162,6 @@ func TestDescribePod_Owner(t *testing.T) {
 	}
 	svc, cs, id := newFakeService(t,
 		&appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-7d9f", OwnerReferences: controlledBy("Deployment", "api")}},
-		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "backup-2915", OwnerReferences: controlledBy("CronJob", "backup")}},
-		&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "migrate"}},
 		pod("api-7d9f-x", controlledBy("ReplicaSet", "api-7d9f")),
 		pod("db-0", controlledBy("StatefulSet", "db")),
 		pod("agent-x", controlledBy("DaemonSet", "agent")),
@@ -177,7 +174,7 @@ func TestDescribePod_Owner(t *testing.T) {
 		"api-7d9f-x":    {Kind: "Deployment", Name: "api"},
 		"db-0":          {Kind: "StatefulSet", Name: "db"},
 		"agent-x":       {Kind: "DaemonSet", Name: "agent"},
-		"backup-2915-x": {Kind: "CronJob", Name: "backup"},
+		"backup-2915-x": {Kind: "Job", Name: "backup-2915"},
 		"migrate-x":     {Kind: "Job", Name: "migrate"},
 		"orphan-x":      {Kind: "ReplicaSet", Name: "gone"},
 		"static":        nil,
