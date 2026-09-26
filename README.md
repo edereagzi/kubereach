@@ -2,13 +2,14 @@
 
 A Kubernetes desktop app that can connect to clusters through SSH jump hosts.
 
-> Kubereach is early (v0.1). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
+> Kubereach is early (v0.3). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
 
-![A deployment in a cluster reached through a Route of two SSH servers](docs/screenshots/workload.png)
+![The overview of a cluster reached through a Route of two SSH servers](docs/screenshots/workload.png)
 
 ## What it does
 
 - Reaches clusters directly or through a Route: one or more SSH servers, each dialled through the previous one.
+- An overview of each namespace: pods under the workload that runs them with its ready count, Jobs, volume claims and autoscalers, and a Problems filter.
 - Follows logs from a single pod or from every pod of a workload, with filtering.
 - Opens shells in containers.
 - Shows events, and pod diagnosis: container states, restarts, previous-run logs and failing conditions.
