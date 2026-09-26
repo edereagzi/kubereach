@@ -8,6 +8,7 @@ import { AddForward, forwardsFor } from "@/components/forwards";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useInspectorWalk } from "@/components/inspector";
 import { PodDetail, ReasonBadge, restartsLabel, usagePressure } from "@/components/pod-detail";
+import { PVCDetail, pvcLabel, pvcReason } from "@/components/pvc-detail";
 import { jobLabel, WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDetail } from "@/components/yaml-view";
 import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
@@ -37,11 +38,12 @@ const matches = (words: string[], group: string, t: Target) => {
 };
 
 // Passage states a pod goes through on its way up or out, and the end of one that finished cleanly; any other reason,
-// a pod against a limit, a stuck rollout and a failed Job are problems.
+// a pod against a limit, a stuck rollout, a failed Job and a claim no volume backs are problems.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating", "Completed"]);
 const isProblem = (t: Target, pressure?: string) => {
   if (t.kind === "pod") return !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")));
   if (t.ingress) return !!t.ingress.problem;
+  if (t.pvc) return !!pvcReason(t.pvc);
   return t.workload?.rollout?.state === RolloutState.RolloutStuck || t.workload?.job?.result === JobResult.JobFailed;
 };
 
@@ -148,6 +150,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       {inspecting?.workload && <WorkloadDetail cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
       {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.pvc && <PVCDetail cluster={cluster} target={inspecting} pvc={inspecting.pvc} onClose={() => setInspecting(null)} />}
       {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
       {inspecting?.kind === "svc" && <YamlDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
@@ -165,7 +168,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           size="sm"
           pressed={problems}
           onPressedChange={setProblems}
-          title="Only pods, workloads, jobs and ingresses that are not healthy"
+          title="Only pods, workloads, jobs, volume claims and ingresses that are not healthy"
           className="aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
         >
           Problems
@@ -201,7 +204,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <EmptyHeader>
               <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, pods, ingresses, configmaps or secrets."}
+                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs, unbound volume claims or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, volume claims, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -276,14 +279,15 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 }
 
 // A row is identity, what is wrong, and its state: a rollout's ready over desired, whether a pod runs or has finished
-// and how often it restarted, or one short figure: a service's ports, an Ingress's host, a CronJob's schedule or a config
-// object's key count. The sentence behind a figure is its title; containers, images and keys are in the detail, where they are acted on.
+// and how often it restarted, or one short figure: a service's ports, an Ingress's host, a CronJob's schedule, a claim's size
+// and class, or a config object's key count. The sentence behind a figure is its title; containers, images and keys are in the detail, where they are acted on.
 type Figure = { text: string; title?: string; mono?: boolean };
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const figure = (t: Target): Figure | null => {
   if (t.kind === "svc") return { text: portsLabel(t.ports), mono: true };
   if (t.ingress) return { text: hostsLabel(t.ingress.hosts), title: t.ingress.hosts?.join("\n"), mono: true };
   if (t.config) return { text: keysLabel(t.config.keys?.length ?? 0) };
+  if (t.pvc) return { text: pvcLabel(t.pvc), mono: true };
   if (t.workload?.cronJob) return { text: t.workload.cronJob.schedule, title: workloadLabel(t.workload), mono: true };
   return null;
 };
@@ -373,6 +377,7 @@ function TargetLine({
           </>
         )}
         {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
+        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="cursor-pointer" onClick={onInspect} />}
         {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
       </span>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">

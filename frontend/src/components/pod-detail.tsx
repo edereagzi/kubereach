@@ -1,6 +1,6 @@
 import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
+import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, KubePod, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 import { DeletePodAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
 import { portsLabel, workloadKind, type Target } from "@/components/targets";
@@ -333,6 +333,29 @@ export function Events({ events }: { events: KubeEvent[] }) {
             {e.count > 1 && <span className="font-normal text-muted-foreground tabular-nums"> ×{e.count}</span>}
           </span>
           <span className="min-w-0 break-words whitespace-pre-wrap">{e.message}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// PodList is a detail's pods by name, each opening its own detail, with what is wrong and how often it restarted.
+export function PodList({ cluster, pods }: { cluster: Cluster; pods: KubePod[] }) {
+  const requestInspect = useUIStore((s) => s.requestInspect);
+  return (
+    <ul className="flex flex-col gap-0.5 text-xs">
+      {pods.map((p) => (
+        <li key={p.name} className="flex items-center gap-2">
+          <button
+            type="button"
+            className="truncate text-left hover:underline"
+            title={`Why is ${p.name} in this state?`}
+            onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: p.namespace, name: p.name })}
+          >
+            {p.name}
+          </button>
+          <ReasonBadge reason={p.reason} />
+          {p.restarts > 0 && <span className="text-muted-foreground">{restartsLabel(p.restarts, p.lastRestart)}</span>}
         </li>
       ))}
     </ul>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
+import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -13,10 +13,10 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { configMapsQuery, ingressesQuery, podsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
+import { configMapsQuery, ingressesQuery, podsQuery, pvcsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "job" | "pod" | "cm" | "secret" | "node";
+export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "job" | "pvc" | "pod" | "cm" | "secret" | "node";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -43,6 +43,8 @@ export type Target = {
   config?: KubeConfigObject;
   // Ingresses only: the hosts; the paths and the pods behind them come with the detail.
   ingress?: KubeIngress;
+  // PersistentVolumeClaims only: phase, size and class; the pods that mount it come with the detail.
+  pvc?: KubePVC;
 };
 
 // error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
@@ -63,12 +65,13 @@ function ownerValue(namespace: string, owner?: PodOwner | null) {
   return kind ? targetValue(kind, namespace, owner.name) : undefined;
 }
 
-// overview adds Ingresses, Jobs, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
+// overview adds Ingresses, Jobs, PersistentVolumeClaims, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
 export function useTargets(cluster: Cluster, overview = false) {
   const services = useQuery(servicesQuery(cluster.id));
   const workloads = useQuery(workloadsQuery(cluster.id));
   const pods = useQuery(podsQuery(cluster.id));
   const ingresses = useQuery({ ...ingressesQuery(cluster.id), enabled: overview });
+  const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: overview });
   const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
   const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
   const make = (kind: Kind, namespace: string, name: string, ports: NamedPort[] = [], containers: string[] = []): Target => ({
@@ -85,7 +88,10 @@ export function useTargets(cluster: Cluster, overview = false) {
     { label: "Services", items: (services.data ?? []).map((s) => make("svc", s.namespace, s.name, s.ports ?? [])) },
     { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w.namespace, w.name), workload: w })) },
     ...(overview
-      ? [{ label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w.namespace, w.name), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) }]
+      ? [
+          { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w.namespace, w.name), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) },
+          { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c.namespace, c.name), pvc: c })), error: pvcs.error },
+        ]
       : []),
     { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p.namespace, p.name, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
   ];
@@ -99,8 +105,8 @@ export function useTargets(cluster: Cluster, overview = false) {
   return {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
-    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || configMaps.isPending || secrets.isPending)),
-    fetching: [services, workloads, pods, ingresses, configMaps, secrets].some((q) => q.isFetching),
+    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || pvcs.isPending || configMaps.isPending || secrets.isPending)),
+    fetching: [services, workloads, pods, ingresses, pvcs, configMaps, secrets].some((q) => q.isFetching),
   };
 }
 

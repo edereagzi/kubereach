@@ -29,6 +29,10 @@ export function DescribeNode(clusterID: string, name: string): $CancellablePromi
     return $Call.ByID(2966604308, clusterID, name);
 }
 
+export function DescribePVC(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.PVCDiagnosis> {
+    return $Call.ByID(1193348219, clusterID, $namespace, name);
+}
+
 export function DescribePod(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.PodDiagnosis> {
     return $Call.ByID(4197865875, clusterID, $namespace, name);
 }
@@ -74,6 +78,10 @@ export function ListNamespaces(clusterID: string): $CancellablePromise<string[] 
 
 export function ListNodes(clusterID: string): $CancellablePromise<service$0.KubeNode[] | null> {
     return $Call.ByID(179921454, clusterID);
+}
+
+export function ListPVCs(clusterID: string): $CancellablePromise<service$0.KubePVC[] | null> {
+    return $Call.ByID(3824578389, clusterID);
 }
 
 export function ListPods(clusterID: string): $CancellablePromise<service$0.KubePod[] | null> {

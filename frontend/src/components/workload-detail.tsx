@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { JobResult, RolloutState, type Cluster, type JobState, type KubeWorkload } from "@bindings/internal/service";
-import { ago, Events, ReasonBadge, restartsLabel, Section } from "@/components/pod-detail";
+import { ago, Events, PodList, ReasonBadge, Section } from "@/components/pod-detail";
 import { workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { useUIStore } from "@/store";
@@ -127,22 +127,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
         )}
         {!!d?.pods?.length && (
           <Section title="Pods">
-            <ul className="flex flex-col gap-0.5 text-xs">
-              {d.pods.map((p) => (
-                <li key={p.name} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="truncate text-left hover:underline"
-                    title={`Why is ${p.name} in this state?`}
-                    onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: p.namespace, name: p.name })}
-                  >
-                    {p.name}
-                  </button>
-                  <ReasonBadge reason={p.reason} />
-                  {p.restarts > 0 && <span className="text-muted-foreground">{restartsLabel(p.restarts, p.lastRestart)}</span>}
-                </li>
-              ))}
-            </ul>
+            <PodList cluster={cluster} pods={d.pods} />
           </Section>
         )}
         {!!w.containers?.length && (

@@ -21,6 +21,7 @@ const objectKind: Record<Kind, ObjectKind> = {
   cm: ObjectKind.ObjectConfigMap,
   secret: ObjectKind.ObjectSecret,
   ing: ObjectKind.ObjectIngress,
+  pvc: ObjectKind.ObjectPVC,
   node: ObjectKind.ObjectNode,
 };
 

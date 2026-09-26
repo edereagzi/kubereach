@@ -104,6 +104,14 @@ func (c *ClusterService) DescribeIngress(ctx context.Context, clusterID, namespa
 	return c.svc.DescribeIngress(ctx, clusterID, namespace, name)
 }
 
+func (c *ClusterService) ListPVCs(ctx context.Context, clusterID string) ([]service.KubePVC, error) {
+	return c.svc.ListPVCs(ctx, clusterID)
+}
+
+func (c *ClusterService) DescribePVC(ctx context.Context, clusterID, namespace, name string) (service.PVCDiagnosis, error) {
+	return c.svc.DescribePVC(ctx, clusterID, namespace, name)
+}
+
 func (c *ClusterService) ListNodes(ctx context.Context, clusterID string) ([]service.KubeNode, error) {
 	return c.svc.ListNodes(ctx, clusterID)
 }

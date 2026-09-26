@@ -298,6 +298,23 @@ export interface KubeNode {
     "unknown"?: boolean;
 }
 
+/**
+ * KubePVC is a PersistentVolumeClaim in scope. Size is the bound volume's capacity, or what the claim asks for while it has none.
+ */
+export interface KubePVC {
+    "namespace": string;
+    "name": string;
+
+    /**
+     * Phase is Pending, Bound or Lost.
+     */
+    "phase": string;
+    "size": string;
+    "storageClass"?: string;
+    "volume"?: string;
+    "accessModes"?: string[] | null;
+}
+
 export interface KubePod {
     "namespace": string;
     "name": string;
@@ -504,8 +521,24 @@ export enum ObjectKind {
     ObjectConfigMap = "configmap",
     ObjectSecret = "secret",
     ObjectIngress = "ingress",
+    ObjectPVC = "persistentvolumeclaim",
     ObjectNode = "node",
 };
+
+/**
+ * PVCDiagnosis is a claim with the pods that mount it.
+ */
+export interface PVCDiagnosis {
+    "pvc": KubePVC;
+
+    /**
+     * Pods is nil and PodsError set when the pods could not be read; so are Events and EventsError.
+     */
+    "pods": KubePod[] | null;
+    "podsError"?: string;
+    "events": KubeEvent[] | null;
+    "eventsError"?: string;
+}
 
 export interface PodCondition {
     "type": string;

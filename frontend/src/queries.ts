@@ -102,6 +102,20 @@ export const ingressQuery = (clusterId: string, namespace: string, name: string)
     retry: false,
   });
 
+export const pvcsQuery = (clusterId: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "pvcs"],
+    queryFn: async () => (await ClusterService.ListPVCs(clusterId)) ?? [],
+    retry: false,
+  });
+
+export const pvcQuery = (clusterId: string, namespace: string, name: string) =>
+  queryOptions({
+    queryKey: ["cluster", clusterId, "pvc", namespace, name],
+    queryFn: () => ClusterService.DescribePVC(clusterId, namespace, name),
+    retry: false,
+  });
+
 export const nodesQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "nodes"],
