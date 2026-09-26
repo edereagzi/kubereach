@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -315,13 +316,25 @@ func (s *Service) RouteStatuses() []RouteStatus {
 	return out
 }
 
+// dialAgent opens SSH_AUTH_SOCK; on Windows it may be a named pipe and defaults to the OpenSSH agent's.
+func dialAgent() (io.ReadWriteCloser, error) {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if runtime.GOOS != "windows" {
+		return net.Dial("unix", sock)
+	}
+	if sock == "" {
+		sock = `\\.\pipe\openssh-ssh-agent`
+	}
+	// ponytail: no wait on ERROR_PIPE_BUSY, and a unix socket path fails as a pipe; dial those if a user hits them.
+	return os.OpenFile(sock, os.O_RDWR, 0)
+}
+
 // authMethod resolves credentials for one handshake; the closer releases the agent socket afterwards.
 // secret fills the first missing passphrase or password and is then remembered for the session.
 func (s *Service) authMethod(srv SSHServer, secret string) (ssh.AuthMethod, io.Closer, error) {
 	switch srv.Auth {
 	case AuthAgent:
-		// ponytail: unix socket only; Windows needs the openssh-ssh-agent named pipe.
-		conn, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+		conn, err := dialAgent()
 		if err != nil {
 			return nil, nil, &userError{msg: "The SSH agent cannot be reached", err: err}
 		}
