@@ -132,6 +132,18 @@ func (c *ClusterService) GetYAML(ctx context.Context, clusterID string, kind ser
 	return c.svc.GetYAML(ctx, clusterID, kind, namespace, name, reveal)
 }
 
+func (c *ClusterService) EditYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string) (string, error) {
+	return c.svc.EditYAML(ctx, clusterID, kind, namespace, name)
+}
+
+func (c *ClusterService) DiffYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name, original, text string) (string, error) {
+	return c.svc.DiffYAML(ctx, clusterID, kind, namespace, name, original, text)
+}
+
+func (c *ClusterService) ApplyYAML(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name, original, text string) error {
+	return c.svc.ApplyYAML(ctx, clusterID, kind, namespace, name, original, text)
+}
+
 func (c *ClusterService) PodMetrics(ctx context.Context, clusterID string) (service.PodMetrics, error) {
 	return c.svc.PodMetrics(ctx, clusterID)
 }

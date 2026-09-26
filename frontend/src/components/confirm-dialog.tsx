@@ -22,13 +22,14 @@ type ConfirmProps = {
   disabled?: boolean;
   action: UseMutationResult<void, Error, void>;
   children?: ReactNode;
+  className?: string;
 };
 
 // ConfirmDialog stays open while its action runs and on failure, to say why.
-export function ConfirmDialog({ open, onOpenChange, title, description, confirm, destructive, disabled, action, children }: ConfirmProps) {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirm, destructive, disabled, action, children, className }: ConfirmProps) {
   return (
     <AlertDialog open={open} onOpenChange={(o) => !action.isPending && onOpenChange(o)}>
-      <AlertDialogContent>
+      <AlertDialogContent className={className}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

@@ -1,14 +1,23 @@
-import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { EyeIcon, EyeSlashIcon } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { basicSetup } from "codemirror";
+import { indentWithTab } from "@codemirror/commands";
+import { yaml } from "@codemirror/lang-yaml";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView, keymap } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { EyeIcon, EyeSlashIcon, PencilSimpleIcon } from "@phosphor-icons/react";
+import { ClusterService } from "@bindings/internal/bindings";
 import { ObjectKind, type Cluster } from "@bindings/internal/service";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import type { Kind, Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { yamlQuery, errorText } from "@/queries";
+import { cn } from "@/lib/utils";
+import { yamlQuery, errorText, isConflict } from "@/queries";
 
 const objectKind: Record<Kind, ObjectKind> = {
   svc: ObjectKind.ObjectService,
@@ -50,11 +59,14 @@ export function DetailTabs({ children, ...props }: YamlProps & { children: React
   );
 }
 
-export function YamlView({ cluster, kind, namespace, name }: YamlProps) {
+export function YamlView(props: YamlProps) {
+  const { cluster, kind, namespace, name } = props;
   const secret = kind === "secret";
   // The whole document is revealed at once: a YAML with one value shown and the rest masked is not the object.
   const [reveal, setReveal] = useState(false);
+  const [editing, setEditing] = useState(false);
   const q = useQuery(yamlQuery(cluster.id, objectKind[kind], namespace, name, reveal));
+  if (editing) return <YamlEditor {...props} onDone={() => setEditing(false)} />;
   return (
     <div className="min-h-0 flex-1 overflow-auto rounded-md bg-muted/50 px-3 py-2">
       {q.data && (
@@ -65,6 +77,12 @@ export function YamlView({ cluster, kind, namespace, name }: YamlProps) {
             </Button>
           )}
           <CopyButton text={q.data} title="Copy YAML" className="opacity-100" />
+          {/* The editor shows a Secret's values, so they are revealed first. */}
+          {(!secret || reveal) && (
+            <Button variant="ghost" size="icon-xs" title="Edit" onClick={() => setEditing(true)}>
+              <PencilSimpleIcon />
+            </Button>
+          )}
         </div>
       )}
       {q.error ? (
@@ -75,6 +93,170 @@ export function YamlView({ cluster, kind, namespace, name }: YamlProps) {
         <p className="text-xs text-muted-foreground">Loading…</p>
       )}
     </div>
+  );
+}
+
+// YamlEditor edits the object as text. Nothing is applied before the Cluster's dry run of the change is shown as a diff
+// and confirmed; a change made in the Cluster meanwhile is a conflict, never overwritten.
+function YamlEditor({ cluster, kind, namespace, name, onDone }: YamlProps & { onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const k = objectKind[kind];
+  const [original, setOriginal] = useState("");
+  const [draft, setDraft] = useState<string | null>(null);
+  const [diff, setDiff] = useState<string | null>(null);
+  const load = useMutation({
+    mutationFn: () => ClusterService.EditYAML(cluster.id, k, namespace, name),
+    onSuccess: (text) => {
+      setOriginal(text);
+      setDraft(text);
+      setDiff(null);
+      review.reset();
+      apply.reset();
+    },
+  });
+  const review = useMutation({
+    mutationFn: () => ClusterService.DiffYAML(cluster.id, k, namespace, name, original, draft ?? ""),
+    onMutate: () => apply.reset(),
+    onSuccess: setDiff,
+  });
+  const apply = useMutation({
+    mutationFn: () => ClusterService.ApplyYAML(cluster.id, k, namespace, name, original, draft ?? ""),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+      onDone();
+    },
+    // A conflict leaves the dialog for the editor, where Reload is.
+    onError: (e) => isConflict(e) && setDiff(null),
+  });
+  useEffect(() => load.mutate(), []);
+  const failure = load.error ?? review.error ?? (isConflict(apply.error) ? apply.error : null);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {draft === null ? (
+        <p className={cn("rounded-md bg-muted/50 px-3 py-2 text-xs", load.error ? "text-destructive" : "text-muted-foreground")}>
+          {load.error ? errorText(load.error) : "Loading…"}
+        </p>
+      ) : (
+        // Reload replaces the document, so the editor starts over from the text it gets.
+        <CodeEditor
+          key={original}
+          label={`YAML of ${name}`}
+          value={draft}
+          onChange={(text) => {
+            setDraft(text);
+            setDiff(null);
+          }}
+        />
+      )}
+      {failure && draft !== null && (
+        <div className="flex items-start gap-2 text-xs text-destructive">
+          <p className="flex-1 whitespace-pre-wrap">
+            {isConflict(failure) ? `${name} changed in the Cluster since you opened it. Reload to edit the latest version; your edits are dropped.` : errorText(failure)}
+          </p>
+          {isConflict(failure) && (
+            <Button variant="outline" size="xs" disabled={load.isPending} onClick={() => load.mutate()}>
+              Reload
+            </Button>
+          )}
+        </div>
+      )}
+      {diff === "" && <p className="text-xs text-muted-foreground">Nothing would change.</p>}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button size="sm" disabled={draft === null || review.isPending} onClick={() => review.mutate()}>
+          Review changes
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={!!diff}
+        onOpenChange={(open) => !open && setDiff(null)}
+        title={`Apply changes to ${name}?`}
+        description="The Cluster checked the change in a dry run. These lines would change:"
+        confirm="Apply"
+        action={apply}
+        className="sm:max-w-2xl"
+      >
+        <p className="border-l-2 border-foreground/40 pl-3 text-sm text-muted-foreground">
+          on <span className="text-base font-semibold text-foreground">{cluster.name}</span>
+        </p>
+        <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted/50 py-2 font-mono text-xs leading-5">
+          <div className="w-fit min-w-full">{diffLines(diff ?? "")}</div>
+        </pre>
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+// The editor wears the read-only view's colours: keys in the primary colour, punctuation muted, values plain.
+const yamlColors = HighlightStyle.define([
+  { tag: tags.definition(tags.propertyName), color: "var(--primary)" },
+  { tag: [tags.separator, tags.punctuation, tags.squareBracket, tags.brace, tags.meta, tags.lineComment, tags.special(tags.string)], color: "var(--muted-foreground)" },
+]);
+
+const editorTheme = EditorView.theme({
+  "&": { height: "100%", fontSize: "12px", backgroundColor: "transparent" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "20px" },
+  ".cm-content": { caretColor: "var(--foreground)" },
+  ".cm-cursor": { borderLeftColor: "var(--foreground)" },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--muted-foreground)" },
+  ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "color-mix(in oklch, var(--foreground) 5%, transparent)" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground": {
+    backgroundColor: "color-mix(in oklch, var(--primary) 30%, transparent)",
+  },
+  ".cm-foldPlaceholder": { backgroundColor: "var(--muted)", border: "none", color: "var(--muted-foreground)" },
+  ".cm-panels": { backgroundColor: "var(--popover)", color: "var(--popover-foreground)" },
+  ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },
+  ".cm-textfield": { border: "1px solid var(--border)", borderRadius: "4px", backgroundColor: "transparent" },
+  ".cm-button": { backgroundImage: "none", backgroundColor: "var(--muted)", border: "1px solid var(--border)", borderRadius: "4px" },
+});
+
+// CodeEditor reads value once; edits flow out through onChange. Tab indents; Escape then Tab leaves the editor.
+function CodeEditor({ label, value, onChange }: { label: string; value: string; onChange: (text: string) => void }) {
+  const parent = useRef<HTMLDivElement>(null);
+  const changed = useRef(onChange);
+  changed.current = onChange;
+  useEffect(() => {
+    const view = new EditorView({
+      doc: value,
+      parent: parent.current!,
+      extensions: [
+        basicSetup,
+        keymap.of([indentWithTab]),
+        yaml(),
+        syntaxHighlighting(yamlColors),
+        editorTheme,
+        EditorView.contentAttributes.of({ "aria-label": label }),
+        EditorView.updateListener.of((u) => u.docChanged && changed.current(u.state.doc.toString())),
+      ],
+    });
+    view.focus();
+    return () => view.destroy();
+  }, []);
+  // Escape would close the panel and drop the edit. isolate keeps CodeMirror's own z-indexes (its search panel is at
+  // 300) under the confirm dialog.
+  return <div ref={parent} onKeyDown={(e) => e.key === "Escape" && e.preventDefault()} className="isolate min-h-0 flex-1 overflow-hidden rounded-md bg-muted/50 py-1" />;
+}
+
+// diffLines colours a unified diff; a hunk header becomes a break between the changed places.
+function diffLines(diff: string) {
+  return diff.trimEnd().split("\n").map((line, i) =>
+    line.startsWith("@@") ? (
+      i > 0 && <div key={i} className="my-1 border-t border-dashed" />
+    ) : (
+      <div
+        key={i}
+        className={cn(
+          "px-3",
+          line[0] === "+" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+          line[0] === "-" && "bg-destructive/10 text-destructive",
+        )}
+      >
+        {line}
+      </div>
+    ),
   );
 }
 

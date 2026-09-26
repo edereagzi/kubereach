@@ -15,23 +15,52 @@ import (
 	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// Runs against the current context of the real cluster at $KUBECONFIG or ~/.kube/config (kind in CI).
-func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		home, _ := os.UserHomeDir()
-		kubeconfig = filepath.Join(home, ".kube", "config")
+// e2eKubeconfig is the real cluster the E2E tests run against: the current context at $KUBECONFIG or ~/.kube/config
+// (kind in CI).
+func e2eKubeconfig() string {
+	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
+		return kubeconfig
 	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".kube", "config")
+}
+
+// e2eCluster imports the current context into svc and returns its Cluster ID beside a clientset of its own.
+func e2eCluster(t *testing.T, svc *service.Service) (string, kubernetes.Interface) {
+	t.Helper()
+	kubeconfig := e2eKubeconfig()
 	kc, err := clientcmd.LoadFromFile(kubeconfig)
 	if err != nil {
 		t.Fatal(err)
 	}
+	clusters, err := svc.ImportKubeconfigs([]string{kubeconfig})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(clusters, func(c service.Cluster) bool { return c.Context == kc.CurrentContext })
+	if i < 0 {
+		t.Fatalf("current context %q not imported from %v", kc.CurrentContext, clusters)
+	}
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return clusters[i].ID, cs
+}
+
+func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 	svc, _ := newService(t)
 	forwards := make(chan service.ForwardStatus, 100)
 	logs := make(chan service.LogBatch, 100)
@@ -46,16 +75,8 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 			states <- data
 		}
 	}
-	clusters, err := svc.ImportKubeconfigs([]string{kubeconfig})
-	if err != nil {
-		t.Fatal(err)
-	}
-	i := slices.IndexFunc(clusters, func(c service.Cluster) bool { return c.Context == kc.CurrentContext })
-	if i < 0 {
-		t.Fatalf("current context %q not imported from %v", kc.CurrentContext, clusters)
-	}
+	id, cs := e2eCluster(t, svc)
 	ctx := context.Background()
-	id := clusters[i].ID
 
 	version, err := svc.CheckReachability(ctx, id)
 	if err != nil || version == "" {
@@ -151,14 +172,6 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 	if l := collectLogs(t, logs, deploy.ID, 1); !slices.Contains(before.Pods, l[0].Pod) {
 		t.Fatalf("line from %q, want one of %v", l[0].Pod, before.Pods)
 	}
-	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cs, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
 	patch := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{"kubereach.test/restartedAt":%q}}}}}`, time.Now().Format(time.RFC3339))
 	if _, err := cs.AppsV1().Deployments("kube-system").Patch(ctx, "coredns", types.StrategicMergePatchType, []byte(patch), metav1.PatchOptions{}); err != nil {
 		t.Fatal(err)
@@ -179,5 +192,73 @@ func TestE2E_RealClusterReachabilityAndListing(t *testing.T) {
 		if slices.Contains(after.Pods, l[0].Pod) {
 			break
 		}
+	}
+}
+
+// An image changed through the editor rolls the Deployment out; an edit of a version that changed meanwhile is refused.
+func TestE2E_EditYAMLRollsOutAndRefusesStaleEdits(t *testing.T) {
+	svc, _ := newService(t)
+	id, cs := e2eCluster(t, svc)
+	ctx := context.Background()
+	ns := fmt.Sprintf("kubereach-e2e-edit-%d", time.Now().UnixNano())
+	if _, err := cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.CoreV1().Namespaces().Delete(context.Background(), ns, metav1.DeleteOptions{}) })
+	labels := map[string]string{"app": "pause"}
+	d := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "pause"},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "pause", Image: "registry.k8s.io/pause:3.9"}}},
+			},
+		},
+	}
+	if _, err := cs.AppsV1().Deployments(ns).Create(ctx, d, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// The controller annotates a new Deployment with its revision; an editor opened before that would meet a conflict.
+	waitRolledOut(t, cs, ns, "pause", "registry.k8s.io/pause:3.9")
+
+	text, err := svc.EditYAML(ctx, id, service.ObjectDeployment, ns, "pause")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(text, "pause:3.9", "pause:3.10", 1)
+	diff, err := svc.DiffYAML(ctx, id, service.ObjectDeployment, ns, "pause", text, edited)
+	if err != nil || !strings.Contains(diff, "-      - image: registry.k8s.io/pause:3.9\n+      - image: registry.k8s.io/pause:3.10\n") {
+		t.Fatalf("diff = %q, err = %v", diff, err)
+	}
+	if err := svc.ApplyYAML(ctx, id, service.ObjectDeployment, ns, "pause", text, edited); err != nil {
+		t.Fatal(err)
+	}
+	waitRolledOut(t, cs, ns, "pause", "registry.k8s.io/pause:3.10")
+
+	// The editor loaded the image from before the rollout.
+	if err := svc.ApplyYAML(ctx, id, service.ObjectDeployment, ns, "pause", text, edited); service.Describe(err).Code != "conflict" {
+		t.Fatalf("stale apply: err = %v, want a conflict", err)
+	}
+}
+
+// waitRolledOut waits until the Deployment runs its one replica with image.
+func waitRolledOut(t *testing.T, cs kubernetes.Interface, ns, name, image string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		got, err := cs.AppsV1().Deployments(ns).Get(context.Background(), name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := got.Status
+		if got.Spec.Template.Spec.Containers[0].Image == image && s.ObservedGeneration == got.Generation &&
+			s.UpdatedReplicas == 1 && s.AvailableReplicas == 1 && s.Replicas == 1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rollout to %s did not finish: %+v", image, s)
+		}
+		time.Sleep(time.Second)
 	}
 }

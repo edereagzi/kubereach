@@ -9,6 +9,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as service$0 from "../service/models.js";
 
+export function ApplyYAML(clusterID: string, kind: service$0.ObjectKind, $namespace: string, name: string, original: string, text: string): $CancellablePromise<void> {
+    return $Call.ByID(2237663068, clusterID, kind, $namespace, name, original, text);
+}
+
 export function CheckReachability(clusterID: string): $CancellablePromise<string> {
     return $Call.ByID(273405860, clusterID);
 }
@@ -43,6 +47,14 @@ export function DescribePod(clusterID: string, $namespace: string, name: string)
 
 export function DescribeWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string): $CancellablePromise<service$0.WorkloadDiagnosis> {
     return $Call.ByID(3413420857, clusterID, kind, $namespace, name);
+}
+
+export function DiffYAML(clusterID: string, kind: service$0.ObjectKind, $namespace: string, name: string, original: string, text: string): $CancellablePromise<string> {
+    return $Call.ByID(972695401, clusterID, kind, $namespace, name, original, text);
+}
+
+export function EditYAML(clusterID: string, kind: service$0.ObjectKind, $namespace: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(3230332554, clusterID, kind, $namespace, name);
 }
 
 export function GetConfigMap(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.KubeConfigObject> {

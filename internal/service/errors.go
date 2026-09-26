@@ -93,8 +93,11 @@ func Describe(err error) ErrorInfo {
 		return ErrorInfo{Message: user.msg}
 	}
 	if msg, forbidden := describeAPI(err); msg != "" {
-		if forbidden {
+		switch {
+		case forbidden:
 			return ErrorInfo{Code: "forbidden", Message: msg}
+		case apierrors.IsConflict(err):
+			return ErrorInfo{Code: "conflict", Message: msg}
 		}
 		return ErrorInfo{Message: msg}
 	}

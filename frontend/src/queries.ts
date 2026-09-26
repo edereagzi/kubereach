@@ -167,6 +167,7 @@ type ErrorCause = { message?: string; code?: string; target?: string; port?: num
 const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;
 export const errorText = (error: unknown) => errorCause(error)?.message ?? (error instanceof Error ? error.message : String(error));
 export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
+export const isConflict = (error: unknown) => errorCause(error)?.code === "conflict";
 
 // credentialRequired returns which session secret a Connect call is missing, if any.
 export function credentialRequired(error: unknown): { code: "passphrase" | "password"; target: string } | null {

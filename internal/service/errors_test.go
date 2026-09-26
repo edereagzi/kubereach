@@ -56,7 +56,7 @@ func TestDescribe(t *testing.T) {
 		{"unauthorized", apierrors.NewUnauthorized("Unauthorized"),
 			service.ErrorInfo{Message: "The Cluster did not accept the credentials in the kubeconfig"}},
 		{"conflict", apierrors.NewConflict(schema.GroupResource{Group: "apps", Resource: "deployments"}, "api", errors.New("object has been modified")),
-			service.ErrorInfo{Message: "It changed in the Cluster meanwhile; try again"}},
+			service.ErrorInfo{Code: "conflict", Message: "It changed in the Cluster meanwhile; try again"}},
 		{"busy", apierrors.NewTooManyRequests("slow down", 1),
 			service.ErrorInfo{Message: "The Cluster could not answer right now; try again"}},
 		{"refused", apiURL(dial(syscall.ECONNREFUSED)),
