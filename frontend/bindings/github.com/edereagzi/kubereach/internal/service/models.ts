@@ -18,7 +18,8 @@ export interface Cluster {
     "kubeconfig": string;
 
     /**
-     * Remote is the kubeconfig on the Route's last SSH Server, one of remoteSources, read into memory on every connect.
+     * Remote is the kubeconfig on the Route's last SSH Server, one of remoteSources (a path, or the command that prints
+     * it), read into memory on every connect.
      * Kubeconfig is empty then.
      */
     "remote": string;
@@ -716,6 +717,14 @@ export interface PortForward {
 export interface Release {
     "version": string;
     "url": string;
+}
+
+/**
+ * RemoteKubeconfig is the kubeconfig found on a Route's last SSH Server and its contexts.
+ */
+export interface RemoteKubeconfig {
+    "source": string;
+    "contexts": string[] | null;
 }
 
 /**

@@ -168,10 +168,10 @@ func (c *ClusterService) RollbackDeployment(ctx context.Context, clusterID, name
 	return c.svc.RollbackDeployment(ctx, clusterID, namespace, name)
 }
 
-func (c *ClusterService) RemoteContexts(routeID string) ([]string, error) {
+func (c *ClusterService) RemoteContexts(routeID string) (service.RemoteKubeconfig, error) {
 	return c.svc.RemoteContexts(routeID)
 }
 
-func (c *ClusterService) ImportRemote(routeID, context string) (service.Cluster, error) {
-	return c.svc.ImportRemoteCluster(routeID, context)
+func (c *ClusterService) ImportRemote(routeID, source, context string) (service.Cluster, error) {
+	return c.svc.ImportRemoteCluster(routeID, source, context)
 }

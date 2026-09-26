@@ -13,7 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import { State, type Cluster, type RouteStatus } from "@bindings/internal/service";
+import { State, type Cluster, type RemoteKubeconfig, type RouteStatus } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamFor } from "@/components/logs";
 import { isUp, RouteDialog, serverChain, StateDot, useRouteProblem } from "@/components/routes";
@@ -107,8 +107,6 @@ export function Sidebar() {
   );
 }
 
-const remoteKubeconfig = "~/.kube/config";
-
 // Adds a Cluster whose kubeconfig stays on the Route's last SSH server and is read there every time the Route connects.
 // Picking a Route connects it; its credential and host key prompts come from RouteConnector as anywhere else.
 function RemoteImportDialog({ onClose }: { onClose: () => void }) {
@@ -129,16 +127,17 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
     if (routeId && !isUp(useUIStore.getState().routeStatuses[routeId])) requestConnect(routeId);
   }, [routeId, requestConnect]);
 
-  const contexts = useQuery({
+  const found = useQuery({
     queryKey: ["remote-contexts", routeId],
-    queryFn: async () => (await ClusterService.RemoteContexts(routeId)) ?? [],
+    queryFn: () => ClusterService.RemoteContexts(routeId),
     enabled: connected,
     retry: false,
     gcTime: 0,
   });
-  const context = picked ?? contexts.data?.[0];
+  const source = found.data?.source;
+  const context = picked ?? found.data?.contexts?.[0];
   const add = useMutation({
-    mutationFn: () => ClusterService.ImportRemote(routeId, context!),
+    mutationFn: () => ClusterService.ImportRemote(routeId, source!, context!),
     onSuccess: async (cluster) => {
       await queryClient.invalidateQueries({ queryKey: ["config"] });
       selectCluster(cluster.id);
@@ -163,7 +162,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
               <DialogDescription>
                 {route ? (
                   <>
-                    Kubereach reads <span className="font-mono text-foreground">{remoteKubeconfig}</span> on <span className="font-medium text-foreground">{host}</span> each time{" "}
+                    Kubereach reads {source ? <span className="font-mono text-foreground">{source}</span> : "the kubeconfig it finds"} on <span className="font-medium text-foreground">{host}</span> each time{" "}
                     {route.name} connects. Nothing is copied to this computer.
                   </>
                 ) : (
@@ -202,7 +201,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
                 status={status}
                 problem={problem}
                 onRetry={() => requestConnect(routeId)}
-                contexts={contexts}
+                found={found}
                 context={context}
                 onPick={setPicked}
               />
@@ -232,13 +231,13 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// Where the read stands: connecting the Route, reading the file, then the context to add.
+// Where the read stands: connecting the Route, finding the kubeconfig, then the context to add.
 function RemoteSource({
   routeName,
   status,
   problem,
   onRetry,
-  contexts,
+  found,
   context,
   onPick,
 }: {
@@ -246,7 +245,7 @@ function RemoteSource({
   status: RouteStatus | undefined;
   problem: string | undefined;
   onRetry: () => void;
-  contexts: { data?: string[]; error: unknown };
+  found: { data?: RemoteKubeconfig; error: unknown };
   context: string | undefined;
   onPick: (context: string) => void;
 }) {
@@ -267,10 +266,11 @@ function RemoteSource({
       </p>
     );
   }
-  if (contexts.error) return <p className="text-sm text-destructive">{errorText(contexts.error)}</p>;
-  if (!contexts.data) return <p className="animate-pulse text-sm text-muted-foreground">Reading {remoteKubeconfig}…</p>;
-  if (contexts.data.length === 0) return <p className="text-sm text-muted-foreground">{remoteKubeconfig} has no contexts.</p>;
-  if (contexts.data.length === 1) {
+  if (found.error) return <p className="text-sm text-destructive">{errorText(found.error)}</p>;
+  if (!found.data) return <p className="animate-pulse text-sm text-muted-foreground">Looking for a kubeconfig…</p>;
+  const contexts = found.data.contexts ?? [];
+  if (contexts.length === 0) return <p className="text-sm text-muted-foreground">{found.data.source} has no contexts.</p>;
+  if (contexts.length === 1) {
     return (
       <p className="text-sm text-muted-foreground">
         Context <span className="font-medium text-foreground">{context}</span>
@@ -285,7 +285,7 @@ function RemoteSource({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {contexts.data.map((c) => (
+          {contexts.map((c) => (
             <SelectItem key={c} value={c}>
               {c}
             </SelectItem>

@@ -80,8 +80,8 @@ export function ImportPaths(paths: string[] | null): $CancellablePromise<service
     return $Call.ByID(3966526160, paths);
 }
 
-export function ImportRemote(routeID: string, context: string): $CancellablePromise<service$0.Cluster> {
-    return $Call.ByID(41372850, routeID, context);
+export function ImportRemote(routeID: string, source: string, context: string): $CancellablePromise<service$0.Cluster> {
+    return $Call.ByID(41372850, routeID, source, context);
 }
 
 export function ListConfigMaps(clusterID: string): $CancellablePromise<service$0.KubeConfigObject[] | null> {
@@ -132,7 +132,7 @@ export function PodMetrics(clusterID: string): $CancellablePromise<service$0.Pod
     return $Call.ByID(1371814305, clusterID);
 }
 
-export function RemoteContexts(routeID: string): $CancellablePromise<string[] | null> {
+export function RemoteContexts(routeID: string): $CancellablePromise<service$0.RemoteKubeconfig> {
     return $Call.ByID(3803624683, routeID);
 }
 
