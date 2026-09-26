@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowCircleUpIcon, ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowCircleUpIcon, ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, KeyboardIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Browser, System } from "@wailsio/runtime";
 import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
@@ -20,10 +20,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ShortcutsDialog } from "@/components/shortcuts";
 import { configQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
@@ -67,6 +69,18 @@ export function SidebarFooter() {
   const error = exportConfig.error ?? inspect.error ?? setUpdateCheck.error;
   const openRoutes = useUIStore((s) => s.openRoutes);
   const [about, setAbout] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
+  // "?" opens the shortcuts from anywhere that is not typing or already in a dialog or menu.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "?" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], [role=dialog], [role=alertdialog], [role=menu], [role=listbox]"))) {
+        e.preventDefault();
+        setShortcuts(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div>
@@ -112,10 +126,14 @@ export function SidebarFooter() {
             >
               <ArrowsClockwiseIcon /> Check for updates
             </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShortcuts(true)}>
+              <KeyboardIcon /> Keyboard shortcuts
+              <DropdownMenuShortcut>?</DropdownMenuShortcut>
+            </DropdownMenuItem>
             {/* macOS has About in its application menu (InstallMenu); elsewhere there is no menu bar. */}
             {(System.IsWindows() || System.IsLinux()) && (
               <>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setAbout(true)}>
                   <InfoIcon /> About Kubereach
                 </DropdownMenuItem>
@@ -126,6 +144,7 @@ export function SidebarFooter() {
       </div>
       {preview && <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
+      {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     </div>
   );
 }
