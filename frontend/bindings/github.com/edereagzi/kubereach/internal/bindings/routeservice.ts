@@ -43,6 +43,10 @@ export function SetClusterRoute(clusterID: string, routeID: string): $Cancellabl
     return $Call.ByID(3269752741, clusterID, routeID);
 }
 
+export function SetSudoPassword(routeID: string, password: string): $CancellablePromise<void> {
+    return $Call.ByID(1047840682, routeID, password);
+}
+
 export function Statuses(): $CancellablePromise<service$0.RouteStatus[] | null> {
     return $Call.ByID(3706551116);
 }

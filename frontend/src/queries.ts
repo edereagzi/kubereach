@@ -168,11 +168,13 @@ const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?
 export const errorText = (error: unknown) => errorCause(error)?.message ?? (error instanceof Error ? error.message : String(error));
 export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
 export const isConflict = (error: unknown) => errorCause(error)?.code === "conflict";
+export const isSudoRequired = (error: unknown) => errorCause(error)?.code === "sudo";
 
-// credentialRequired returns which session secret a Connect call is missing, if any.
-export function credentialRequired(error: unknown): { code: "passphrase" | "password"; target: string } | null {
+// credentialRequired returns which session secret a call is missing, if any: a Connect's passphrase or password, or the
+// sudo password a remote kubeconfig read needs.
+export function credentialRequired(error: unknown): { code: "passphrase" | "password" | "sudo"; target: string } | null {
   const cause = errorCause(error);
-  if (cause?.code === "passphrase" || cause?.code === "password") return { code: cause.code, target: cause.target ?? "" };
+  if (cause?.code === "passphrase" || cause?.code === "password" || cause?.code === "sudo") return { code: cause.code, target: cause.target ?? "" };
   return null;
 }
 

@@ -74,7 +74,7 @@ func (s *Service) RemoteContexts(routeID string) (RemoteKubeconfig, error) {
 	if client == nil {
 		return RemoteKubeconfig{}, ErrRouteDown
 	}
-	out, err := runRemote(client, detectKubeconfig)
+	out, err := runRemote(client, detectKubeconfig, "")
 	if err != nil {
 		return RemoteKubeconfig{}, &userError{msg: "Looking for a kubeconfig on the SSH server failed", err: err}
 	}
@@ -84,7 +84,12 @@ func (s *Service) RemoteContexts(routeID string) (RemoteKubeconfig, error) {
 		if !slices.Contains(found, src.name) {
 			continue
 		}
-		data, err := rc.kubeconfig(src)
+		data, err := s.readKubeconfig(rc, src)
+		var sudo *CredentialError
+		if errors.As(err, &sudo) {
+			// The distro's own kubeconfig is worth its sudo password over a copy that may be stale.
+			return RemoteKubeconfig{}, err
+		}
 		if err != nil {
 			first = cmp.Or(first, err)
 			continue
@@ -165,7 +170,7 @@ func (s *Service) remoteKubeconfig(routeID, source string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return rc.kubeconfig(remoteSources[i])
+	return s.readKubeconfig(rc, remoteSources[i])
 }
 
 func (s *Service) connectedRoute(routeID string) (*routeConn, error) {
@@ -178,9 +183,9 @@ func (s *Service) connectedRoute(routeID string) (*routeConn, error) {
 	return rc, nil
 }
 
-// kubeconfig runs without s.mu, and one read at a time so a burst of first requests opens one session.
+// readKubeconfig runs without s.mu, and one read at a time so a burst of first requests opens one session.
 // A read that finishes after the connection was replaced is returned but not kept.
-func (rc *routeConn) kubeconfig(src remoteSource) ([]byte, error) {
+func (s *Service) readKubeconfig(rc *routeConn, src remoteSource) ([]byte, error) {
 	rc.readMu.Lock()
 	defer rc.readMu.Unlock()
 	client := rc.sshClient()
@@ -193,20 +198,10 @@ func (rc *routeConn) kubeconfig(src remoteSource) ([]byte, error) {
 	if data != nil {
 		return data, nil
 	}
-	data, err := runRemote(client, src.read)
+	data, err := runRemote(client, src.read, "")
 	if err != nil {
-		var sudoErr error
-		if data, sudoErr = runRemote(client, "sudo -n "+src.read); sudoErr != nil {
-			// The plain read's reason is the one that says what is wrong; sudo -n's is only that it was refused.
-			msg := "Reading " + src.name + " on the SSH server failed"
-			var remote *remoteError
-			if errors.As(err, &remote) {
-				msg += ": " + remote.stderr
-			}
-			if src.allow != "" {
-				msg += ". " + src.allow
-			}
-			return nil, &userError{msg: msg, err: err}
+		if data, err = s.sudoRead(client, rc.lastServer, src, err); err != nil {
+			return nil, err
 		}
 	}
 	rc.mu.Lock()
@@ -215,6 +210,62 @@ func (rc *routeConn) kubeconfig(src remoteSource) ([]byte, error) {
 	}
 	rc.mu.Unlock()
 	return data, nil
+}
+
+// SetSudoPassword keeps the sudo password of the Route's last SSH Server for the session, never on disk; the next read
+// that sudo -n cannot do uses it.
+func (s *Service) SetSudoPassword(routeID, password string) error {
+	rc, err := s.connectedRoute(routeID)
+	if err != nil {
+		return err
+	}
+	s.secret(sudoSecret(rc.lastServer), password)
+	return nil
+}
+
+// sudoSecret is where the sudo password of the SSH Server user@host:port is kept, apart from its SSH password.
+func sudoSecret(server string) string { return "sudo " + server }
+
+// sudoRead reads src as root once the plain read failed: with sudo -n, then, when sudo asks for a password, with the
+// session's sudo password on stdin. An empty -p prompt keeps it out of the output, and stdin ends after the password so
+// a refused one fails instead of waiting for another. LC_ALL=C keeps sudo's messages in the English they are matched
+// in; the second of each pair is sudo-rs's wording.
+func (s *Service) sudoRead(client *ssh.Client, server string, src remoteSource, plain error) ([]byte, error) {
+	data, err := runRemote(client, "LC_ALL=C sudo -n "+src.read, "")
+	if err == nil {
+		return data, nil
+	}
+	if remoteSays(err, "password is required", "authentication is required") {
+		password := s.secret(sudoSecret(server), "")
+		if password == "" {
+			return nil, &CredentialError{Code: "sudo", Target: server}
+		}
+		if data, err = runRemote(client, "LC_ALL=C sudo -S -p '' "+src.read, password+"\n"); err == nil {
+			return data, nil
+		}
+		if remoteSays(err, "incorrect password", "Authentication failed") {
+			s.forgetSecret(sudoSecret(server))
+			return nil, &CredentialError{Code: "sudo", Target: server, wrong: true}
+		}
+		// sudo's own reason now says more than the plain read's, such as the user not being in sudoers.
+		plain = err
+	}
+	// The plain read's reason is the one that says what is wrong; sudo -n's is only that it was refused.
+	msg := "Reading " + src.name + " on the SSH server failed"
+	var remote *remoteError
+	if errors.As(plain, &remote) {
+		msg += ": " + remote.stderr
+	}
+	if src.allow != "" {
+		msg += ". " + src.allow
+	}
+	return nil, &userError{msg: msg, err: plain}
+}
+
+// remoteSays tells whether a command failed on the SSH server printing any of texts.
+func remoteSays(err error, texts ...string) bool {
+	var remote *remoteError
+	return errors.As(err, &remote) && slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(remote.stderr, text) })
 }
 
 // remoteError is a command that failed on the SSH server, with what it printed on stderr.
@@ -226,8 +277,8 @@ type remoteError struct {
 func (e *remoteError) Error() string { return e.stderr }
 func (e *remoteError) Unwrap() error { return e.err }
 
-// runRemote runs cmd in a session on client and returns what it printed.
-func runRemote(client *ssh.Client, cmd string) ([]byte, error) {
+// runRemote runs cmd in a session on client with stdin, and returns what it printed.
+func runRemote(client *ssh.Client, cmd, stdin string) ([]byte, error) {
 	sess, err := client.NewSession()
 	if err != nil {
 		return nil, err
@@ -235,6 +286,7 @@ func runRemote(client *ssh.Client, cmd string) ([]byte, error) {
 	defer func() { _ = sess.Close() }()
 	var stderr bytes.Buffer
 	sess.Stderr = &stderr
+	sess.Stdin = strings.NewReader(stdin)
 	out, err := sess.Output(cmd)
 	if msg := strings.TrimSpace(stderr.String()); err != nil && msg != "" {
 		return nil, &remoteError{stderr: msg, err: err}

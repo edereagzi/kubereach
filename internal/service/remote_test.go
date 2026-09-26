@@ -158,8 +158,8 @@ func (f *routeFixture) setOutputs(outputs map[string]string) {
 func TestRemoteKubeconfig_K3sWithPasswordlessSudo(t *testing.T) {
 	f := newRemoteFixture(t, twoContextKubeconfig)
 	f.setOutputs(map[string]string{
-		service.DetectKubeconfig:                "/etc/rancher/k3s/k3s.yaml\n~/.kube/config\n",
-		"sudo -n cat /etc/rancher/k3s/k3s.yaml": twoContextKubeconfig,
+		service.DetectKubeconfig:                         "/etc/rancher/k3s/k3s.yaml\n~/.kube/config\n",
+		"LC_ALL=C sudo -n cat /etc/rancher/k3s/k3s.yaml": twoContextKubeconfig,
 	})
 	found, err := f.svc.RemoteContexts(f.route.ID)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestRemoteKubeconfig_K3sWithPasswordlessSudo(t *testing.T) {
 	if _, err := f.svc.CheckReachability(context.Background(), c.ID); err != nil {
 		t.Fatal(err)
 	}
-	wantRan := []string{service.DetectKubeconfig, "cat /etc/rancher/k3s/k3s.yaml", "sudo -n cat /etc/rancher/k3s/k3s.yaml"}
+	wantRan := []string{service.DetectKubeconfig, "cat /etc/rancher/k3s/k3s.yaml", "LC_ALL=C sudo -n cat /etc/rancher/k3s/k3s.yaml"}
 	if diff := cmp.Diff(wantRan, f.ssh.ran()); diff != "" {
 		t.Errorf("commands (-want +got):\n%s", diff)
 	}
@@ -231,5 +231,59 @@ func TestRemoteKubeconfig_DeniedSaysWhatToRun(t *testing.T) {
 		if msg := service.Describe(err).Message; !strings.Contains(msg, source) || !strings.Contains(msg, want) {
 			t.Errorf("%s: message = %q, want it to name %q", source, msg, want)
 		}
+	}
+}
+
+func TestRemoteKubeconfig_AsksForTheSudoPasswordOnce(t *testing.T) {
+	f := newRemoteFixture(t, twoContextKubeconfig)
+	const readK3s = "LC_ALL=C sudo -S -p '' cat /etc/rancher/k3s/k3s.yaml"
+	// A readable copy in ~/.kube/config does not stand in for the distro's own when sudo only needs its password.
+	f.setOutputs(map[string]string{service.DetectKubeconfig: "/etc/rancher/k3s/k3s.yaml\n~/.kube/config\n", readK3s: twoContextKubeconfig, readKubeconfig: twoContextKubeconfig})
+	f.ssh.mu.Lock()
+	f.ssh.sudoPassword = "s3cret"
+	f.ssh.mu.Unlock()
+	target := "me@" + f.ssh.addr
+
+	_, err := f.svc.RemoteContexts(f.route.ID)
+	if info := service.Describe(err); info.Code != "sudo" || info.Target != target {
+		t.Fatalf("error = %+v, want the sudo password of %s asked for", info, target)
+	}
+
+	if err := f.svc.SetSudoPassword(f.route.ID, "wrong"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.svc.RemoteContexts(f.route.ID)
+	if info := service.Describe(err); info.Code != "sudo" || !strings.Contains(info.Message, "not accepted") {
+		t.Fatalf("error = %+v, want the wrong password reported and asked again", info)
+	}
+
+	if err := f.svc.SetSudoPassword(f.route.ID, "s3cret"); err != nil {
+		t.Fatal(err)
+	}
+	found, err := f.svc.RemoteContexts(f.route.ID)
+	if err != nil || found.Source != "/etc/rancher/k3s/k3s.yaml" {
+		t.Fatalf("found = %+v, %v", found, err)
+	}
+	c, err := f.svc.ImportRemoteCluster(f.route.ID, found.Source, "staging-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A reconnect reads the kubeconfig again with the password kept for the session, without asking.
+	f.ssh.dropConnections()
+	f.waitState(t, service.StateReconnecting)
+	f.waitState(t, service.StateConnected)
+	if _, err := f.svc.CheckReachability(context.Background(), c.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The password goes on stdin only: never in a command line, never on disk.
+	for _, cmd := range f.ssh.ran() {
+		if strings.Contains(cmd, "s3cret") {
+			t.Errorf("command %q carries the password", cmd)
+		}
+	}
+	if saved, err := os.ReadFile(f.configPath); err != nil || strings.Contains(string(saved), "s3cret") {
+		t.Errorf("configuration holds the password (%v):\n%s", err, saved)
 	}
 }

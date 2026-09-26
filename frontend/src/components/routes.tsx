@@ -271,7 +271,7 @@ function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster
   );
 }
 
-export type CredentialRequest = { route: Route; code: "passphrase" | "password"; target: string };
+export type CredentialRequest = { route: Route; code: "passphrase" | "password" | "sudo"; target: string };
 
 const emptyServer: SSHServer = { host: "", port: 22, user: "", auth: AuthMethod.AuthAgent, keyFile: "" };
 
@@ -493,7 +493,7 @@ export function CredentialDialog({
   onSubmit,
   onClose,
 }: {
-  request: CredentialRequest;
+  request: Pick<CredentialRequest, "code" | "target">;
   error: string | null;
   pending: boolean;
   onSubmit: (secret: string) => void;
@@ -511,10 +511,14 @@ export function CredentialDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{code === "passphrase" ? "Key passphrase" : "Password"}</DialogTitle>
+            <DialogTitle>{code === "passphrase" ? "Key passphrase" : code === "sudo" ? "Sudo password" : "Password"}</DialogTitle>
             <DialogDescription>
-              {code === "passphrase" ? `${target} is protected.` : `${target} asks for a password.`} It is kept in
-              memory for this session only.
+              {code === "passphrase"
+                ? `${target} is protected.`
+                : code === "sudo"
+                  ? `Reading the cluster's kubeconfig on ${target} needs sudo.`
+                  : `${target} asks for a password.`}{" "}
+              It is kept in memory for this session only.
             </DialogDescription>
           </DialogHeader>
           <Input autoFocus type="password" value={secret} onChange={(e) => setSecret(e.target.value)} />
@@ -524,12 +528,36 @@ export function CredentialDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !secret}>
-              Connect
+              {code === "sudo" ? "Continue" : "Connect"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// SudoPasswordDialog asks for the sudo password a remote kubeconfig read is missing, then runs the read again through
+// retry; a refused password comes back as error and is asked for again.
+export function SudoPasswordDialog({ routeId, error, retry, onClose }: { routeId: string; error: unknown; retry: () => Promise<unknown>; onClose: () => void }) {
+  const [submitted, setSubmitted] = useState(false);
+  const save = useMutation({
+    mutationFn: async (secret: string) => {
+      await RouteService.SetSudoPassword(routeId, secret);
+      await retry();
+    },
+    onSettled: () => setSubmitted(true),
+  });
+  const needed = credentialRequired(error);
+  if (needed?.code !== "sudo") return null;
+  return (
+    <CredentialDialog
+      request={needed}
+      error={save.error ? errorText(save.error) : submitted ? errorText(error) : null}
+      pending={save.isPending}
+      onSubmit={(secret) => save.mutate(secret)}
+      onClose={onClose}
+    />
   );
 }
 

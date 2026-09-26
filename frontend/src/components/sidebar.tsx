@@ -16,7 +16,7 @@ import { ClusterService, ConfigService } from "@bindings/internal/bindings";
 import { State, type Cluster, type RemoteKubeconfig, type RouteStatus } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamFor } from "@/components/logs";
-import { isUp, RouteDialog, serverChain, StateDot, useRouteProblem } from "@/components/routes";
+import { isUp, RouteDialog, serverChain, StateDot, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
+import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { openShellCount, useUIStore } from "@/store";
 import { cn, modKey } from "@/lib/utils";
 
@@ -116,6 +116,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
   const [routeId, setRouteId] = useState(routes[0]?.id ?? "");
   const [picked, setPicked] = useState<string | null>(null);
   const [creatingRoute, setCreatingRoute] = useState(false);
+  const [askingSudo, setAskingSudo] = useState(true);
   const route = routes.find((r) => r.id === routeId);
   const status = useUIStore((s) => s.routeStatuses[routeId]);
   const requestConnect = useUIStore((s) => s.requestConnect);
@@ -179,6 +180,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
                   onValueChange={(id) => {
                     setRouteId(id ?? "");
                     setPicked(null);
+                    setAskingSudo(true);
                   }}
                 >
                   <SelectTrigger className="w-full">
@@ -204,6 +206,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
                 found={found}
                 context={context}
                 onPick={setPicked}
+                onSudo={() => setAskingSudo(true)}
               />
             )}
             {add.error && <p className="text-sm text-destructive">{errorText(add.error)}</p>}
@@ -226,6 +229,7 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
           </form>
         </DialogContent>
       </Dialog>
+      {askingSudo && <SudoPasswordDialog key={routeId} routeId={routeId} error={found.error} retry={found.refetch} onClose={() => setAskingSudo(false)} />}
       {creatingRoute && <RouteDialog route={null} onClose={() => setCreatingRoute(false)} onSaved={(r) => setRouteId(r.id)} />}
     </>
   );
@@ -240,6 +244,7 @@ function RemoteSource({
   found,
   context,
   onPick,
+  onSudo,
 }: {
   routeName: string;
   status: RouteStatus | undefined;
@@ -248,6 +253,7 @@ function RemoteSource({
   found: { data?: RemoteKubeconfig; error: unknown };
   context: string | undefined;
   onPick: (context: string) => void;
+  onSudo: () => void;
 }) {
   if (problem) {
     return (
@@ -266,7 +272,18 @@ function RemoteSource({
       </p>
     );
   }
-  if (found.error) return <p className="text-sm text-destructive">{errorText(found.error)}</p>;
+  if (found.error) {
+    return (
+      <div className="flex items-start gap-3 text-sm">
+        <p className="min-w-0 flex-1 text-destructive">{errorText(found.error)}</p>
+        {isSudoRequired(found.error) && (
+          <Button type="button" variant="outline" size="xs" onClick={onSudo}>
+            Enter password
+          </Button>
+        )}
+      </div>
+    );
+  }
   if (!found.data) return <p className="animate-pulse text-sm text-muted-foreground">Looking for a kubeconfig…</p>;
   const contexts = found.data.contexts ?? [];
   if (contexts.length === 0) return <p className="text-sm text-muted-foreground">{found.data.source} has no contexts.</p>;

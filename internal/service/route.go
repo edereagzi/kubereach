@@ -28,9 +28,12 @@ var ErrRouteDown error = &userError{msg: "The Route is not connected"}
 
 // CredentialError reports a missing session secret: Code is "passphrase" (Target is the key file)
 // or "password" (Target is user@host:port). The UI asks for it and calls ConnectRoute again.
+// Code "sudo" is the sudo password of a Route's last SSH Server (Target is user@host:port), given to SetSudoPassword;
+// wrong is set when the one given was refused.
 type CredentialError struct {
 	Code   string `json:"code"`
 	Target string `json:"target"`
+	wrong  bool
 }
 
 func (e *CredentialError) Error() string { return e.Code + " required for " + e.Target }
@@ -77,6 +80,8 @@ type routeConn struct {
 	// kubeconfigs are the remote kubeconfigs read over this connection, by source; readMu serialises their reads.
 	kubeconfigs map[string][]byte
 	readMu      sync.Mutex
+	// lastServer is user@host:port of the Route's last SSH Server, where remote kubeconfigs are read.
+	lastServer string
 }
 
 // unknownHostError carries the key the user is asked to approve.
@@ -272,7 +277,8 @@ func (s *Service) ConnectRoute(routeID, secret string) error {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	rc := &routeConn{cancel: cancel, done: make(chan struct{}), hostKey: make(chan bool, 1), status: RouteStatus{RouteID: routeID, State: StateIdle}}
+	rc := &routeConn{cancel: cancel, done: make(chan struct{}), hostKey: make(chan bool, 1), status: RouteStatus{RouteID: routeID, State: StateIdle},
+		lastServer: passwordTarget(route.Servers[len(route.Servers)-1])}
 	s.routes[routeID] = rc
 	go s.runRoute(ctx, route, rc)
 	return nil

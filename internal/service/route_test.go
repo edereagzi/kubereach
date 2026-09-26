@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -43,6 +44,8 @@ type testSSH struct {
 	// outputs is what each command run in a session prints; any other command fails. commands records every one run.
 	outputs  map[string]string
 	commands []string
+	// sudoPassword, when set, makes sudo -n refuse for a password and sudo -S read it from stdin.
+	sudoPassword string
 }
 
 // stallConn plays a link that died silently.
@@ -154,7 +157,20 @@ func startSSHServerWith(t *testing.T, authorized ssh.PublicKey, password string,
 			s.mu.Lock()
 			s.commands = append(s.commands, sess.RawCommand())
 			out, ok := s.outputs[sess.RawCommand()]
+			password := s.sudoPassword
 			s.mu.Unlock()
+			if password != "" && strings.HasPrefix(sess.RawCommand(), "LC_ALL=C sudo -n ") {
+				_, _ = io.WriteString(sess.Stderr(), "sudo: a password is required\n")
+				_ = sess.Exit(1)
+				return
+			}
+			if strings.HasPrefix(sess.RawCommand(), "LC_ALL=C sudo -S ") {
+				if line, _ := bufio.NewReader(sess).ReadString('\n'); line != password+"\n" {
+					_, _ = io.WriteString(sess.Stderr(), "Sorry, try again.\nsudo: no password was provided\nsudo: 1 incorrect password attempt\n")
+					_ = sess.Exit(1)
+					return
+				}
+			}
 			if !ok {
 				_, _ = io.WriteString(sess.Stderr(), sess.RawCommand()+": No such file or directory\n")
 				_ = sess.Exit(1)

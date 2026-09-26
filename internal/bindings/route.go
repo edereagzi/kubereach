@@ -37,6 +37,10 @@ func (r *RouteService) Connect(routeID, secret string) error {
 	return r.svc.ConnectRoute(routeID, secret)
 }
 
+func (r *RouteService) SetSudoPassword(routeID, password string) error {
+	return r.svc.SetSudoPassword(routeID, password)
+}
+
 func (r *RouteService) AnswerHostKey(routeID string, accept bool) error {
 	return r.svc.AnswerHostKey(routeID, accept)
 }

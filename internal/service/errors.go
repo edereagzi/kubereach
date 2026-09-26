@@ -76,7 +76,14 @@ func Describe(err error) ErrorInfo {
 	var user *userError
 	switch {
 	case errors.As(err, &credential):
-		return ErrorInfo{Code: credential.Code, Target: credential.Target, Message: fmt.Sprintf("%s needs its %s", credential.Target, credential.Code)}
+		msg := fmt.Sprintf("%s needs its %s", credential.Target, credential.Code)
+		switch {
+		case credential.Code == "sudo" && credential.wrong:
+			msg = "The sudo password for " + credential.Target + " was not accepted"
+		case credential.Code == "sudo":
+			msg = credential.Target + " needs its sudo password"
+		}
+		return ErrorInfo{Code: credential.Code, Target: credential.Target, Message: msg}
 	case errors.As(err, &inUse):
 		return ErrorInfo{Code: "port-in-use", Port: inUse.Port, Suggested: inUse.Suggested,
 			Message: fmt.Sprintf("Local port %d is in use; %d is free", inUse.Port, inUse.Suggested)}

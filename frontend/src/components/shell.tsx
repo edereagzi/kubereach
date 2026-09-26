@@ -11,7 +11,7 @@ import { forwardsFor, PortForwards } from "@/components/forwards";
 import { InspectorSlot } from "@/components/inspector";
 import { Logs, streamFor } from "@/components/logs";
 import { PodShell } from "@/components/terminal";
-import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, useRouteProblem } from "@/components/routes";
+import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { configQuery, errorText, reachabilityLabel, reachabilityQuery } from "@/queries";
+import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { openShellCount, useUIStore, type DockTab, type MainTab } from "@/store";
 import { cn, modKey } from "@/lib/utils";
 
@@ -227,7 +227,8 @@ function RouteBanner({ cluster }: { cluster: Cluster }) {
   const problem = useRouteProblem(cluster.route);
   const route = data?.routes?.find((r) => r.id === cluster.route);
   if (!cluster.route) return <DirectBanner cluster={cluster} />;
-  if (!route || status?.state === State.StateConnected) return null;
+  if (!route) return null;
+  if (status?.state === State.StateConnected) return cluster.remote ? <SudoBanner cluster={cluster} /> : null;
   const busy = status?.state === State.StateConnecting || status?.state === State.StateReconnecting;
   return (
     <div className="flex h-10 shrink-0 items-center gap-2.5 border-y bg-muted/50 px-4 text-sm">
@@ -243,6 +244,31 @@ function RouteBanner({ cluster }: { cluster: Cluster }) {
         <Button size="xs" onClick={() => requestConnect(route.id)}>
           {problem ? "Retry" : "Connect"}
         </Button>
+      )}
+    </div>
+  );
+}
+
+// SudoBanner asks again for the sudo password a remote Cluster's kubeconfig needs, as it is kept only for the session.
+function SudoBanner({ cluster }: { cluster: Cluster }) {
+  const queryClient = useQueryClient();
+  const { error } = useQuery(reachabilityQuery(cluster.id));
+  const [asking, setAsking] = useState(false);
+  if (!isSudoRequired(error)) return null;
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2.5 border-y bg-muted/50 px-4 text-sm">
+      <WarningIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate">{errorText(error)}</span>
+      <Button size="xs" onClick={() => setAsking(true)}>
+        Enter password
+      </Button>
+      {asking && (
+        <SudoPasswordDialog
+          routeId={cluster.route}
+          error={error}
+          retry={() => queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] })}
+          onClose={() => setAsking(false)}
+        />
       )}
     </div>
   );
