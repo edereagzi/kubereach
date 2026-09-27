@@ -26,7 +26,7 @@ useTheme.subscribe((s) => terminals.forEach((t) => (t.options.theme = xtermTheme
 const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
-    term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
+    term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
     // Cmd+K clears the screen and scrollback, as in a macOS terminal; only the view is cleared, the shell is not told.
     const t = term;
     t.attachCustomKeyEventHandler((e) => {

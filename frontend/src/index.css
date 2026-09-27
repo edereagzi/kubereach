@@ -168,3 +168,8 @@
   --wails-draggable: no-drag;
 }
 
+/* xterm rounds cursorWidth down to whole pixels; 1.5px sits between the text's strokes and the bold prompt's. One class
+   more than xterm's own rule, not !important, so its blink animation still wins. */
+.xterm .xterm-screen .xterm-rows .xterm-cursor.xterm-cursor-bar {
+  box-shadow: 1.5px 0 0 currentColor inset;
+}
