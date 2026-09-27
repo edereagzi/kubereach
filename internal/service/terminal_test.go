@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -380,5 +381,77 @@ func TestCredential_PrintsTheTerminalsTokenForKubectl(t *testing.T) {
 	t.Setenv("KUBEREACH_TOKEN", "")
 	if err := service.Credential(&out); err == nil {
 		t.Error("credential without a token succeeded")
+	}
+}
+
+func TestTerminal_KubeconfigSurvivesTheUsersStartupFiles(t *testing.T) {
+	for _, tc := range []struct {
+		shell string
+		files map[string]string
+		// env is what the shell must show besides the Terminal's KUBECONFIG.
+		env map[string]string
+	}{
+		{
+			shell: "zsh",
+			// A .zshenv that moves ZDOTDIR is followed, and the moved-to files run with it in place.
+			files: map[string]string{
+				".zshenv":        "export ZDOTDIR=${ZDOTDIR:-$HOME/zdot} KUBECONFIG=/elsewhere\n",
+				"zdot/.zprofile": "export KUBECONFIG=/elsewhere\n",
+				"zdot/.zshrc":    "export KUBECONFIG=/elsewhere RC=$ZDOTDIR\n",
+				"zdot/.zlogin":   "export KUBECONFIG=/elsewhere\n",
+			},
+			env: map[string]string{"ZDOTDIR": "$HOME/zdot", "RC": "$HOME/zdot"},
+		},
+		{shell: "bash", files: map[string]string{".bash_profile": "export KUBECONFIG=/elsewhere RC=profile\n"}, env: map[string]string{"RC": "profile"}},
+		{shell: "fish", files: map[string]string{".config/fish/config.fish": "set -gx KUBECONFIG /elsewhere\nset -gx RC config\n"}, env: map[string]string{"RC": "config"}},
+	} {
+		t.Run(tc.shell, func(t *testing.T) {
+			path, err := exec.LookPath(tc.shell)
+			if err != nil {
+				t.Skip(tc.shell + " is not installed")
+			}
+			svc, clusters := terminalService(t, nil)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+			t.Setenv("SHELL", path)
+			t.Setenv("ZDOTDIR", "")
+			for name, content := range tc.files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(home, name)), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(home, name), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			output, _ := terminalEvents(svc)
+			st, err := svc.StartTerminal(clusters[0].ID, 80, 24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = svc.StopTerminal(st.ID) })
+
+			kubeconfig := shellEnv(t, svc, output, st.ID, "KUBECONFIG")
+			if filepath.Base(kubeconfig) != "kubeconfig" {
+				t.Errorf("KUBECONFIG = %q, want the Terminal's", kubeconfig)
+			}
+			if _, err := os.Stat(kubeconfig); err != nil {
+				t.Error(err)
+			}
+			for name, want := range tc.env {
+				want = strings.ReplaceAll(want, "$HOME", home)
+				if got := shellEnv(t, svc, output, st.ID, name); got != want {
+					t.Errorf("%s = %q, want %q", name, got, want)
+				}
+			}
+
+			if err := svc.StopTerminal(st.ID); err != nil {
+				t.Fatal(err)
+			}
+			// The startup script lives next to the kubeconfig and goes with it.
+			if _, err := os.Stat(filepath.Dir(kubeconfig)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the Terminal's files outlived it: %v", err)
+			}
+		})
 	}
 }

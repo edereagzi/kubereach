@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -58,8 +59,8 @@ type kubeProxy struct {
 	srv       *http.Server
 	// stop cancels every request, upgraded ones included, which outlive the server's Close.
 	stop context.CancelFunc
-	// kubeconfig is the file KUBECONFIG points the Terminal's shell to.
-	kubeconfig string
+	// dir holds the Terminal's kubeconfig, the file KUBECONFIG points its shell to, and its shell's startup script.
+	dir, kubeconfig string
 
 	mu sync.Mutex
 	// config is the Cluster's client config rp was built from, rebuilt when the Cluster's client is.
@@ -88,8 +89,8 @@ func (s *Service) startKubeProxy(clusterID string) (*kubeProxy, error) {
 func (p *kubeProxy) close() {
 	p.stop()
 	_ = p.srv.Close()
-	if p.kubeconfig != "" {
-		_ = os.Remove(p.kubeconfig)
+	if p.dir != "" {
+		_ = os.RemoveAll(p.dir)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -213,20 +214,18 @@ func localhostCert() (tls.Certificate, []byte, error) {
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), nil
 }
 
-// writeKubeconfig writes the Terminal's kubeconfig, which holds no secret: the proxy's address and CA, the namespace,
-// and `kubereach credential` for the token. It is removed when the proxy closes.
-// ponytail: one left by a Kubereach that did not quit cleanly stays in the temp dir; it holds nothing to steal.
+// writeKubeconfig writes the Terminal's kubeconfig to a directory of its own, which holds no secret: the proxy's
+// address and CA, the namespace, and `kubereach credential` for the token. It is removed when the proxy closes.
+// ponytail: the directory of a Kubereach that did not quit cleanly stays in the temp dir; it holds nothing to steal.
 func (p *kubeProxy) writeKubeconfig(name, namespace string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp("", "kubereach-*.kubeconfig")
-	if err != nil {
+	if p.dir, err = os.MkdirTemp("", "kubereach-"); err != nil {
 		return err
 	}
-	_ = f.Close()
-	p.kubeconfig = f.Name()
+	p.kubeconfig = filepath.Join(p.dir, "kubeconfig")
 	kc := clientcmdapi.NewConfig()
 	kc.Clusters[name] = &clientcmdapi.Cluster{Server: p.url, CertificateAuthorityData: p.ca}
 	kc.AuthInfos[name] = &clientcmdapi.AuthInfo{Exec: &clientcmdapi.ExecConfig{
@@ -237,7 +236,7 @@ func (p *kubeProxy) writeKubeconfig(name, namespace string) error {
 	}}
 	kc.Contexts[name] = &clientcmdapi.Context{Cluster: name, AuthInfo: name, Namespace: namespace}
 	kc.CurrentContext = name
-	return clientcmd.WriteToFile(*kc, f.Name())
+	return clientcmd.WriteToFile(*kc, p.kubeconfig)
 }
 
 // terminalNamespace is the namespace a Terminal opens on: the one the Cluster is scoped to, else its context's.

@@ -2,9 +2,12 @@ package service
 
 import (
 	"cmp"
+	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -70,6 +73,11 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		proxy.close()
 		return TerminalStatus{}, &userError{msg: "Could not open the Terminal", err: err}
 	}
+	name, args, env, err := userShell(proxy.dir, proxy.kubeconfig)
+	if err != nil {
+		proxy.close()
+		return TerminalStatus{}, &userError{msg: "Could not open the Terminal", err: err}
+	}
 	p, err := pty.New()
 	if err != nil {
 		proxy.close()
@@ -80,9 +88,8 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		proxy.close()
 		return TerminalStatus{}, err
 	}
-	name, args := userShell()
 	cmd := p.Command(name, args...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, tokenEnv+"="+proxy.token)
+	cmd.Env = append(append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, tokenEnv+"="+proxy.token), env...)
 	cmd.Dir, _ = os.UserHomeDir()
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()
@@ -110,13 +117,54 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 }
 
 // userShell is $SHELL as a login shell, so a Kubereach started from the desktop gets the PATH a terminal app would;
-// on Windows it is PowerShell.
-func userShell() (string, []string) {
+// on Windows it is PowerShell. A startup file may set KUBECONFIG too, so zsh, bash, fish and PowerShell set it back to
+// kubeconfig after the user's own have run, zsh and bash from a startup script written to dir; env is added to the
+// shell's environment.
+func userShell(dir, kubeconfig string) (name string, args, env []string, err error) {
 	if runtime.GOOS == "windows" {
-		return "powershell.exe", []string{"-NoLogo"}
+		// -Command runs after the user's profile.
+		return "powershell.exe", []string{"-NoLogo", "-NoExit", "-Command", "$env:KUBECONFIG = '" + strings.ReplaceAll(kubeconfig, "'", "''") + "'"}, nil, nil
 	}
-	return cmp.Or(os.Getenv("SHELL"), "/bin/sh"), []string{"-l"}
+	name = cmp.Or(os.Getenv("SHELL"), "/bin/sh")
+	quoted := "'" + strings.ReplaceAll(kubeconfig, "'", `'\''`) + "'"
+	switch filepath.Base(name) {
+	case "zsh":
+		env = []string{"ZDOTDIR=" + dir, "KUBEREACH_ZDOTDIR=" + os.Getenv("ZDOTDIR")}
+		return name, []string{"-l"}, env, os.WriteFile(filepath.Join(dir, ".zshenv"), []byte(fmt.Sprintf(zshenv, quoted)), 0o600)
+	case "bash":
+		// A login shell ignores --init-file, so the script starts it as one would be.
+		script := filepath.Join(dir, "bashrc")
+		return name, []string{"--init-file", script, "-i"}, nil, os.WriteFile(script, []byte(fmt.Sprintf(bashrc, quoted)), 0o600)
+	case "fish":
+		// -C runs after the user's config.
+		return name, []string{"-l", "-C", "set -gx KUBECONFIG '" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(kubeconfig) + "'"}, nil, nil
+	}
+	return name, []string{"-l"}, nil, nil
 }
+
+// zshenv is read first as zsh starts, from the ZDOTDIR the Terminal gives it. It hands ZDOTDIR back to the user's, unset
+// if they had none, and runs their .zshenv, so zsh goes on to read the rest of their startup files, following whatever
+// ZDOTDIR a .zshenv sets, as it always would; KUBECONFIG is set back just before the first prompt, once all have run.
+// ponytail: a startup file that assigns precmd_functions rather than adding to it drops the hook, and KUBECONFIG with it.
+const zshenv = `if [[ -n $KUBEREACH_ZDOTDIR ]]; then ZDOTDIR=$KUBEREACH_ZDOTDIR; else unset ZDOTDIR; fi
+unset KUBEREACH_ZDOTDIR
+[[ -f "${ZDOTDIR:-$HOME}/.zshenv" ]] && source "${ZDOTDIR:-$HOME}/.zshenv"
+_kubereach_kubeconfig() {
+  export KUBECONFIG=%s
+  precmd_functions=(${precmd_functions:#_kubereach_kubeconfig})
+  unfunction _kubereach_kubeconfig
+}
+precmd_functions+=(_kubereach_kubeconfig)
+`
+
+// bashrc starts bash as a login shell would, then sets KUBECONFIG back.
+const bashrc = `[ -r /etc/profile ] && . /etc/profile
+if [ -r ~/.bash_profile ]; then . ~/.bash_profile
+elif [ -r ~/.bash_login ]; then . ~/.bash_login
+elif [ -r ~/.profile ]; then . ~/.profile
+fi
+export KUBECONFIG=%s
+`
 
 // runTerminal streams the PTY until the shell exits, then forgets the Terminal. The PTY is closed only after the
 // exit: the parent's hold on it keeps reads open until then, on Unix and ConPTY alike.
