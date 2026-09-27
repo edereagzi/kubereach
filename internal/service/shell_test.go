@@ -166,6 +166,10 @@ func TestShell_TriesShellsInOrderAndRoundTripsBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	readOutput(t, output, st.ID, "echo hi\r\n")
+	// A reloaded window draws the session's latest output again.
+	if tail, err := f.svc.ShellTail(st.ID); err != nil || string(tail.Data) != "sh$ echo hi\r\n" || tail.Cols != 80 || tail.Rows != 24 {
+		t.Errorf("tail = %q at %dx%d, %v, want the output so far at 80x24", tail.Data, tail.Cols, tail.Rows, err)
+	}
 	if err := f.svc.ResizeShell(st.ID, 120, 40); err != nil {
 		t.Fatal(err)
 	}

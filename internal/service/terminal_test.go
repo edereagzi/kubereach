@@ -149,6 +149,33 @@ func TestTerminal_AnnouncedBeforeItsFirstOutput(t *testing.T) {
 	}
 }
 
+func TestTerminal_KeepsItsLatestOutputForAReloadedWindow(t *testing.T) {
+	svc, output, _, st := startTestTerminal(t)
+
+	// More than the tail holds, then a marker that must be its end.
+	if err := svc.WriteTerminal(st.ID, []byte("head -c 600000 /dev/zero | tr '\\0' x; echo; echo end-$((1+1))\n")); err != nil {
+		t.Fatal(err)
+	}
+	readOutput(t, output, st.ID, "end-2")
+	time.Sleep(50 * time.Millisecond)
+	tail, err := svc.TerminalTail(st.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data := tail.Data; len(data) > service.TailSize || !regexp.MustCompile(`x+\r\nend-2\r\n`).Match(data) {
+		t.Errorf("tail is %d bytes ending %q, want at most %d ending with the marker", len(data), data[max(0, len(data)-40):], service.TailSize)
+	}
+	if err := svc.ResizeTerminal(st.ID, 100, 30); err != nil {
+		t.Fatal(err)
+	}
+	if tail, _ := svc.TerminalTail(st.ID); tail.Cols != 100 || tail.Rows != 30 {
+		t.Errorf("tail size = %dx%d, want the PTY's 100x30", tail.Cols, tail.Rows)
+	}
+	if _, err := svc.TerminalTail("gone"); err == nil {
+		t.Error("tail of an unknown Terminal succeeded")
+	}
+}
+
 func TestTerminal_StopEndsTheShell(t *testing.T) {
 	svc, output, states, st := startTestTerminal(t)
 	pid := shellPID(t, svc, output, st.ID)

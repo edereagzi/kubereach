@@ -60,6 +60,7 @@ type shellConn struct {
 	size   remotecommand.TerminalSize
 	// attempt is the exec currently attached, nil between shells and after the last one.
 	attempt *shellAttempt
+	tail    outputTail
 }
 
 // shellAttempt is one exec's stdin and resize queue; each shell tried gets its own so a dead attempt's readers never steal input.
@@ -180,6 +181,52 @@ func (s *Service) ShellStatuses() []ShellStatus {
 	return out
 }
 
+// ShellTail returns the session's latest output, for a window that reloaded to draw again.
+func (s *Service) ShellTail(sessionID string) (SessionTail, error) {
+	sc, err := s.shell(sessionID)
+	if err != nil {
+		return SessionTail{}, err
+	}
+	sc.mu.Lock()
+	size := sc.size
+	sc.mu.Unlock()
+	return SessionTail{Data: sc.tail.bytes(), Cols: int(size.Width), Rows: int(size.Height)}, nil
+}
+
+// SessionTail is a session's latest output and the size it was drawn at, which it must be drawn again at: a shell
+// pads lines to the terminal's width.
+type SessionTail struct {
+	Data []byte `json:"data"`
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
+}
+
+// tailSize is how much of a session's latest output is kept, a full screen of a busy TUI with room to spare.
+const tailSize = 256 << 10
+
+// outputTail keeps a Shell's or Terminal's latest output, since the window holding it may reload.
+// ponytail: the kept bytes may start inside an escape sequence; xterm shrugs off the fragment.
+type outputTail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *outputTail) add(p []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	// Trimmed only once it holds twice the tail, so a stream of chunks is not copied on each one.
+	if len(t.buf) > 2*tailSize {
+		t.buf = slices.Clone(t.buf[len(t.buf)-tailSize:])
+	}
+}
+
+func (t *outputTail) bytes() []byte {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return slices.Clone(t.buf[max(0, len(t.buf)-tailSize):])
+}
+
 func (s *Service) shell(sessionID string) (*shellConn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -263,6 +310,7 @@ func (o *shellOutput) Write(p []byte) (int, error) {
 		o.svc.setShellState(o.sc, StateConnected, nil)
 	}
 	o.n += len(p)
+	o.sc.tail.add(p)
 	o.svc.Emit(EventShellOutput, ShellOutput{SessionID: o.sc.status.ID, Data: slices.Clone(p)})
 	return len(p), nil
 }

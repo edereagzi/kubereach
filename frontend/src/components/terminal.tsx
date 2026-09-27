@@ -5,7 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { ShellService, TerminalService } from "@bindings/internal/bindings";
-import { State, type Cluster, type ShellOutput, type ShellStatus, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
+import { State, type Cluster, type ShellOutput, type ShellStatus, type SessionTail, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { sessionEnded, useUIStore } from "@/store";
@@ -65,9 +65,31 @@ const sendInput = (io: SessionIO, id: string, data: string) => {
 
 // Output for a session that was closed is dropped, so a late chunk never revives its terminal.
 export function writeSessionOutput({ sessionId, data }: ShellOutput | TerminalOutput) {
+  const queued = restoring.get(sessionId);
+  if (queued) {
+    if (data) queued.push(data);
+    return;
+  }
   if (data && isOpen(useUIStore.getState(), sessionId)) {
     terminalFor(sessionId).write(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)));
   }
+}
+
+// A reloaded window lost what its sessions showed, so each one's latest output is drawn first and live output
+// arriving meanwhile waits behind it.
+// ponytail: a chunk sent between the status and the tail being read shows twice; offsets would drop it.
+const restoring = new Map<string, string[]>();
+export function restoreSession(id: string, tail: Promise<SessionTail>) {
+  restoring.set(id, []);
+  void tail
+    .catch(() => null)
+    .then((t) => {
+      const queued = restoring.get(id) ?? [];
+      restoring.delete(id);
+      // Drawn at the size it was written for, since a shell pads lines to the width; the view fits it after.
+      if (t?.cols && t.rows && isOpen(useUIStore.getState(), id)) terminalFor(id).resize(t.cols, t.rows);
+      for (const data of [t?.data ?? "", ...queued]) writeSessionOutput({ sessionId: id, data });
+    });
 }
 
 export type ShellPod = { namespace: string; name: string; containers: string[] };

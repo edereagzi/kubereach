@@ -36,6 +36,10 @@ func (sh *ShellService) Stop(sessionID string) error {
 	return sh.svc.StopShell(sessionID)
 }
 
+func (sh *ShellService) Tail(sessionID string) (service.SessionTail, error) {
+	return sh.svc.ShellTail(sessionID)
+}
+
 func (sh *ShellService) Statuses() []service.ShellStatus {
 	return sh.svc.ShellStatuses()
 }

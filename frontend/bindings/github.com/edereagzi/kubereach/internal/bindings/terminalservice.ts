@@ -25,6 +25,10 @@ export function Stop(id: string): $CancellablePromise<void> {
     return $Call.ByID(2754621687, id);
 }
 
+export function Tail(id: string): $CancellablePromise<service$0.SessionTail> {
+    return $Call.ByID(3876954917, id);
+}
+
 export function Write(id: string, data: string): $CancellablePromise<void> {
     return $Call.ByID(1347563122, id, data);
 }

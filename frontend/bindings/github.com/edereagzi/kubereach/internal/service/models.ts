@@ -793,6 +793,16 @@ export interface SSHServer {
     "keyFile": string;
 }
 
+/**
+ * SessionTail is a session's latest output and the size it was drawn at, which it must be drawn again at: a shell
+ * pads lines to the terminal's width.
+ */
+export interface SessionTail {
+    "data": string | null;
+    "cols": number;
+    "rows": number;
+}
+
 export interface ShellOutput {
     "sessionId": string;
     "data": string | null;

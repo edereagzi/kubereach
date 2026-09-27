@@ -34,6 +34,10 @@ func (t *TerminalService) Stop(id string) error {
 	return t.svc.StopTerminal(id)
 }
 
+func (t *TerminalService) Tail(id string) (service.SessionTail, error) {
+	return t.svc.TerminalTail(id)
+}
+
 func (t *TerminalService) Statuses() []service.TerminalStatus {
 	return t.svc.TerminalStatuses()
 }

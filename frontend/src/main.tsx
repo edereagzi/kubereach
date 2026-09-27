@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
 import { ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
-import { writeSessionOutput } from "@/components/terminal";
+import { restoreSession, writeSessionOutput } from "@/components/terminal";
 import { configQuery } from "@/queries";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
@@ -55,8 +55,18 @@ Events.On("tray:open-cluster", ({ data }) => {
 RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));
 ForwardService.Statuses().then((statuses) => statuses?.forEach(setForwardStatus));
 LogService.Statuses().then((statuses) => statuses?.forEach(setLogStatus));
-ShellService.Statuses().then((statuses) => statuses?.forEach(setShellStatus));
-TerminalService.Statuses().then((statuses) => statuses?.forEach(setTerminalStatus));
+ShellService.Statuses().then((statuses) =>
+  statuses?.forEach((s) => {
+    setShellStatus(s);
+    restoreSession(s.id, ShellService.Tail(s.id));
+  }),
+);
+TerminalService.Statuses().then((statuses) =>
+  statuses?.forEach((s) => {
+    setTerminalStatus(s);
+    restoreSession(s.id, TerminalService.Tail(s.id));
+  }),
+);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

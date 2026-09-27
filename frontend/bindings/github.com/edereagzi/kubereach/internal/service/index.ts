@@ -65,6 +65,7 @@ export type {
     Route,
     RouteStatus,
     SSHServer,
+    SessionTail,
     ShellOutput,
     ShellStatus,
     ShellTarget,

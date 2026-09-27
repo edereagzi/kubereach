@@ -38,6 +38,9 @@ type terminalConn struct {
 	closePty func()
 	done     chan struct{}
 	status   TerminalStatus
+	tail     outputTail
+	// cols and rows are the PTY's size, guarded by the Service's mutex.
+	cols, rows int
 }
 
 // terminalHangup is how long a Terminal's shell has to exit after its PTY is closed before it is killed.
@@ -68,6 +71,8 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		closePty: sync.OnceFunc(func() { _ = p.Close() }),
 		done:     make(chan struct{}),
 		status:   TerminalStatus{ID: newID(), ClusterID: clusterID, Shell: name, State: StateConnected},
+		cols:     cols,
+		rows:     rows,
 	}
 	s.mu.Lock()
 	status := tc.status
@@ -100,6 +105,7 @@ func (s *Service) runTerminal(tc *terminalConn) {
 		for {
 			n, err := tc.pty.Read(buf)
 			if n > 0 {
+				tc.tail.add(buf[:n])
 				s.Emit(EventTerminalOutput, TerminalOutput{SessionID: tc.status.ID, Data: slices.Clone(buf[:n])})
 			}
 			if err != nil {
@@ -138,6 +144,9 @@ func (s *Service) ResizeTerminal(id string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
+	tc.cols, tc.rows = cols, rows
+	s.mu.Unlock()
 	return tc.pty.Resize(cols, rows)
 }
 
@@ -172,6 +181,18 @@ func (s *Service) TerminalStatuses() []TerminalStatus {
 	}
 	slices.SortFunc(out, func(a, b TerminalStatus) int { return cmp.Compare(a.ID, b.ID) })
 	return out
+}
+
+// TerminalTail returns the Terminal's latest output, for a window that reloaded to draw again.
+func (s *Service) TerminalTail(id string) (SessionTail, error) {
+	tc, err := s.terminal(id)
+	if err != nil {
+		return SessionTail{}, err
+	}
+	s.mu.Lock()
+	cols, rows := tc.cols, tc.rows
+	s.mu.Unlock()
+	return SessionTail{Data: tc.tail.bytes(), Cols: cols, Rows: rows}, nil
 }
 
 func (s *Service) terminal(id string) (*terminalConn, error) {
