@@ -350,6 +350,8 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
         }}
         onMouseDown={() => (allSelected.current = false)}
         onKeyDown={(e) => {
+          // ↑ and ↓ scroll the lines rather than walk an open detail's rows.
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") e.stopPropagation();
           if ((e.metaKey || e.ctrlKey) && e.key === "a") {
             e.preventDefault();
             window.getSelection()?.selectAllChildren(e.currentTarget);
