@@ -183,6 +183,8 @@ type forwardFixture struct {
 	cluster string
 	path    string
 	clients service.ClientFactory
+	// dial, when set, is the Cluster's dial function, as a Route's is.
+	dial service.DialFunc
 }
 
 // newForwardFixture lists with the fake clientset and forwards against an in-test API server speaking the port-forward protocol.
@@ -192,7 +194,7 @@ func newForwardFixture(t *testing.T, objects ...runtime.Object) *forwardFixture 
 	api := httptest.NewServer(http.HandlerFunc(f.api.podHandler))
 	t.Cleanup(api.Close)
 	f.clients = func(service.Cluster, []byte, service.DialFunc) (kubernetes.Interface, *rest.Config, error) {
-		return f.cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout}, nil
+		return f.cs, &rest.Config{Host: api.URL, Timeout: fixtureTimeout, Dial: f.dial}, nil
 	}
 	f.svc = service.New(f.path, f.clients)
 	f.svc.Emit = func(_ string, data any) {

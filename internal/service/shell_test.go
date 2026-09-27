@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -31,8 +32,11 @@ func (a *testAPI) execHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	a.execs = append(a.execs, q.Get("container")+":"+shell)
-	available := a.shells[shell]
+	available, stall := a.shells[shell], a.stall
 	a.mu.Unlock()
+	if stall != nil {
+		<-stall
+	}
 	if _, err := httpstream.Handshake(r, w, []string{"v4.channel.k8s.io"}); err != nil {
 		return
 	}
@@ -224,6 +228,140 @@ func TestShell_DefaultsToFirstContainerAndEndsWhenShellExits(t *testing.T) {
 				t.Error("write to an ended session succeeded")
 			}
 		})
+	}
+}
+
+// frozenHopConn is a Route connection whose SSH server froze: closing it does not end a pending read.
+type frozenHopConn struct {
+	net.Conn
+}
+
+func (frozenHopConn) Close() error { return nil }
+
+func TestShell_StopWhileConnectStallsReturns(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dial func(t *testing.T) service.DialFunc
+	}{
+		{"direct", func(*testing.T) service.DialFunc { return nil }},
+		{"through a frozen Route", func(t *testing.T) service.DialFunc {
+			return func(ctx context.Context, network, addr string) (net.Conn, error) {
+				conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+				if err != nil {
+					return nil, err
+				}
+				t.Cleanup(func() { _ = conn.Close() })
+				return frozenHopConn{conn}, nil
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newForwardFixture(t, twoContainerPod("default", "api-0"))
+			f.dial = tc.dial(t)
+			f.api.shells = map[string]bool{"sh": true}
+			stall := make(chan struct{})
+			t.Cleanup(func() { close(stall) })
+			f.api.mu.Lock()
+			f.api.stall = stall
+			f.api.mu.Unlock()
+			_, states := shellEvents(f.svc)
+
+			st, err := f.svc.StartShell(context.Background(), service.ShellTarget{ClusterID: f.cluster, Namespace: "default", Pod: "api-0"}, 80, 24)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitShellState(t, states, service.StateConnecting)
+			time.Sleep(200 * time.Millisecond)
+			stopped := make(chan error, 1)
+			go func() { stopped <- f.svc.StopShell(st.ID) }()
+			select {
+			case err := <-stopped:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("StopShell still waits on the stalled connect")
+			}
+		})
+	}
+}
+
+// freezableConn is a Route connection whose SSH server freezes once frozen closes: reads then wait for good, and closing
+// the connection does not end them. Small writes still go through, as the SSH window and the socket buffer take them.
+type freezableConn struct {
+	net.Conn
+	frozen, thaw chan struct{}
+}
+
+func (c freezableConn) wait() bool {
+	select {
+	case <-c.frozen:
+		<-c.thaw
+		return true
+	default:
+		return false
+	}
+}
+
+func (c freezableConn) Read(p []byte) (int, error) {
+	if c.wait() {
+		return 0, net.ErrClosed
+	}
+	return c.Conn.Read(p)
+}
+
+func (c freezableConn) Write(p []byte) (int, error) {
+	select {
+	case <-c.frozen:
+		return len(p), nil
+	default:
+		return c.Conn.Write(p)
+	}
+}
+
+func (c freezableConn) Close() error {
+	select {
+	case <-c.frozen:
+		return nil
+	default:
+		return c.Conn.Close()
+	}
+}
+
+// An open Shell whose last hop freezes still closes at once.
+func TestShell_StopAfterTheRouteFreezesReturns(t *testing.T) {
+	f := newForwardFixture(t, twoContainerPod("default", "api-0"))
+	frozen, thaw := make(chan struct{}), make(chan struct{})
+	f.dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		t.Cleanup(func() { _ = conn.Close() })
+		return freezableConn{conn, frozen, thaw}, nil
+	}
+	t.Cleanup(func() { close(thaw) })
+	f.api.shells = map[string]bool{"sh": true}
+	output, states := shellEvents(f.svc)
+
+	st, err := f.svc.StartShell(context.Background(), service.ShellTarget{ClusterID: f.cluster, Namespace: "default", Pod: "api-0"}, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitShellState(t, states, service.StateConnected)
+	readOutput(t, output, st.ID, "sh$ ")
+	close(frozen)
+	_ = f.svc.WriteShell(st.ID, []byte("echo hi\n"))
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- f.svc.StopShell(st.ID) }()
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StopShell still waits on the frozen Route")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -88,16 +89,17 @@ func (s *Service) StartShell(ctx context.Context, target ShellTarget, cols, rows
 	}
 	cfg := rest.CopyConfig(k.config)
 	cfg.Timeout = 0
-	rt, upgrader, err := spdyTransport(cfg)
-	if err != nil {
-		return ShellStatus{}, err
-	}
 	u, _, err := rest.DefaultServerUrlFor(cfg)
 	if err != nil {
 		return ShellStatus{}, err
 	}
 	u.Path = path.Join(u.Path, "api/v1/namespaces", target.Namespace, "pods", target.Pod, "exec")
+	// Each shell tried gets its own upgrader, since one whose upgrade was abandoned may still be reading.
 	executorFor := func(shell string) (remotecommand.Executor, error) {
+		rt, upgrader, err := spdyTransport(cfg)
+		if err != nil {
+			return nil, err
+		}
 		q := url.Values{"container": {target.Container}, "command": {shell}, "stdin": {"true"}, "stdout": {"true"}, "tty": {"true"}}
 		execURL := *u
 		execURL.RawQuery = q.Encode()
@@ -342,8 +344,22 @@ func (s *Service) updateShellStatus(sc *shellConn, change func(st *ShellStatus))
 }
 
 // spdyTransport builds the SPDY upgrader over the config's own transport, so the Route's dial function is honoured
-// where client-go's spdy.RoundTripperFor would dial the API server directly.
+// where client-go's spdy.RoundTripperFor would dial the API server directly. The upgrader reads its reply without
+// watching the request's context, so an upgrade whose context ends is abandoned and the connection it dialed closed.
 func spdyTransport(cfg *rest.Config) (http.RoundTripper, spdy.Upgrader, error) {
+	cfg = rest.CopyConfig(cfg)
+	dial := cfg.Dial
+	if dial == nil {
+		// client-go's own default dialer.
+		dial = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	}
+	cfg.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := dial(ctx, network, address)
+		if u, ok := ctx.Value(upgradeKey{}).(*upgradeConn); ok && err == nil {
+			u.dialed(conn)
+		}
+		return conn, err
+	}
 	base, err := rest.TransportFor(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -352,9 +368,68 @@ func spdyTransport(cfg *rest.Config) (http.RoundTripper, spdy.Upgrader, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	rt, err := rest.HTTPWrappersForConfig(cfg, upgrader)
+	rt, err := rest.HTTPWrappersForConfig(cfg, cancelableUpgrade{upgrader})
 	if err != nil {
 		return nil, nil, err
 	}
 	return rt, spdy.NewUpgraderForStreaming(upgrader), nil
+}
+
+// cancelableUpgrade returns once the request's context ends, closing the connection the upgrade dialed.
+type cancelableUpgrade struct {
+	*streamspdy.SpdyRoundTripper
+}
+
+func (c cancelableUpgrade) RoundTrip(req *http.Request) (*http.Response, error) {
+	u := &upgradeConn{}
+	ctx := context.WithValue(req.Context(), upgradeKey{}, u)
+	defer context.AfterFunc(ctx, u.cancel)()
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := c.SpdyRoundTripper.RoundTrip(req.WithContext(ctx))
+		done <- result{resp, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err != nil && ctx.Err() != nil {
+			// Report why the context ended rather than the failed read on the connection cancel closed.
+			return nil, ctx.Err()
+		}
+		return r.resp, r.err
+	case <-ctx.Done():
+		// Closing a Route's connection does not end a read its frozen SSH server never answers, so the upgrade is
+		// left to end on its own; the upgrader is not used again.
+		return nil, ctx.Err()
+	}
+}
+
+type upgradeKey struct{}
+
+// upgradeConn is the connection one SPDY upgrade dialed; one dialed after cancel is closed at once.
+type upgradeConn struct {
+	mu       sync.Mutex
+	conn     net.Conn
+	canceled bool
+}
+
+func (u *upgradeConn) dialed(conn net.Conn) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.conn = conn
+	if u.canceled {
+		_ = conn.Close()
+	}
+}
+
+func (u *upgradeConn) cancel() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.canceled = true
+	if u.conn != nil {
+		_ = u.conn.Close()
+	}
 }

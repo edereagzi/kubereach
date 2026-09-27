@@ -603,35 +603,12 @@ func (s *Service) forwardConnection(ctx context.Context, fc *forwardConn) (https
 
 const forwardDialTimeout = 30 * time.Second
 
-// dialForwardBounded gives up on the dial without waiting for it: the SPDY upgrade reads its response
-// without watching the context.
+// dialForwardBounded gives up on a dial that takes longer than forwardDialTimeout; every step of it, the SPDY upgrade
+// included, returns once its context ends.
 func (s *Service) dialForwardBounded(ctx context.Context, pf PortForward) (string, int, httpstream.Connection, error) {
 	ctx, cancel := context.WithTimeout(ctx, forwardDialTimeout)
 	defer cancel()
-	type dialed struct {
-		pod     string
-		podPort int
-		conn    httpstream.Connection
-		err     error
-	}
-	result := make(chan dialed)
-	go func() {
-		var d dialed
-		d.pod, d.podPort, d.conn, d.err = s.dialForward(ctx, pf)
-		select {
-		case result <- d:
-		case <-ctx.Done():
-			if d.conn != nil {
-				_ = d.conn.Close()
-			}
-		}
-	}()
-	select {
-	case d := <-result:
-		return d.pod, d.podPort, d.conn, d.err
-	case <-ctx.Done():
-		return "", 0, nil, fmt.Errorf("dial pod: %w", ctx.Err())
-	}
+	return s.dialForward(ctx, pf)
 }
 
 // dialForward resolves the backing pod the way kubectl does and opens a port-forward connection to it through the Route.
