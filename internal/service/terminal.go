@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -78,6 +79,12 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		proxy.close()
 		return TerminalStatus{}, &userError{msg: "Could not open the Terminal", err: err}
 	}
+	// go-pty on Windows runs a bare name from cmd.Dir, not from PATH as os/exec does, so the shell is found here.
+	path, err := exec.LookPath(name)
+	if err != nil {
+		proxy.close()
+		return TerminalStatus{}, &userError{msg: "Could not start " + name, err: err}
+	}
 	p, err := pty.New()
 	if err != nil {
 		proxy.close()
@@ -88,7 +95,7 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		proxy.close()
 		return TerminalStatus{}, err
 	}
-	cmd := p.Command(name, args...)
+	cmd := p.Command(path, args...)
 	cmd.Env = append(append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, tokenEnv+"="+proxy.token), env...)
 	cmd.Dir, _ = os.UserHomeDir()
 	if err := cmd.Start(); err != nil {
