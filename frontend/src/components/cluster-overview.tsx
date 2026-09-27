@@ -57,9 +57,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const explicit = cluster.namespaces ?? [];
   // Each kind is its own list and lands on its own; the rows change once all have, so a namespace fills in one step.
   const live = { groups: liveGroups, namespaces: explicit.length ? explicit : (namespaces.data ?? []) };
-  const settled = useRef(live);
-  if (!fetching && !namespaces.isFetching && !rescoping) settled.current = live;
-  const { groups } = settled.current;
+  // Until the first time they do, the Overview is loading rather than empty.
+  const settled = useRef({ ...live, loaded: false });
+  if (!fetching && !namespaces.isFetching && !rescoping) settled.current = { ...live, loaded: true };
+  const { groups, loaded } = settled.current;
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
   const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
   // A Job that succeeded, and its pods, stay listed only until the Job is cleaned up, so each namespace folds them behind one line.
@@ -205,12 +206,12 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           rescoping && "opacity-50",
         )}
       >
-        {total === 0 && !pending && (
+        {total === 0 && (
           <Empty className="col-span-full justify-start border-0 pt-12">
             <EmptyHeader>
-              <EmptyTitle>{words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
+              <EmptyTitle>{!loaded ? "Loading…" : words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs, autoscalers that cannot scale, unbound volume claims or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
+                {!loaded ? "Its objects appear as soon as the cluster answers." : words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs, autoscalers that cannot scale, unbound volume claims or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
