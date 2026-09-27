@@ -870,6 +870,11 @@ export interface TerminalStatus {
      */
     "clusterId": string;
     "shell": string;
+
+    /**
+     * Namespace is the one kubectl in the Terminal defaults to, empty for its own default.
+     */
+    "namespace": string;
     "state": State;
 }
 

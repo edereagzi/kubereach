@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"log"
+	"os"
 
 	"github.com/edereagzi/kubereach/internal/bindings"
 	"github.com/edereagzi/kubereach/internal/service"
@@ -18,6 +19,13 @@ var assets embed.FS
 var version = "dev"
 
 func main() {
+	// kubectl in a Terminal runs this for its token; it must not start the app or wait on its single-instance lock.
+	if len(os.Args) == 2 && os.Args[1] == "credential" {
+		if err := service.Credential(os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	configPath, err := service.DefaultConfigPath()
 	if err != nil {
 		log.Fatal(err)

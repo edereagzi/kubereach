@@ -191,7 +191,8 @@ function Dock({ cluster }: { cluster: Cluster }) {
           status: terminal,
           icon: <TerminalWindowIcon />,
           label: "Terminal",
-          detail: done ? "ended" : (terminal.shell.split(/[\\/]/).pop() ?? ""),
+          // The namespace kubectl opens on, else the shell running.
+          detail: done ? "ended" : terminal.namespace || (terminal.shell.split(/[\\/]/).pop() ?? ""),
           close: () => {
             useUIStore.getState().closeTerminal(id);
             if (!done) void TerminalService.Stop(id);

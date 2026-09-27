@@ -29,6 +29,8 @@ type TerminalStatus struct {
 	// ClusterID is the Cluster whose bottom panel the Terminal is a tab of.
 	ClusterID string `json:"clusterId"`
 	Shell     string `json:"shell"`
+	// Namespace is the one kubectl in the Terminal defaults to, empty for its own default.
+	Namespace string `json:"namespace"`
 	State     State  `json:"state"`
 }
 
@@ -38,6 +40,7 @@ type terminalConn struct {
 	closePty func()
 	done     chan struct{}
 	status   TerminalStatus
+	proxy    *kubeProxy
 	tail     outputTail
 	// cols and rows are the PTY's size, guarded by the Service's mutex.
 	cols, rows int
@@ -46,23 +49,44 @@ type terminalConn struct {
 // terminalHangup is how long a Terminal's shell has to exit after its PTY is closed before it is killed.
 const terminalHangup = 3 * time.Second
 
-// StartTerminal runs the user's shell in a PTY of cols by rows in their home directory; output arrives as
-// EventTerminalOutput and its end as EventTerminalState.
+// StartTerminal runs the user's shell in a PTY of cols by rows in their home directory, with kubectl reaching the
+// Cluster through Kubereach; output arrives as EventTerminalOutput and its end as EventTerminalState.
 func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatus, error) {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return TerminalStatus{}, err
+	}
+	i, err := findCluster(cfg, clusterID)
+	if err != nil {
+		return TerminalStatus{}, err
+	}
+	c := cfg.Clusters[i]
+	namespace := s.terminalNamespace(c)
+	proxy, err := s.startKubeProxy(clusterID)
+	if err != nil {
+		return TerminalStatus{}, &userError{msg: "Could not open the Terminal", err: err}
+	}
+	if err := proxy.writeKubeconfig(c.Name, namespace); err != nil {
+		proxy.close()
+		return TerminalStatus{}, &userError{msg: "Could not open the Terminal", err: err}
+	}
 	p, err := pty.New()
 	if err != nil {
+		proxy.close()
 		return TerminalStatus{}, err
 	}
 	if err := p.Resize(cols, rows); err != nil {
 		_ = p.Close()
+		proxy.close()
 		return TerminalStatus{}, err
 	}
 	name, args := userShell()
 	cmd := p.Command(name, args...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, tokenEnv+"="+proxy.token)
 	cmd.Dir, _ = os.UserHomeDir()
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()
+		proxy.close()
 		return TerminalStatus{}, &userError{msg: "Could not start " + name, err: err}
 	}
 	tc := &terminalConn{
@@ -70,7 +94,8 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		cmd:      cmd,
 		closePty: sync.OnceFunc(func() { _ = p.Close() }),
 		done:     make(chan struct{}),
-		status:   TerminalStatus{ID: newID(), ClusterID: clusterID, Shell: name, State: StateConnected},
+		status:   TerminalStatus{ID: newID(), ClusterID: clusterID, Shell: name, Namespace: namespace, State: StateConnected},
+		proxy:    proxy,
 		cols:     cols,
 		rows:     rows,
 	}
@@ -120,6 +145,7 @@ func (s *Service) runTerminal(tc *terminalConn) {
 	case <-read:
 	case <-time.After(terminalHangup):
 	}
+	tc.proxy.close()
 	s.mu.Lock()
 	delete(s.terminals, tc.status.ID)
 	tc.status.State = StateStopped
@@ -160,6 +186,8 @@ func (s *Service) StopTerminal(id string) error {
 	if tc == nil {
 		return nil
 	}
+	// The token is revoked at once, not once the shell has gone.
+	tc.proxy.close()
 	_ = tc.cmd.Process.Signal(syscall.SIGHUP)
 	tc.closePty()
 	select {
