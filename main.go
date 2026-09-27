@@ -41,6 +41,7 @@ func main() {
 			application.NewServiceWithOptions(bindings.NewLogService(svc), typedErrors),
 			application.NewServiceWithOptions(bindings.NewEventService(svc), typedErrors),
 			application.NewServiceWithOptions(bindings.NewShellService(svc), typedErrors),
+			application.NewServiceWithOptions(bindings.NewTerminalService(svc), typedErrors),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

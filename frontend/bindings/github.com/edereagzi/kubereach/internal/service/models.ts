@@ -847,6 +847,22 @@ export enum TargetKind {
     TargetPod = "pod",
 };
 
+export interface TerminalOutput {
+    "sessionId": string;
+    "data": string | null;
+}
+
+export interface TerminalStatus {
+    "id": string;
+
+    /**
+     * ClusterID is the Cluster whose bottom panel the Terminal is a tab of.
+     */
+    "clusterId": string;
+    "shell": string;
+    "state": State;
+}
+
 /**
  * WorkloadContainer is one container of the pod template, init containers first; Tag is the version a row shows, read from Image.
  */

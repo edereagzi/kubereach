@@ -23,6 +23,8 @@ declare module "@wailsio/runtime" {
             "route:state": service$0.RouteStatus;
             "shell:output": service$0.ShellOutput;
             "shell:state": service$0.ShellStatus;
+            "terminal:output": service$0.TerminalOutput;
+            "terminal:state": service$0.TerminalStatus;
             "tray:open-cluster": string;
         }
     }

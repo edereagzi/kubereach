@@ -176,10 +176,10 @@ func (s *Service) ImportKubeconfigs(paths []string) ([]Cluster, error) {
 	return added, s.saveConfig(cfg)
 }
 
-// DeleteCluster stops the Cluster's log streams, event streams and shells, drops its client, releases and forgets its Saved Forwards, then forgets the Cluster.
+// DeleteCluster stops the Cluster's log streams, event streams, shells and Terminals, drops its client, releases and forgets its Saved Forwards, then forgets the Cluster.
 func (s *Service) DeleteCluster(clusterID string) error {
 	s.mu.Lock()
-	var logs, events, shells []string
+	var logs, events, shells, terminals []string
 	for id, lc := range s.logs {
 		lc.mu.Lock()
 		if lc.status.Source.ClusterID == clusterID {
@@ -199,6 +199,11 @@ func (s *Service) DeleteCluster(clusterID string) error {
 		}
 		sc.mu.Unlock()
 	}
+	for id, tc := range s.terminals {
+		if tc.status.ClusterID == clusterID {
+			terminals = append(terminals, id)
+		}
+	}
 	s.mu.Unlock()
 	for _, id := range logs {
 		_ = s.StopLogs(id)
@@ -208,6 +213,9 @@ func (s *Service) DeleteCluster(clusterID string) error {
 	}
 	for _, id := range shells {
 		_ = s.StopShell(id)
+	}
+	for _, id := range terminals {
+		_ = s.StopTerminal(id)
 	}
 	err := s.editForwards(func(cfg *Config) ([]PortForward, error) {
 		i, err := findCluster(*cfg, clusterID)

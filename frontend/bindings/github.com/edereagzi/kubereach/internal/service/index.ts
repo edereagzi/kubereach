@@ -68,6 +68,8 @@ export type {
     ShellOutput,
     ShellStatus,
     ShellTarget,
+    TerminalOutput,
+    TerminalStatus,
     WorkloadContainer,
     WorkloadDiagnosis
 } from "./models.js";

@@ -13,6 +13,7 @@ import {
   type LogStatus,
   type RouteStatus,
   type ShellStatus,
+  type TerminalStatus,
 } from "@bindings/internal/service";
 
 // ponytail: one flat buffer per stream, trimmed from the front; a ring buffer if the splice ever shows up in profiles.
@@ -27,7 +28,7 @@ const maxEvents = 5_000;
 type EventBuffer = { events: KubeEvent[]; version: number };
 
 // A closed session's stop is still on its way, so its last transitions arrive after it left the store.
-const closedShells = new Set<string>();
+const closedSessions = new Set<string>();
 
 export type MainTab = "overview" | "nodes" | "events" | "forwards";
 const dockHeightKey = "dockHeight";
@@ -83,6 +84,10 @@ interface UIState {
   setShellStatus: (status: ShellStatus) => void;
   // An ended session stays on screen until closed, so its last output can be read.
   closeShell: (id: string) => void;
+  terminalSessions: Record<string, TerminalStatus>;
+  setTerminalStatus: (status: TerminalStatus) => void;
+  // An ended Terminal stays on screen until closed too.
+  closeTerminal: (id: string) => void;
   hostKeyPrompts: HostKeyPrompt[];
   addHostKeyPrompt: (prompt: HostKeyPrompt) => void;
   removeHostKeyPrompt: (routeId: string) => void;
@@ -199,7 +204,7 @@ export const useUIStore = create<UIState>((set) => ({
   shellSessions: {},
   setShellStatus: (status) =>
     set((s) => {
-      if (closedShells.has(status.id)) return {};
+      if (closedSessions.has(status.id)) return {};
       const shellSessions = { ...s.shellSessions, [status.id]: status };
       if (s.shellSessions[status.id]) return { shellSessions };
       return { shellSessions, ...addDockTab(s, status.target.clusterId, status.id) };
@@ -207,10 +212,26 @@ export const useUIStore = create<UIState>((set) => ({
   closeShell: (id) =>
     set((s) => {
       if (!s.shellSessions[id]) return {};
-      closedShells.add(id);
+      closedSessions.add(id);
       const shellSessions = { ...s.shellSessions };
       delete shellSessions[id];
       return { shellSessions, dockOrder: s.dockOrder.filter((x) => x !== id) };
+    }),
+  terminalSessions: {},
+  setTerminalStatus: (status) =>
+    set((s) => {
+      if (closedSessions.has(status.id)) return {};
+      const terminalSessions = { ...s.terminalSessions, [status.id]: status };
+      if (s.terminalSessions[status.id]) return { terminalSessions };
+      return { terminalSessions, ...addDockTab(s, status.clusterId, status.id) };
+    }),
+  closeTerminal: (id) =>
+    set((s) => {
+      if (!s.terminalSessions[id]) return {};
+      closedSessions.add(id);
+      const terminalSessions = { ...s.terminalSessions };
+      delete terminalSessions[id];
+      return { terminalSessions, dockOrder: s.dockOrder.filter((x) => x !== id) };
     }),
   hostKeyPrompts: [],
   addHostKeyPrompt: (prompt) => set((s) => ({ hostKeyPrompts: [...s.hostKeyPrompts, prompt] })),
@@ -228,6 +249,6 @@ export const useUIStore = create<UIState>((set) => ({
 const addDockTab = (s: UIState, clusterId: string, id: string) => ({ dockOrder: [...s.dockOrder, id], dockPicks: { ...s.dockPicks, [clusterId]: id } });
 
 export const openShellCount = (s: { shellSessions: Record<string, ShellStatus> }, clusterId: string) =>
-  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && !shellEnded(x)).length;
+  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && !sessionEnded(x)).length;
 
-export const shellEnded = (s: ShellStatus) => s.state === State.StateStopped || s.state === State.StateError;
+export const sessionEnded = (s: ShellStatus | TerminalStatus) => s.state === State.StateStopped || s.state === State.StateError;

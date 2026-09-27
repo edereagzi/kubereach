@@ -10,6 +10,7 @@ import (
 func (s *Service) Shutdown() {
 	s.mu.Lock()
 	shells := slices.Collect(maps.Keys(s.shells))
+	terminals := slices.Collect(maps.Keys(s.terminals))
 	logs := slices.Collect(maps.Keys(s.logs))
 	events := slices.Collect(maps.Keys(s.events))
 	for _, fc := range slices.Collect(maps.Values(s.forwards)) {
@@ -19,6 +20,9 @@ func (s *Service) Shutdown() {
 	s.mu.Unlock()
 	for _, id := range shells {
 		_ = s.StopShell(id)
+	}
+	for _, id := range terminals {
+		_ = s.StopTerminal(id)
 	}
 	for _, id := range logs {
 		_ = s.StopLogs(id)

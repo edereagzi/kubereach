@@ -1,14 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { TerminalIcon } from "@phosphor-icons/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { ShellService } from "@bindings/internal/bindings";
-import { State, type Cluster, type ShellOutput, type ShellStatus, type ShellTarget } from "@bindings/internal/service";
+import { ShellService, TerminalService } from "@bindings/internal/bindings";
+import { State, type Cluster, type ShellOutput, type ShellStatus, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { shellEnded, useUIStore } from "@/store";
+import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
 import { cn } from "@/lib/utils";
 
@@ -32,11 +32,16 @@ const terminalFor = (id: string) => {
   return term;
 };
 
+// Shells and Terminals both draw into an xterm, told apart only by where their keys and size go.
+type OpenSessions = { shellSessions: Record<string, ShellStatus>; terminalSessions: Record<string, TerminalStatus> };
+const isOpen = (s: OpenSessions, id: string) => !!(s.shellSessions[id] || s.terminalSessions[id]);
+type SessionIO = { Write: (id: string, data: string) => Promise<void>; Resize: (id: string, cols: number, rows: number) => Promise<void> };
+
 // A terminal goes with its session, however the session left: closed here or with its Cluster.
 useUIStore.subscribe((s, prev) => {
-  if (s.shellSessions === prev.shellSessions) return;
+  if (s.shellSessions === prev.shellSessions && s.terminalSessions === prev.terminalSessions) return;
   terminals.forEach((term, id) => {
-    if (s.shellSessions[id]) return;
+    if (isOpen(s, id)) return;
     term.dispose();
     terminals.delete(id);
   });
@@ -44,23 +49,23 @@ useUIStore.subscribe((s, prev) => {
 
 // Binding calls can overtake each other, so one write is in flight per session and keys typed meanwhile follow it together.
 const queuedInput = new Map<string, string>();
-const sendInput = (id: string, data: string) => {
+const sendInput = (io: SessionIO, id: string, data: string) => {
   const queued = queuedInput.get(id);
   if (queued !== undefined) {
     queuedInput.set(id, queued + data);
     return;
   }
   queuedInput.set(id, "");
-  void ShellService.Write(id, data).finally(() => {
+  void io.Write(id, data).finally(() => {
     const next = queuedInput.get(id);
     queuedInput.delete(id);
-    if (next) sendInput(id, next);
+    if (next) sendInput(io, id, next);
   });
 };
 
 // Output for a session that was closed is dropped, so a late chunk never revives its terminal.
-export function writeShellOutput({ sessionId, data }: ShellOutput) {
-  if (data && useUIStore.getState().shellSessions[sessionId]) {
+export function writeSessionOutput({ sessionId, data }: ShellOutput | TerminalOutput) {
+  if (data && isOpen(useUIStore.getState(), sessionId)) {
     terminalFor(sessionId).write(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)));
   }
 }
@@ -73,7 +78,7 @@ function useStartShell(clusterId: string) {
     mutationFn: async (target: Omit<ShellTarget, "clusterId">) => {
       const { shellSessions, openDock, setShellStatus } = useUIStore.getState();
       const open = Object.values(shellSessions).find(
-        (s) => s.target.clusterId === clusterId && s.target.namespace === target.namespace && s.target.pod === target.pod && s.target.container === target.container && !shellEnded(s),
+        (s) => s.target.clusterId === clusterId && s.target.namespace === target.namespace && s.target.pod === target.pod && s.target.container === target.container && !sessionEnded(s),
       );
       if (open) return openDock(clusterId, open.id);
       // The session is its tab at once, before its first event.
@@ -152,23 +157,67 @@ export function OpenShell({
 }
 
 export function ShellView({ session }: { session: ShellStatus }) {
-  const ref = useRef<HTMLDivElement>(null);
   const start = useStartShell(session.target.clusterId);
-  const done = shellEnded(session);
+  const done = sessionEnded(session);
+  return (
+    <XtermView id={session.id} done={done} io={ShellService}>
+      {done && (
+        <Ended
+          error={session.state === State.StateError ? session.error : undefined}
+          reopen={() => start.mutate(session.target, { onSuccess: () => useUIStore.getState().closeShell(session.id) })}
+        />
+      )}
+    </XtermView>
+  );
+}
+
+// A Terminal is its tab at once, like a Shell, and runs until its shell exits or the tab is closed.
+export async function openTerminal(clusterId: string) {
+  const status = await TerminalService.Start(clusterId, 80, 24);
+  const { terminalSessions, setTerminalStatus, openDock } = useUIStore.getState();
+  // Its start event usually came first, and a shell that exited at once has already sent its end.
+  if (!terminalSessions[status.id]) setTerminalStatus(status);
+  openDock(clusterId, status.id);
+}
+
+export function TerminalView({ session }: { session: TerminalStatus }) {
+  const reopen = useMutation({ mutationFn: () => openTerminal(session.clusterId), onSuccess: () => useUIStore.getState().closeTerminal(session.id) });
+  const done = sessionEnded(session);
+  return (
+    <XtermView id={session.id} done={done} io={TerminalService}>
+      {done && <Ended reopen={() => reopen.mutate()} />}
+    </XtermView>
+  );
+}
+
+function Ended({ error, reopen }: { error?: string; reopen: () => void }) {
+  return (
+    <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", error ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>
+      {error ? `Failed: ${error}` : "Session ended"}
+      <button type="button" className="ml-3 underline underline-offset-2" onClick={reopen}>
+        Open again
+      </button>
+    </div>
+  );
+}
+
+// XtermView shows a session's terminal, sending it keys and size until it is done.
+function XtermView({ id, done, io, children }: { id: string; done: boolean; io: SessionIO; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
   const doneRef = useRef(done);
   doneRef.current = done;
 
   useEffect(() => {
-    const term = terminalFor(session.id);
+    const term = terminalFor(id);
     const fit = new FitAddon();
     term.loadAddon(fit);
     // A terminal opens once; on a later mount its element is moved under the new host.
     if (term.element) ref.current!.appendChild(term.element);
     else term.open(ref.current!);
     const data = term.onData((d) => {
-      if (!doneRef.current) sendInput(session.id, d);
+      if (!doneRef.current) sendInput(io, id, d);
     });
-    const resize = term.onResize(({ cols, rows }) => void ShellService.Resize(session.id, cols, rows));
+    const resize = term.onResize(({ cols, rows }) => void io.Resize(id, cols, rows));
     const observer = new ResizeObserver(() => fit.fit());
     observer.observe(ref.current!);
     fit.fit();
@@ -179,19 +228,12 @@ export function ShellView({ session }: { session: ShellStatus }) {
       resize.dispose();
       fit.dispose();
     };
-  }, [session.id]);
+  }, [id, io]);
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden py-2 pl-4 pr-1">
       <div ref={ref} className="h-full" />
-      {done && (
-        <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", session.state === State.StateError ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>
-          {session.state === State.StateError ? `Failed: ${session.error}` : "Session ended"}
-          <button type="button" className="ml-3 underline underline-offset-2" onClick={() => start.mutate(session.target, { onSuccess: () => useUIStore.getState().closeShell(session.id) })}>
-            Open again
-          </button>
-        </div>
-      )}
+      {children}
     </div>
   );
 }

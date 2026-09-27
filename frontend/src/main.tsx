@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
-import { ForwardService, LogService, RouteService, ShellService } from "@bindings/internal/bindings";
-import { writeShellOutput } from "@/components/terminal";
+import { ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
+import { writeSessionOutput } from "@/components/terminal";
 import { configQuery } from "@/queries";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
@@ -20,6 +20,7 @@ const {
   setEventStatus,
   appendEvents,
   setShellStatus,
+  setTerminalStatus,
   addHostKeyPrompt,
   removeHostKeyPrompt,
   selectCluster,
@@ -44,7 +45,9 @@ Events.On("logs:lines", ({ data }) => appendLogs(data));
 Events.On("events:state", ({ data }) => setEventStatus(data));
 Events.On("events:batch", ({ data }) => appendEvents(data));
 Events.On("shell:state", ({ data }) => setShellStatus(data));
-Events.On("shell:output", ({ data }) => writeShellOutput(data));
+Events.On("shell:output", ({ data }) => writeSessionOutput(data));
+Events.On("terminal:state", ({ data }) => setTerminalStatus(data));
+Events.On("terminal:output", ({ data }) => writeSessionOutput(data));
 Events.On("tray:open-cluster", ({ data }) => {
   selectCluster(data);
   selectTab("overview");
@@ -53,6 +56,7 @@ RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));
 ForwardService.Statuses().then((statuses) => statuses?.forEach(setForwardStatus));
 LogService.Statuses().then((statuses) => statuses?.forEach(setLogStatus));
 ShellService.Statuses().then((statuses) => statuses?.forEach(setShellStatus));
+TerminalService.Statuses().then((statuses) => statuses?.forEach(setTerminalStatus));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

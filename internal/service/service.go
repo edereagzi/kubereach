@@ -30,6 +30,7 @@ type Service struct {
 	logs       map[string]*logConn
 	events     map[string]*eventConn
 	shells     map[string]*shellConn
+	terminals  map[string]*terminalConn
 	kubes      map[string]cachedKube
 	// secrets holds session-only key passphrases (by key file) and passwords (by user@host:port).
 	secrets map[string]string
@@ -52,6 +53,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		logs:                  map[string]*logConn{},
 		events:                map[string]*eventConn{},
 		shells:                map[string]*shellConn{},
+		terminals:             map[string]*terminalConn{},
 		kubes:                 map[string]cachedKube{},
 		secrets:               map[string]string{},
 	}

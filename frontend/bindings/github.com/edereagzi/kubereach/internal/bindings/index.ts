@@ -9,6 +9,7 @@ import * as ForwardService from "./forwardservice.js";
 import * as LogService from "./logservice.js";
 import * as RouteService from "./routeservice.js";
 import * as ShellService from "./shellservice.js";
+import * as TerminalService from "./terminalservice.js";
 export {
     AppService,
     ClusterService,
@@ -17,7 +18,8 @@ export {
     ForwardService,
     LogService,
     RouteService,
-    ShellService
+    ShellService,
+    TerminalService
 };
 
 export type {

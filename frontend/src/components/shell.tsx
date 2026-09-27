@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretUpIcon, CubeIcon, DotsThreeIcon, ScrollIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
-import { ClusterService, LogService, RouteService, ShellService } from "@bindings/internal/bindings";
-import { State, type Cluster, type LogStatus, type ShellStatus } from "@bindings/internal/service";
+import { CaretDownIcon, CaretUpIcon, CubeIcon, DotsThreeIcon, PlusIcon, ScrollIcon, TerminalWindowIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import { ClusterService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
+import { State, type Cluster, type LogStatus, type ShellStatus, type TerminalStatus } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ClusterOverview, NamespaceScope } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
@@ -10,7 +10,7 @@ import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
 import { InspectorSlot } from "@/components/inspector";
 import { logDetail, LogTab } from "@/components/logs";
-import { ShellView } from "@/components/terminal";
+import { openTerminal, ShellView, TerminalView } from "@/components/terminal";
 import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, statusLabel, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
-import { shellEnded, useUIStore, type MainTab } from "@/store";
+import { sessionEnded, useUIStore, type MainTab } from "@/store";
 import { cn, modKey } from "@/lib/utils";
 
 export function Shell() {
@@ -137,7 +137,7 @@ const dockMin = 120;
 // The view keeps at least this much of the window above the dock.
 const viewMin = 220;
 
-// Dock holds a Cluster's log streams and shells under whichever view is open, one tab per session, the way an editor keeps its panels.
+// Dock holds a Cluster's log streams, shells and Terminals under whichever view is open, one tab per session, the way an editor keeps its panels.
 function Dock({ cluster }: { cluster: Cluster }) {
   const open = useUIStore((s) => s.dockOpen);
   const height = useUIStore((s) => s.dockHeight);
@@ -146,6 +146,8 @@ function Dock({ cluster }: { cluster: Cluster }) {
   const order = useUIStore((s) => s.dockOrder);
   const logStreams = useUIStore((s) => s.logStreams);
   const shellSessions = useUIStore((s) => s.shellSessions);
+  const terminalSessions = useUIStore((s) => s.terminalSessions);
+  const newTerminal = useMutation({ mutationFn: () => openTerminal(cluster.id) });
   const picked = useUIStore((s) => s.dockPicks[cluster.id]);
   const tabs = order.flatMap((id): DockSession[] => {
     const stream = logStreams[id];
@@ -164,7 +166,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
     }
     const shell = shellSessions[id];
     if (shell?.target.clusterId === cluster.id) {
-      const done = shellEnded(shell);
+      const done = sessionEnded(shell);
       return [
         {
           id,
@@ -177,6 +179,24 @@ function Dock({ cluster }: { cluster: Cluster }) {
             if (!done) void ShellService.Stop(id);
           },
           view: <ShellView key={id} session={shell} />,
+        },
+      ];
+    }
+    const terminal = terminalSessions[id];
+    if (terminal?.clusterId === cluster.id) {
+      const done = sessionEnded(terminal);
+      return [
+        {
+          id,
+          status: terminal,
+          icon: <TerminalWindowIcon />,
+          label: "Terminal",
+          detail: done ? "ended" : (terminal.shell.split(/[\\/]/).pop() ?? ""),
+          close: () => {
+            useUIStore.getState().closeTerminal(id);
+            if (!done) void TerminalService.Stop(id);
+          },
+          view: <TerminalView key={id} session={terminal} />,
         },
       ];
     }
@@ -244,11 +264,11 @@ function Dock({ cluster }: { cluster: Cluster }) {
     <section className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
       {expanded && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
       <div className="flex h-9 shrink-0 items-stretch gap-2 pr-2 pl-4">
-        {tabs.length > 0 ? (
+        {tabs.length > 0 && (
           <div
             ref={listRef}
             role="tablist"
-            className="flex min-w-0 flex-1 items-stretch gap-4 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex min-w-0 items-stretch gap-4 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{ maskImage: mask }}
             onScroll={measure}
           >
@@ -256,9 +276,16 @@ function Dock({ cluster }: { cluster: Cluster }) {
               <DockTab key={t.id} session={t} cluster={cluster} active={open && t.id === active?.id} />
             ))}
           </div>
-        ) : (
-          <span className="flex-1" />
         )}
+        <Button variant="ghost" size="icon-xs" className="my-auto" title="New terminal" disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
+          <PlusIcon />
+        </Button>
+        {newTerminal.error && (
+          <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(newTerminal.error)}>
+            {errorText(newTerminal.error)}
+          </span>
+        )}
+        <span className="flex-1" />
         {/* The panel's own control stands apart from the tabs. */}
         <span className="my-auto h-4 w-px shrink-0 bg-border" />
         <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
@@ -270,7 +297,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
   );
 }
 
-type DockSession = { id: string; status: LogStatus | ShellStatus; icon: ReactNode; label: string; detail: string; close: () => void; view: ReactNode };
+type DockSession = { id: string; status: LogStatus | ShellStatus | TerminalStatus; icon: ReactNode; label: string; detail: string; close: () => void; view: ReactNode };
 
 // DockTab names its session's kind with the icon, its state with the dot on the icon, and its source with the label.
 function DockTab({ session, cluster, active }: { session: DockSession; cluster: Cluster; active: boolean }) {
@@ -458,8 +485,9 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
   const remove = useMutation({
     mutationFn: () => ClusterService.Delete(cluster.id),
     onSuccess: () => {
-      const { shellSessions, closeShell } = useUIStore.getState();
+      const { shellSessions, closeShell, terminalSessions, closeTerminal } = useUIStore.getState();
       for (const s of Object.values(shellSessions)) if (s.target.clusterId === cluster.id) closeShell(s.id);
+      for (const t of Object.values(terminalSessions)) if (t.clusterId === cluster.id) closeTerminal(t.id);
       selectCluster(null);
       queryClient.invalidateQueries();
     },
@@ -532,7 +560,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
         open={removing}
         onOpenChange={setRemoving}
         title={`Remove ${cluster.name}?`}
-        description="Kubereach forgets this cluster and deletes its port forwards; open logs and shells close. The cluster and your kubeconfig stay as they are."
+        description="Kubereach forgets this cluster and deletes its port forwards; open logs, shells and terminals close. The cluster and your kubeconfig stay as they are."
         confirm="Remove cluster"
         destructive
         action={remove}

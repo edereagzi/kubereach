@@ -7,7 +7,7 @@ import { logKind, targetValue, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { configQuery } from "@/queries";
-import { shellEnded, useUIStore } from "@/store";
+import { sessionEnded, useUIStore } from "@/store";
 
 // TargetVerbs is Forward, Logs and Shell for one object, each turning into a link to its tab once running, so a row and a detail say the same thing.
 // A row shows only what is running, as the sidebar's icons so a narrow list keeps its text, since its detail beside the list holds the verbs;
@@ -24,7 +24,7 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
   const stream = useUIStore((s) => streamOf(s.logStreams, targetSource(cluster, target)));
   const shell = useUIStore((s) =>
     Object.values(s.shellSessions).find(
-      (x) => x.target.clusterId === cluster.id && x.target.namespace === target.namespace && x.target.pod === target.name && !shellEnded(x),
+      (x) => x.target.clusterId === cluster.id && x.target.namespace === target.namespace && x.target.pod === target.name && !sessionEnded(x),
     ),
   );
   const startLogs = useStartLogs(cluster);
