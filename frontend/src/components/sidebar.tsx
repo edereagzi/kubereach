@@ -53,7 +53,8 @@ export function Sidebar() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+      // In a terminal the key is its own: Cmd+K clears it, and Ctrl+K reaches the shell.
+      if (e.key === "k" && (e.metaKey || e.ctrlKey) && !(e.target instanceof Element && e.target.closest(".xterm"))) {
         e.preventDefault();
         filter.current?.focus();
       }
