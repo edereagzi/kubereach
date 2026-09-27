@@ -1,6 +1,6 @@
 # Kubereach
 
-**A Kubernetes desktop app for clusters behind SSH jump hosts.** Browse, debug and run kubectl on them without copying a kubeconfig or holding a tunnel open.
+**A Kubernetes desktop app that also reaches clusters behind SSH jump hosts.** Browse, debug and run kubectl on them without copying a kubeconfig or holding a tunnel open.
 
 > Kubereach is early (v0.6). Expect rough edges, and please [open an issue](https://github.com/edereagzi/kubereach/issues) when you hit one.
 

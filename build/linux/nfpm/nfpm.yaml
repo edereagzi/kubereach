@@ -10,7 +10,7 @@ version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
+description: "A Kubernetes desktop app that also reaches clusters behind SSH jump hosts"
 vendor: "Eray Dereagzi"
 homepage: "https://github.com/edereagzi/kubereach"
 license: "Apache-2.0"

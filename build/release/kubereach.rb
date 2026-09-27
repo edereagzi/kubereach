@@ -4,7 +4,7 @@ cask "kubereach" do
 
   url "https://github.com/edereagzi/kubereach/releases/download/v#{version}/kubereach_darwin_universal.zip"
   name "Kubereach"
-  desc "A Kubernetes desktop app that can connect to clusters through SSH jump hosts"
+  desc "A Kubernetes desktop app that also reaches clusters behind SSH jump hosts"
   homepage "https://github.com/edereagzi/kubereach"
 
   depends_on macos: ">= :monterey"

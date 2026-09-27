@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Kubereach
-Comment=A Kubernetes desktop app that can connect to clusters through SSH jump hosts
+Comment=A Kubernetes desktop app that also reaches clusters behind SSH jump hosts
 # The Exec line includes %u to pass the URL to the application
 Exec=/usr/local/bin/kubereach %u
 Terminal=false
