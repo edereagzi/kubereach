@@ -188,6 +188,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
         {d && (
           <>
             <Section title="Containers">
+              {startLogs.error && <p className="text-xs text-destructive">{errorText(startLogs.error)}</p>}
               {d.containers?.map((c) => (
                 <Container
                   key={c.name}

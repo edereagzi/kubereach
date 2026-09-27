@@ -8,6 +8,7 @@ import { ShellService, TerminalService } from "@bindings/internal/bindings";
 import { State, type Cluster, type ShellOutput, type ShellStatus, type SessionTail, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
 import { cn, modKey } from "@/lib/utils";
@@ -156,45 +157,56 @@ export function OpenShell({
       target: { namespace: p.namespace, pod: p.name, container },
     })),
   );
+  const error = start.error && (
+    <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(start.error)}>
+      {errorText(start.error)}
+    </span>
+  );
   if (items.length === 1) {
     return (
-      <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
-        {variant === "outline" && <TerminalIcon />}
-        Shell
-      </Button>
+      <>
+        <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
+          {variant === "outline" && <TerminalIcon />}
+          Shell
+        </Button>
+        {error}
+      </>
     );
   }
   return (
-    <Select
-      value=""
-      items={items}
-      onValueChange={(key) => {
-        const item = items.find((i) => i.value === key);
-        if (item) start.mutate(item.target, { onSuccess: onStarted });
-      }}
-    >
-      <SelectTrigger
-        size="sm"
-        className={cn(
-          "font-medium data-placeholder:text-foreground",
-          size === "xs" && "gap-1 px-2 py-0 text-xs data-[size=sm]:h-6",
-          variant === "ghost" && "border-transparent bg-transparent dark:bg-transparent",
-          className,
-        )}
-        title="Open a shell into a pod"
-        disabled={items.length === 0 || start.isPending}
+    <>
+      <Select
+        value=""
+        items={items}
+        onValueChange={(key) => {
+          const item = items.find((i) => i.value === key);
+          if (item) start.mutate(item.target, { onSuccess: onStarted });
+        }}
       >
-        {variant === "outline" && <TerminalIcon />}
-        Shell
-      </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} align="end">
-        {items.map((i) => (
-          <SelectItem key={i.value} value={i.value}>
-            {i.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        <SelectTrigger
+          size="sm"
+          className={cn(
+            "font-medium data-placeholder:text-foreground",
+            size === "xs" && "gap-1 px-2 py-0 text-xs data-[size=sm]:h-6",
+            variant === "ghost" && "border-transparent bg-transparent dark:bg-transparent",
+            className,
+          )}
+          title="Open a shell into a pod"
+          disabled={items.length === 0 || start.isPending}
+        >
+          {variant === "outline" && <TerminalIcon />}
+          Shell
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} align="end">
+          {items.map((i) => (
+            <SelectItem key={i.value} value={i.value}>
+              {i.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error}
+    </>
   );
 }
 
@@ -205,7 +217,7 @@ export function ShellView({ session }: { session: ShellStatus }) {
     <XtermView id={session.id} done={done} io={ShellService}>
       {done && (
         <Ended
-          error={session.state === State.StateError ? session.error : undefined}
+          error={start.error ? errorText(start.error) : session.state === State.StateError ? session.error : undefined}
           reopen={() => start.mutate(session.target, { onSuccess: () => useUIStore.getState().closeShell(session.id) })}
         />
       )}

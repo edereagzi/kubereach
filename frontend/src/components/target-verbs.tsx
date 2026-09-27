@@ -6,7 +6,7 @@ import { streamOf, targetSource, useStartLogs } from "@/components/logs";
 import { logKind, targetValue, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
-import { configQuery } from "@/queries";
+import { configQuery, errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 
 // TargetVerbs is Forward, Logs and Shell for one object, each turning into a link to its tab once running, so a row and a detail say the same thing.
@@ -62,9 +62,16 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
           </Button>
         ) : (
           !row && (
-            <Button variant={variant} size="xs" disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
-              Logs
-            </Button>
+            <>
+              <Button variant={variant} size="xs" disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
+                Logs
+              </Button>
+              {startLogs.error && (
+                <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(startLogs.error)}>
+                  {errorText(startLogs.error)}
+                </span>
+              )}
+            </>
           )
         ))}
       {target.kind === "pod" &&
