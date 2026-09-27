@@ -96,7 +96,7 @@ func (s *Service) StartTerminal(clusterID string, cols, rows int) (TerminalStatu
 		return TerminalStatus{}, err
 	}
 	cmd := p.Command(path, args...)
-	cmd.Env = append(append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, tokenEnv+"="+proxy.token), env...)
+	cmd.Env = append(append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor", "KUBECONFIG="+proxy.kubeconfig, "KUBECACHEDIR="+filepath.Join(proxy.dir, "cache"), tokenEnv+"="+proxy.token), env...)
 	cmd.Dir, _ = os.UserHomeDir()
 	if err := cmd.Start(); err != nil {
 		_ = p.Close()

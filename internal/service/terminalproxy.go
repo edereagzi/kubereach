@@ -59,7 +59,8 @@ type kubeProxy struct {
 	srv       *http.Server
 	// stop cancels every request, upgraded ones included, which outlive the server's Close.
 	stop context.CancelFunc
-	// dir holds the Terminal's kubeconfig, the file KUBECONFIG points its shell to, and its shell's startup script.
+	// dir holds the Terminal's kubeconfig, the file KUBECONFIG points its shell to, and its shell's startup script. It also
+	// holds kubectl's caches (KUBECACHEDIR), which are kept per proxy port and would otherwise pile up under ~/.kube/cache.
 	dir, kubeconfig string
 
 	mu sync.Mutex
@@ -85,7 +86,7 @@ func (s *Service) startKubeProxy(clusterID string) (*kubeProxy, error) {
 	return p, nil
 }
 
-// close revokes the token: the server stops, and so does every request in flight. The kubeconfig goes with it.
+// close revokes the token: the server stops, and so does every request in flight. The kubeconfig and kubectl's caches go with it.
 func (p *kubeProxy) close() {
 	p.stop()
 	_ = p.srv.Close()

@@ -304,6 +304,14 @@ func TestTerminal_KubectlReachesTheClusterThroughKubereach(t *testing.T) {
 	if token == "" {
 		t.Fatal("the shell has no KUBEREACH_TOKEN")
 	}
+	// kubectl's caches go in the Terminal's folder: under ~/.kube/cache they would pile up, one per proxy port.
+	cache := shellEnv(t, svc, output, st.ID, "KUBECACHEDIR")
+	if cache == "" || filepath.Dir(cache) != filepath.Dir(path) {
+		t.Fatalf("KUBECACHEDIR = %q, want it beside the Terminal's kubeconfig %s", cache, path)
+	}
+	if err := os.MkdirAll(filepath.Join(cache, "discovery", "127.0.0.1_1234"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -356,6 +364,9 @@ func TestTerminal_KubectlReachesTheClusterThroughKubereach(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the Terminal's kubeconfig outlived it: %v", err)
+	}
+	if _, err := os.Stat(cache); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("kubectl's cache outlived the Terminal: %v", err)
 	}
 	if after, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".kube", "config")); string(after) != string(home) {
 		t.Error("~/.kube/config changed")
