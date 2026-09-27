@@ -2,7 +2,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { modKey } from "@/lib/utils";
 
 // Written by hand: a handler added elsewhere is listed here too.
-const groups: [string, [string, string[]][]][] = [
+type Group = [string, [string, string[]][]];
+
+const groups: Group[] = [
   [
     "Anywhere",
     [
@@ -27,6 +29,8 @@ const groups: [string, [string, string[]][]][] = [
     ],
   ],
   ["In logs", [["Select every line", [`${modKey}A`]]]],
+  // Only macOS terminals clear on Cmd+K; elsewhere Ctrl+K belongs to the shell.
+  ...(modKey === "⌘" ? [["In a Terminal or shell", [["Clear the screen", ["⌘K"]]]] as Group] : []),
   [
     "While typing",
     [
