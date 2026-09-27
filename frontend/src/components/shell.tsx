@@ -278,8 +278,9 @@ function Dock({ cluster }: { cluster: Cluster }) {
             ))}
           </div>
         )}
-        <Button variant="ghost" size="icon-xs" className="my-auto" title="New terminal" disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
-          <PlusIcon />
+        {/* Beside tabs it adds one; alone on the bar, with no tab to be taken for, it shows what it opens, 8px in like the bar's other end. */}
+        <Button variant="ghost" size="icon-xs" className={cn("my-auto", tabs.length === 0 && "-ml-2")} title={`Open a Terminal on ${cluster.name}`} disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
+          {tabs.length > 0 ? <PlusIcon /> : <TerminalWindowIcon className="size-4" />}
         </Button>
         {newTerminal.error && (
           <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(newTerminal.error)}>
@@ -287,11 +288,15 @@ function Dock({ cluster }: { cluster: Cluster }) {
           </span>
         )}
         <span className="flex-1" />
-        {/* The panel's own control stands apart from the tabs. */}
-        <span className="my-auto h-4 w-px shrink-0 bg-border" />
-        <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
-          {open ? <CaretDownIcon /> : <CaretUpIcon />}
-        </Button>
+        {/* The panel's own control stands apart from the tabs; an empty panel has nothing to show or hide. */}
+        {tabs.length > 0 && (
+          <>
+            <span className="my-auto h-4 w-px shrink-0 bg-border" />
+            <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
+              {open ? <CaretDownIcon /> : <CaretUpIcon />}
+            </Button>
+          </>
+        )}
       </div>
       {expanded && active.view}
     </section>
