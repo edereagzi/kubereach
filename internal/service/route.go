@@ -77,9 +77,9 @@ type routeConn struct {
 	clients routeClients
 	pending bool
 	status  RouteStatus
-	// kubeconfigs are the remote kubeconfigs read over this connection, by source; readMu serialises their reads.
+	// kubeconfigs are the remote kubeconfigs read over this connection, by source; reads are the reads in progress.
 	kubeconfigs map[string][]byte
-	readMu      sync.Mutex
+	reads       map[string]*kubeconfigRead
 	// lastServer is user@host:port of the Route's last SSH Server, where remote kubeconfigs are read.
 	lastServer string
 	// heard is when that server last sent anything, in Unix nanoseconds.
@@ -125,6 +125,7 @@ func (rc *routeConn) setClients(c routeClients) {
 	rc.mu.Lock()
 	rc.clients = c
 	rc.kubeconfigs = map[string][]byte{}
+	rc.reads = map[string]*kubeconfigRead{}
 	rc.mu.Unlock()
 }
 

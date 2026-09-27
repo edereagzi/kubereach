@@ -46,6 +46,9 @@ type testSSH struct {
 	commands []string
 	// sudoPassword, when set, makes sudo -n refuse for a password and sudo -S read it from stdin.
 	sudoPassword string
+	// hang is a command that never finishes, as a sudo waiting on a TTY would, until it gets a signal; signals records those.
+	hang    string
+	signals []gliderssh.Signal
 }
 
 // stallConn plays a link that died silently.
@@ -157,8 +160,21 @@ func startSSHServerWith(t *testing.T, authorized ssh.PublicKey, password string,
 			s.mu.Lock()
 			s.commands = append(s.commands, sess.RawCommand())
 			out, ok := s.outputs[sess.RawCommand()]
-			password := s.sudoPassword
+			password, hang := s.sudoPassword, s.hang
 			s.mu.Unlock()
+			if sess.RawCommand() == hang {
+				signals := make(chan gliderssh.Signal, 1)
+				sess.Signals(signals)
+				select {
+				case sig := <-signals:
+					s.mu.Lock()
+					s.signals = append(s.signals, sig)
+					s.mu.Unlock()
+					_ = sess.Exit(143)
+				case <-sess.Context().Done():
+				}
+				return
+			}
 			if password != "" && strings.HasPrefix(sess.RawCommand(), "LC_ALL=C sudo -n ") {
 				_, _ = io.WriteString(sess.Stderr(), "sudo: a password is required\n")
 				_ = sess.Exit(1)

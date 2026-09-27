@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
+	gliderssh "github.com/gliderlabs/ssh"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -285,5 +288,73 @@ func TestRemoteKubeconfig_AsksForTheSudoPasswordOnce(t *testing.T) {
 	}
 	if saved, err := os.ReadFile(f.configPath); err != nil || strings.Contains(string(saved), "s3cret") {
 		t.Errorf("configuration holds the password (%v):\n%s", err, saved)
+	}
+}
+
+// A read that never finishes fails with a clear message, without trying sudo, and does not hold up the next read.
+func TestRemoteKubeconfig_HangingReadTimesOut(t *testing.T) {
+	f := newRemoteFixture(t, twoContextKubeconfig)
+	f.svc.RemoteCommandTimeout = 100 * time.Millisecond
+	const readK0s = "/usr/local/bin/k0s kubeconfig admin"
+	f.setOutputs(map[string]string{service.DetectKubeconfig: "k0s kubeconfig admin\n"})
+	f.ssh.mu.Lock()
+	f.ssh.hang = readK0s
+	f.ssh.mu.Unlock()
+
+	_, err := f.svc.RemoteContexts(f.route.ID)
+	if msg := service.Describe(err).Message; !strings.Contains(msg, "k0s kubeconfig admin") || !strings.Contains(msg, "did not finish") {
+		t.Errorf("message = %q, want the source named and that it did not finish", msg)
+	}
+	if diff := cmp.Diff([]string{service.DetectKubeconfig, readK0s}, f.ssh.ran()); diff != "" {
+		t.Errorf("commands (-want +got), want no sudo after a hang:\n%s", diff)
+	}
+	// The command is stopped, not left running on the server: the app retries a Cluster on its own, and each retry
+	// would leave one more behind.
+	var signals []gliderssh.Signal
+	for deadline := time.Now().Add(time.Second); len(signals) == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		f.ssh.mu.Lock()
+		signals = slices.Clone(f.ssh.signals)
+		f.ssh.mu.Unlock()
+	}
+	if diff := cmp.Diff([]gliderssh.Signal{gliderssh.SIGTERM}, signals); diff != "" {
+		t.Errorf("signals (-want +got):\n%s", diff)
+	}
+
+	f.setOutputs(map[string]string{service.DetectKubeconfig: "k0s kubeconfig admin\n", readK0s: twoContextKubeconfig})
+	f.ssh.mu.Lock()
+	f.ssh.hang = ""
+	f.ssh.mu.Unlock()
+	if found, err := f.svc.RemoteContexts(f.route.ID); err != nil || found.Source != "k0s kubeconfig admin" {
+		t.Errorf("after the hang: found = %+v, %v", found, err)
+	}
+}
+
+// Calls that arrive while a read hangs wait for it and share its failure, rather than each running the command in turn.
+func TestRemoteKubeconfig_CallsDuringAHangShareIt(t *testing.T) {
+	f := newRemoteFixture(t, twoContextKubeconfig)
+	f.svc.RemoteCommandTimeout = 300 * time.Millisecond
+	c, err := f.svc.ImportRemoteCluster(f.route.ID, "~/.kube/config", "staging-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ssh.dropConnections()
+	f.waitState(t, service.StateReconnecting)
+	f.waitState(t, service.StateConnected)
+	f.setOutputs(nil)
+	f.ssh.mu.Lock()
+	f.ssh.hang = readKubeconfig
+	f.ssh.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			if _, err := f.svc.CheckReachability(context.Background(), c.ID); !strings.Contains(service.Describe(err).Message, "did not finish") {
+				t.Errorf("err = %v, want the read's timeout", err)
+			}
+		})
+	}
+	wg.Wait()
+	if got := f.ssh.ran(); len(got) != 1 {
+		t.Errorf("commands = %q, want one read", got)
 	}
 }

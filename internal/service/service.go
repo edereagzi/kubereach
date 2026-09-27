@@ -21,6 +21,8 @@ type Service struct {
 	ResponseHeaderTimeout time.Duration
 	// ForwardStreamTimeout is how long a forward's pod connection may take to open a stream before it counts as dead.
 	ForwardStreamTimeout time.Duration
+	// RemoteCommandTimeout is how long a command run on an SSH server, such as reading a remote kubeconfig, may take.
+	RemoteCommandTimeout time.Duration
 	// ReleasesURL is the GitHub API endpoint of the latest Kubereach release.
 	ReleasesURL string
 
@@ -48,6 +50,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		RouteKeepalive:        15 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
 		ForwardStreamTimeout:  15 * time.Second,
+		RemoteCommandTimeout:  20 * time.Second,
 		ReleasesURL:           "https://api.github.com/repos/edereagzi/kubereach/releases/latest",
 		configPath:            configPath,
 		clients:               clients,

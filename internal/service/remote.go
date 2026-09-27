@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"k8s.io/client-go/rest"
@@ -74,7 +75,10 @@ func (s *Service) RemoteContexts(routeID string) (RemoteKubeconfig, error) {
 	if client == nil {
 		return RemoteKubeconfig{}, ErrRouteDown
 	}
-	out, err := runRemote(client, detectKubeconfig, "")
+	out, err := s.runRemote(client, detectKubeconfig, "")
+	if errors.Is(err, errRemoteTimeout) {
+		return RemoteKubeconfig{}, userErrorf("Looking for a kubeconfig on the SSH server did not finish within %s", s.RemoteCommandTimeout)
+	}
 	if err != nil {
 		return RemoteKubeconfig{}, &userError{msg: "Looking for a kubeconfig on the SSH server failed", err: err}
 	}
@@ -183,33 +187,54 @@ func (s *Service) connectedRoute(routeID string) (*routeConn, error) {
 	return rc, nil
 }
 
-// readKubeconfig runs without s.mu, and one read at a time so a burst of first requests opens one session.
+// kubeconfigRead is a read of a remote kubeconfig in progress; data and err are set before done closes.
+type kubeconfigRead struct {
+	done chan struct{}
+	data []byte
+	err  error
+}
+
+// readKubeconfig runs without s.mu. Calls that come while src is being read wait for that read and share its result, so
+// a burst of first requests opens one session and a read that hangs is waited out once.
 // A read that finishes after the connection was replaced is returned but not kept.
 func (s *Service) readKubeconfig(rc *routeConn, src remoteSource) ([]byte, error) {
-	rc.readMu.Lock()
-	defer rc.readMu.Unlock()
-	client := rc.sshClient()
-	if client == nil {
+	rc.mu.Lock()
+	if len(rc.clients) == 0 {
+		rc.mu.Unlock()
 		return nil, ErrRouteDown
 	}
-	rc.mu.Lock()
-	data := rc.kubeconfigs[src.name]
-	rc.mu.Unlock()
-	if data != nil {
+	// Taken with the read's registration, so a read on a replaced connection is never shared with the new one.
+	client := rc.clients.last()
+	if data := rc.kubeconfigs[src.name]; data != nil {
+		rc.mu.Unlock()
 		return data, nil
 	}
-	data, err := runRemote(client, src.read, "")
-	if err != nil {
-		if data, err = s.sudoRead(client, rc.lastServer, src, err); err != nil {
-			return nil, err
-		}
+	if r := rc.reads[src.name]; r != nil {
+		rc.mu.Unlock()
+		<-r.done
+		return r.data, r.err
+	}
+	r := &kubeconfigRead{done: make(chan struct{})}
+	rc.reads[src.name] = r
+	rc.mu.Unlock()
+	defer close(r.done)
+
+	r.data, r.err = s.runRemote(client, src.read, "")
+	if r.err != nil && !errors.Is(r.err, errRemoteTimeout) {
+		r.data, r.err = s.sudoRead(client, rc.lastServer, src, r.err)
+	}
+	if errors.Is(r.err, errRemoteTimeout) {
+		r.err = userErrorf("Reading %s on the SSH server did not finish within %s", src.name, s.RemoteCommandTimeout)
 	}
 	rc.mu.Lock()
-	if len(rc.clients) > 0 && rc.clients.last() == client {
-		rc.kubeconfigs[src.name] = data
+	if rc.reads[src.name] == r {
+		delete(rc.reads, src.name)
+	}
+	if r.err == nil && len(rc.clients) > 0 && rc.clients.last() == client {
+		rc.kubeconfigs[src.name] = r.data
 	}
 	rc.mu.Unlock()
-	return data, nil
+	return r.data, r.err
 }
 
 // SetSudoPassword keeps the sudo password of the Route's last SSH Server for the session, never on disk; the next read
@@ -231,17 +256,17 @@ func sudoSecret(server string) string { return "sudo " + server }
 // a refused one fails instead of waiting for another. LC_ALL=C keeps sudo's messages in the English they are matched
 // in; the second of each pair is sudo-rs's wording.
 func (s *Service) sudoRead(client *ssh.Client, server string, src remoteSource, plain error) ([]byte, error) {
-	data, err := runRemote(client, "LC_ALL=C sudo -n "+src.read, "")
-	if err == nil {
-		return data, nil
+	data, err := s.runRemote(client, "LC_ALL=C sudo -n "+src.read, "")
+	if err == nil || errors.Is(err, errRemoteTimeout) {
+		return data, err
 	}
 	if remoteSays(err, "password is required", "authentication is required") {
 		password := s.secret(sudoSecret(server), "")
 		if password == "" {
 			return nil, &CredentialError{Code: "sudo", Target: server}
 		}
-		if data, err = runRemote(client, "LC_ALL=C sudo -S -p '' "+src.read, password+"\n"); err == nil {
-			return data, nil
+		if data, err = s.runRemote(client, "LC_ALL=C sudo -S -p '' "+src.read, password+"\n"); err == nil || errors.Is(err, errRemoteTimeout) {
+			return data, err
 		}
 		if remoteSays(err, "incorrect password", "Authentication failed") {
 			s.forgetSecret(sudoSecret(server))
@@ -277,8 +302,13 @@ type remoteError struct {
 func (e *remoteError) Error() string { return e.stderr }
 func (e *remoteError) Unwrap() error { return e.err }
 
-// runRemote runs cmd in a session on client with stdin, and returns what it printed.
-func runRemote(client *ssh.Client, cmd, stdin string) ([]byte, error) {
+// errRemoteTimeout is a command the SSH server did not finish within RemoteCommandTimeout.
+var errRemoteTimeout = errors.New("the command on the SSH server did not finish in time")
+
+// runRemote runs cmd in a session on client with stdin, and returns what it printed. A command that runs past
+// RemoteCommandTimeout is sent SIGTERM, which OpenSSH delivers to its process group and sudo passes on, so it does not
+// stay on the server with every retry; it is then abandoned, as the session's end may never come while the server is stuck.
+func (s *Service) runRemote(client *ssh.Client, cmd, stdin string) ([]byte, error) {
 	sess, err := client.NewSession()
 	if err != nil {
 		return nil, err
@@ -287,9 +317,24 @@ func runRemote(client *ssh.Client, cmd, stdin string) ([]byte, error) {
 	var stderr bytes.Buffer
 	sess.Stderr = &stderr
 	sess.Stdin = strings.NewReader(stdin)
-	out, err := sess.Output(cmd)
-	if msg := strings.TrimSpace(stderr.String()); err != nil && msg != "" {
-		return nil, &remoteError{stderr: msg, err: err}
+	type result struct {
+		out []byte
+		err error
 	}
-	return out, err
+	done := make(chan result, 1)
+	go func() {
+		out, err := sess.Output(cmd)
+		done <- result{out, err}
+	}()
+	var r result
+	select {
+	case r = <-done:
+	case <-time.After(s.RemoteCommandTimeout):
+		_ = sess.Signal(ssh.SIGTERM)
+		return nil, errRemoteTimeout
+	}
+	if msg := strings.TrimSpace(stderr.String()); r.err != nil && msg != "" {
+		return nil, &remoteError{stderr: msg, err: r.err}
+	}
+	return r.out, r.err
 }
