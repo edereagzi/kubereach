@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowsLeftRightIcon,
   FileIcon,
@@ -50,7 +50,6 @@ export function Sidebar() {
   useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
   const importError = importKubeconfig.error ?? importDropped.error;
   const [importingRemote, setImportingRemote] = useState(false);
-  const fetchingReachability = useIsFetching({ predicate: (q) => q.queryKey[0] === "cluster" && q.queryKey[2] === "reachability" }) > 0;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,9 +65,10 @@ export function Sidebar() {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div data-drag className="flex h-13 shrink-0 items-center justify-end gap-0.5 px-2 select-none">
+        {/* One slow Cluster must not hold the button; each row's dot pulses while its own check runs. */}
         <RefreshButton
           title="Refresh clusters"
-          fetching={fetchingReachability}
+          fetching={false}
           onRefresh={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}
         />
         <DropdownMenu>
