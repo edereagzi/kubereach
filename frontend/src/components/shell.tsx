@@ -66,7 +66,7 @@ function ClusterTabs() {
         <Empty className="border-0">
           <EmptyHeader>
             <EmptyTitle>Select a cluster</EmptyTitle>
-            <EmptyDescription>Its workloads, port forwards, logs and shells open here.</EmptyDescription>
+            <EmptyDescription>Its workloads, port forwards, logs, shells and Terminals open here.</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </>
