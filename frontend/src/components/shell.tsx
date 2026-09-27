@@ -236,16 +236,20 @@ function Dock({ cluster }: { cluster: Cluster }) {
   const fade = 32;
   const mask = `linear-gradient(to right, ${edges.left ? "transparent" : "black"}, black ${fade}px, black calc(100% - ${fade}px), ${edges.right ? "transparent" : "black"})`;
 
+  // An empty panel has nothing to show, so the key opens a Terminal there, as an editor's terminal key does.
+  const empty = tabs.length === 0;
+  const { mutate: startTerminal, isPending: starting } = newTerminal;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setDockOpen(!useUIStore.getState().dockOpen);
+        if (!empty) setDockOpen(!useUIStore.getState().dockOpen);
+        else if (!starting && !e.repeat) startTerminal();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setDockOpen]);
+  }, [setDockOpen, empty, starting, startTerminal]);
 
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
