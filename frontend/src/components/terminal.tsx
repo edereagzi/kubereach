@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
-import { cn } from "@/lib/utils";
+import { cn, modKey } from "@/lib/utils";
 
 // Surfaces follow the app background; the ANSI palette stays xterm's default in both modes.
 const xtermTheme = (dark: boolean) =>
@@ -20,6 +20,12 @@ const xtermTheme = (dark: boolean) =>
 const fontFamily = "'Geist Mono Variable', monospace";
 void document.fonts.load(`12px ${fontFamily}`);
 
+// As in iTerm's natural text editing, on macOS: Cmd kills the line (Ctrl+U) or goes to its start (Ctrl+A) or end (Ctrl+E),
+// and Option moves a word back (Esc b) or forward (Esc f), where xterm would send an arrow the shell does not bind.
+const cmdKeys: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
+const optionKeys: Record<string, string> = { ArrowLeft: "\x1bb", ArrowRight: "\x1bf" };
+const isMac = modKey === "⌘";
+
 // Terminals live outside React so output arriving before the view mounts is kept; xterm buffers writes until open().
 const terminals = new Map<string, Terminal>();
 useTheme.subscribe((s) => terminals.forEach((t) => (t.options.theme = xtermTheme(s.dark))));
@@ -27,11 +33,18 @@ const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
     term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
-    // Cmd+K clears the screen and scrollback, as in a macOS terminal; only the view is cleared, the shell is not told.
+    // Cmd+K clears the view, as in a macOS terminal; the shell is not told. Other Cmd keys, such as copy and paste, are
+    // left to the browser.
     const t = term;
     t.attachCustomKeyEventHandler((e) => {
-      if (!(e.metaKey && e.key === "k")) return true;
-      if (e.type === "keydown") t.clear();
+      if (!isMac) return true;
+      const clear = e.metaKey && e.key === "k";
+      const send = e.metaKey ? cmdKeys[e.key] : e.altKey && !e.ctrlKey && !e.shiftKey ? optionKeys[e.key] : undefined;
+      if (!clear && !send) return true;
+      if (e.type === "keydown") {
+        if (clear) t.clear();
+        else if (send) t.input(send);
+      }
       return false;
     });
     terminals.set(id, term);
