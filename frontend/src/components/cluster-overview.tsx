@@ -150,13 +150,13 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {forwarding && (
         <AddForward cluster={cluster} saved={forwardsFor(config?.forwards, cluster)} initial={forwarding} onClose={() => setForwarding(null)} />
       )}
-      {inspecting?.kind === "pod" && <PodDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
-      {inspecting?.workload && <WorkloadDetail cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
-      {inspecting?.config && <ConfigDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.pvc && <PVCDetail cluster={cluster} target={inspecting} pvc={inspecting.pvc} onClose={() => setInspecting(null)} />}
-      {inspecting?.hpa && <HPADetail cluster={cluster} target={inspecting} hpa={inspecting.hpa} onClose={() => setInspecting(null)} />}
-      {inspecting?.ingress && <IngressDetail cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.kind === "svc" && <YamlDetail cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "pod" && <PodDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
+      {inspecting?.workload && <WorkloadDetail key={inspecting.value} cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
+      {inspecting?.config && <ConfigDetail key={inspecting.value} cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.pvc && <PVCDetail key={inspecting.value} cluster={cluster} target={inspecting} pvc={inspecting.pvc} onClose={() => setInspecting(null)} />}
+      {inspecting?.hpa && <HPADetail key={inspecting.value} cluster={cluster} target={inspecting} hpa={inspecting.hpa} onClose={() => setInspecting(null)} />}
+      {inspecting?.ingress && <IngressDetail key={inspecting.value} cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "svc" && <YamlDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="h-7 w-72">
           <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />

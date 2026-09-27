@@ -37,10 +37,13 @@ const objectKind: Record<Kind, ObjectKind> = {
 
 type YamlProps = { cluster: Cluster; kind: Kind; namespace: string; name: string };
 
+// lastTab is the tab the user last chose; a detail is remade for each object, and walking them keeps to it.
+let lastTab = "details";
+
 // DetailTabs puts a detail's own content and its YAML behind two tabs; the YAML is fetched when its tab opens.
 export function DetailTabs({ children, ...props }: YamlProps & { children: ReactNode }) {
   return (
-    <Tabs defaultValue="details" className="min-h-0 flex-1 gap-0">
+    <Tabs defaultValue={lastTab} onValueChange={(v) => (lastTab = v)} className="min-h-0 flex-1 gap-0">
       <TabsList variant="line" className="h-8 w-full justify-start gap-4 border-b">
         <TabsTrigger value="details" className="flex-none px-0">
           Details

@@ -102,7 +102,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
 
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
-      {inspecting && <NodeDetail cluster={cluster} node={inspecting} onClose={() => setInspecting(null)} />}
+      {inspecting && <NodeDetail key={inspecting.name} cluster={cluster} node={inspecting} onClose={() => setInspecting(null)} />}
       <Table className="min-w-[52rem]">
         <TableHeader>
           <TableRow>
