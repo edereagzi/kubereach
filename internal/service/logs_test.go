@@ -628,9 +628,9 @@ func TestLogs_StartingContainerIsPolledWithoutBackoff(t *testing.T) {
 	_ = f.svc.StopLogs(stream.ID)
 }
 
-func TestLogs_StartReplacesTheClustersStream(t *testing.T) {
+func TestLogs_StreamsOnOneClusterRunSideBySide(t *testing.T) {
 	f := newForwardFixture(t, twoContainerPod("default", "api-0"), twoContainerPod("default", "api-1"))
-	batches, states := logEvents(f.svc)
+	batches, _ := logEvents(f.svc)
 	f.api.seedLogs("api-0", "app", "zero")
 	f.api.seedLogs("api-1", "app", "one")
 
@@ -640,31 +640,36 @@ func TestLogs_StartReplacesTheClustersStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = f.svc.StopLogs(first.ID) })
 	src.Name = "api-1"
 	second, err := f.svc.StartLogs(ctx, src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitLogStatus(t, states, func(st service.LogStatus) bool { return st.ID == first.ID && st.State == service.StateStopped })
-	if got := f.svc.LogStatuses(); len(got) != 1 || got[0].ID != second.ID {
-		t.Errorf("statuses = %+v, want only the second stream", got)
-	}
-	// The first stream may have delivered before it was replaced; the second delivers only api-1's.
-	for {
+	t.Cleanup(func() { _ = f.svc.StopLogs(second.ID) })
+	pods := map[string]string{}
+	for len(pods) < 2 {
 		select {
 		case b := <-batches:
-			if b.StreamID != second.ID {
-				continue
-			}
-			if b.Lines[0].Pod != "api-1" {
-				t.Errorf("second stream's lines = %+v, want api-1's", b.Lines)
-			}
+			pods[b.StreamID] = b.Lines[0].Pod
 		case <-time.After(10 * time.Second):
-			t.Fatal("timed out waiting for the second stream's lines")
+			t.Fatalf("timed out with lines from %v, want both streams", pods)
 		}
-		break
 	}
-	_ = f.svc.StopLogs(second.ID)
+	if pods[first.ID] != "api-0" || pods[second.ID] != "api-1" {
+		t.Errorf("lines by stream = %v, want api-0's on the first and api-1's on the second", pods)
+	}
+
+	if err := f.svc.StopLogs(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.svc.LogStatuses(); len(got) != 1 || got[0].ID != second.ID || got[0].State == service.StateStopped {
+		t.Errorf("statuses = %+v, want only the second stream, still running", got)
+	}
+	f.api.writeLog("api-1", "app", "still here")
+	if got := collectLogs(t, batches, second.ID, 1); got[0].Text != "still here" {
+		t.Errorf("second stream after the first stopped = %+v, want the new line", got)
+	}
 }
 
 func TestLogs_DeletedWorkloadIsReportedAndFollowedWhenBack(t *testing.T) {

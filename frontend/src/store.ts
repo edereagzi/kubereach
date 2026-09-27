@@ -30,9 +30,6 @@ type EventBuffer = { events: KubeEvent[]; version: number };
 const closedShells = new Set<string>();
 
 export type MainTab = "overview" | "nodes" | "events" | "forwards";
-// Logs and Shell are sessions that outlive a view, so they sit in a dock under whichever view is open.
-export type DockTab = "logs" | "shell";
-export type ClusterTab = MainTab | DockTab;
 const dockHeightKey = "dockHeight";
 
 // An object another tab asks the Overview to open the detail of.
@@ -45,11 +42,16 @@ interface UIState {
   routesOpen: boolean;
   openRoutes: () => void;
   activeTab: MainTab;
-  dockTab: DockTab;
+  selectTab: (tab: MainTab) => void;
+  // Log streams and shells are sessions that outlive a view, so each is a tab of a dock under whichever view is open.
+  // The order is the order they were opened in; a Cluster's picked tab is its latest session until another is picked.
+  dockOrder: string[];
+  dockPicks: Record<string, string>;
+  openDock: (clusterId: string, sessionId: string) => void;
+  // A stream just started is its Cluster's tab at once, before its first event, in place of the tab it replaces.
+  openLogTab: (status: LogStatus, replaces?: string) => void;
   dockOpen: boolean;
   dockHeight: number;
-  // Asking for a dock tab opens the dock on it; asking for a view switches the view.
-  selectTab: (tab: ClusterTab) => void;
   setDockOpen: (open: boolean) => void;
   setDockHeight: (height: number) => void;
   // A Route another part of the window asks the sidebar to connect, where its credential and host key prompts live.
@@ -78,9 +80,7 @@ interface UIState {
   inspectRequest: InspectRequest | null;
   requestInspect: (request: InspectRequest | null) => void;
   shellSessions: Record<string, ShellStatus>;
-  activeShellIds: Record<string, string>;
   setShellStatus: (status: ShellStatus) => void;
-  selectShell: (id: string) => void;
   // An ended session stays on screen until closed, so its last output can be read.
   closeShell: (id: string) => void;
   hostKeyPrompts: HostKeyPrompt[];
@@ -98,10 +98,24 @@ export const useUIStore = create<UIState>((set) => ({
   routesOpen: false,
   openRoutes: () => set({ routesOpen: true }),
   activeTab: "overview",
-  dockTab: "logs",
+  selectTab: (tab) => set({ activeTab: tab }),
+  dockOrder: [],
+  dockPicks: {},
+  openDock: (clusterId, sessionId) => set((s) => ({ dockPicks: { ...s.dockPicks, [clusterId]: sessionId }, dockOpen: true })),
+  openLogTab: (status, replaces) =>
+    set((s) => {
+      const dockOrder = s.dockOrder.filter((id) => id !== status.id);
+      const at = replaces ? dockOrder.indexOf(replaces) : -1;
+      dockOrder.splice(at < 0 ? dockOrder.length : at, 0, status.id);
+      return {
+        logStreams: s.logStreams[status.id] ? s.logStreams : { ...s.logStreams, [status.id]: status },
+        dockOrder,
+        dockPicks: { ...s.dockPicks, [status.source.clusterId]: status.id },
+        dockOpen: true,
+      };
+    }),
   dockOpen: false,
   dockHeight: Number(localStorage.getItem(dockHeightKey)) || 320,
-  selectTab: (tab) => set(tab === "logs" || tab === "shell" ? { dockTab: tab, dockOpen: true } : { activeTab: tab }),
   setDockOpen: (open) => set({ dockOpen: open }),
   setDockHeight: (height) => {
     localStorage.setItem(dockHeightKey, String(height));
@@ -136,10 +150,14 @@ export const useUIStore = create<UIState>((set) => ({
       const logStreams = { ...s.logStreams };
       const logBuffers = { ...s.logBuffers };
       if (status.state === State.StateStopped) {
+        if (!logStreams[status.id]) return {};
         delete logStreams[status.id];
         delete logBuffers[status.id];
-      } else logStreams[status.id] = status;
-      return { logStreams, logBuffers };
+        return { logStreams, logBuffers, dockOrder: s.dockOrder.filter((id) => id !== status.id) };
+      }
+      logStreams[status.id] = status;
+      if (s.logStreams[status.id]) return { logStreams };
+      return { logStreams, ...addDockTab(s, status.source.clusterId, status.id) };
     }),
   logBuffers: {},
   logWrap: false,
@@ -179,36 +197,20 @@ export const useUIStore = create<UIState>((set) => ({
   inspectRequest: null,
   requestInspect: (request) => set({ inspectRequest: request }),
   shellSessions: {},
-  activeShellIds: {},
   setShellStatus: (status) =>
     set((s) => {
       if (closedShells.has(status.id)) return {};
-      if (s.shellSessions[status.id]) return { shellSessions: { ...s.shellSessions, [status.id]: status } };
-      return {
-        shellSessions: { ...s.shellSessions, [status.id]: status },
-        activeShellIds: { ...s.activeShellIds, [status.target.clusterId]: status.id },
-      };
-    }),
-  selectShell: (id) =>
-    set((s) => {
-      const session = s.shellSessions[id];
-      return session ? { activeShellIds: { ...s.activeShellIds, [session.target.clusterId]: id } } : {};
+      const shellSessions = { ...s.shellSessions, [status.id]: status };
+      if (s.shellSessions[status.id]) return { shellSessions };
+      return { shellSessions, ...addDockTab(s, status.target.clusterId, status.id) };
     }),
   closeShell: (id) =>
     set((s) => {
-      const session = s.shellSessions[id];
-      if (!session) return {};
+      if (!s.shellSessions[id]) return {};
       closedShells.add(id);
-      const { clusterId } = session.target;
       const shellSessions = { ...s.shellSessions };
       delete shellSessions[id];
-      const activeShellIds = { ...s.activeShellIds };
-      if (activeShellIds[clusterId] === id) {
-        const next = Object.values(shellSessions).filter((x) => x.target.clusterId === clusterId).at(-1);
-        if (next) activeShellIds[clusterId] = next.id;
-        else delete activeShellIds[clusterId];
-      }
-      return { shellSessions, activeShellIds };
+      return { shellSessions, dockOrder: s.dockOrder.filter((x) => x !== id) };
     }),
   hostKeyPrompts: [],
   addHostKeyPrompt: (prompt) => set((s) => ({ hostKeyPrompts: [...s.hostKeyPrompts, prompt] })),
@@ -222,5 +224,10 @@ export const useUIStore = create<UIState>((set) => ({
   shiftImportPreview: () => set((s) => ({ importPreviews: s.importPreviews.slice(1) })),
 }));
 
+// A session that just started becomes its Cluster's tab.
+const addDockTab = (s: UIState, clusterId: string, id: string) => ({ dockOrder: [...s.dockOrder, id], dockPicks: { ...s.dockPicks, [clusterId]: id } });
+
 export const openShellCount = (s: { shellSessions: Record<string, ShellStatus> }, clusterId: string) =>
-  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && x.state !== State.StateStopped && x.state !== State.StateError).length;
+  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && !shellEnded(x)).length;
+
+export const shellEnded = (s: ShellStatus) => s.state === State.StateStopped || s.state === State.StateError;

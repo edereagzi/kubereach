@@ -49,7 +49,7 @@ function Meter({ name, label, used, requested, allocatable, named = false }: { n
 }
 
 // A node under pressure must be findable from anywhere, and a node belongs to no namespace, so it cannot join the
-// Overview's Problems filter. The tab carries the count instead, the way the Logs and Shell tabs say what is running on them.
+// Overview's Problems filter. The tab carries the count instead, the way the Events tab says its stream is live.
 export function NodeProblems({ cluster }: { cluster: Cluster }) {
   const { data } = useQuery(nodesQuery(cluster.id));
   const problems = (data ?? []).filter((n) => n.problem).length;

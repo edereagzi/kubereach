@@ -1,19 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { PlusIcon, TerminalIcon, XIcon } from "@phosphor-icons/react";
+import { TerminalIcon } from "@phosphor-icons/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { ShellService } from "@bindings/internal/bindings";
 import { State, type Cluster, type ShellOutput, type ShellStatus, type ShellTarget } from "@bindings/internal/service";
-import { statusLabel, StateDot } from "@/components/routes";
-import { TargetPicker, useTargets } from "@/components/targets";
 import { Button } from "@/components/ui/button";
-import { ComboboxTrigger } from "@/components/ui/combobox";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { errorText } from "@/queries";
-import { useUIStore } from "@/store";
+import { shellEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
 import { cn } from "@/lib/utils";
 
@@ -70,15 +65,22 @@ export function writeShellOutput({ sessionId, data }: ShellOutput) {
   }
 }
 
-const ended = (s: ShellStatus) => s.state === State.StateStopped || s.state === State.StateError;
-
 export type ShellPod = { namespace: string; name: string; containers: string[] };
 
+// A container that already has a live shell gets its tab selected rather than a second session.
 function useStartShell(clusterId: string) {
-  const selectTab = useUIStore((s) => s.selectTab);
   return useMutation({
-    mutationFn: (target: Omit<ShellTarget, "clusterId">) => ShellService.Start({ ...target, clusterId }, 80, 24),
-    onSuccess: () => selectTab("shell"),
+    mutationFn: async (target: Omit<ShellTarget, "clusterId">) => {
+      const { shellSessions, openDock, setShellStatus } = useUIStore.getState();
+      const open = Object.values(shellSessions).find(
+        (s) => s.target.clusterId === clusterId && s.target.namespace === target.namespace && s.target.pod === target.pod && s.target.container === target.container && !shellEnded(s),
+      );
+      if (open) return openDock(clusterId, open.id);
+      // The session is its tab at once, before its first event.
+      const status = await ShellService.Start({ ...target, clusterId }, 80, 24);
+      if (!useUIStore.getState().shellSessions[status.id]) setShellStatus(status);
+      openDock(clusterId, status.id);
+    },
   });
 }
 
@@ -149,86 +151,10 @@ export function OpenShell({
   );
 }
 
-export function PodShell({ cluster }: { cluster: Cluster }) {
-  const { groups, error: listError } = useTargets(cluster);
-  const sessions = Object.values(useUIStore((s) => s.shellSessions)).filter((st) => st.target.clusterId === cluster.id);
-  const activeShellId = useUIStore((s) => s.activeShellIds[cluster.id]);
-  const { selectShell, closeShell } = useUIStore.getState();
-  const active = sessions.find((s) => s.id === activeShellId);
-  const start = useStartShell(cluster.id);
-  const close = (session: ShellStatus) => {
-    closeShell(session.id);
-    if (!ended(session)) void ShellService.Stop(session.id);
-  };
-  // A pod with several containers is listed once per container, so the pick already says which one.
-  const shellGroups = groups
-    .filter((g) => g.label === "Pods")
-    .map((g) => ({
-      ...g,
-      items: g.items.flatMap((t) =>
-        t.containers.length > 1 ? t.containers.map((c) => ({ ...t, value: `${t.value}/${c}`, label: `${t.label} · ${c}`, containers: [c], container: c })) : [t],
-      ),
-    }));
-  const picker = (
-    <TargetPicker groups={shellGroups} placeholder="Search pods" onPick={(t) => start.mutate({ namespace: t.namespace, pod: t.name, container: t.container ?? "" })}>
-      <ComboboxTrigger render={<Button variant="ghost" size="sm" className="text-muted-foreground" />} disabled={start.isPending}>
-        <PlusIcon /> New shell
-      </ComboboxTrigger>
-    </TargetPicker>
-  );
-  const error = listError ?? start.error;
-
-  if (!active) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
-        {error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error)}</p>}
-        <Empty className="justify-start border-0 pt-12">
-          <EmptyHeader>
-            <EmptyTitle>No shell open</EmptyTitle>
-            <EmptyDescription>Pick a pod, or one container of a pod, to open a terminal into it.</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-11 items-center gap-1 border-b px-4">
-        {sessions.map((s) => {
-          const on = s.id === activeShellId;
-          return (
-            <div
-              key={s.id}
-              className={cn(
-                "group flex h-7 items-center gap-2 rounded-md pr-1 pl-2.5 text-sm",
-                on ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-              )}
-            >
-              <button type="button" className="flex items-center gap-2 outline-none focus-visible:underline" title={statusLabel(s)} onClick={() => selectShell(s.id)}>
-                <StateDot status={s} />
-                {s.target.pod}
-                <span className="text-xs text-muted-foreground">{ended(s) ? "ended" : s.target.container}</span>
-              </button>
-              <Button variant="ghost" size="icon-xs" title="Close" className={cn(!on && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")} onClick={() => close(s)}>
-                <XIcon />
-              </Button>
-            </div>
-          );
-        })}
-        {picker}
-        {error && <span className="truncate text-xs text-destructive">{errorText(error)}</span>}
-      </div>
-      <TerminalView key={active.id} session={active} />
-    </div>
-  );
-}
-
-function TerminalView({ session }: { session: ShellStatus }) {
+export function ShellView({ session }: { session: ShellStatus }) {
   const ref = useRef<HTMLDivElement>(null);
   const start = useStartShell(session.target.clusterId);
-  const done = ended(session);
+  const done = shellEnded(session);
   const doneRef = useRef(done);
   doneRef.current = done;
 
@@ -261,7 +187,7 @@ function TerminalView({ session }: { session: ShellStatus }) {
       {done && (
         <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", session.state === State.StateError ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>
           {session.state === State.StateError ? `Failed: ${session.error}` : "Session ended"}
-          <button type="button" className="ml-3 underline underline-offset-2" onClick={() => start.mutate(session.target)}>
+          <button type="button" className="ml-3 underline underline-offset-2" onClick={() => start.mutate(session.target, { onSuccess: () => useUIStore.getState().closeShell(session.id) })}>
             Open again
           </button>
         </div>

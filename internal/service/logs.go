@@ -114,7 +114,6 @@ type logConn struct {
 }
 
 // StartLogs follows the source, delivering EventLogLines batches until StopLogs; a single pod's stream also ends when the pod is gone.
-// A Cluster follows one source at a time, so the stream it replaces is stopped first.
 func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, error) {
 	if src.Namespace == "" || src.Name == "" {
 		return LogStatus{}, userErrorf("Logs need a namespace and a name")
@@ -192,19 +191,9 @@ func (s *Service) StartLogs(ctx context.Context, src LogSource) (LogStatus, erro
 		status.Pods = []string{src.Name}
 	}
 	lc := &logConn{k: k, cancel: cancel, done: make(chan struct{}), lines: make(chan LogLine, logBatchMax), status: status, pods: map[string]context.CancelFunc{}, terminating: map[string]bool{}}
-	var replaced []*logConn
 	s.mu.Lock()
-	for id, old := range s.logs {
-		if old.status.Source.ClusterID == src.ClusterID {
-			replaced = append(replaced, old)
-			delete(s.logs, id)
-		}
-	}
 	s.logs[status.ID] = lc
 	s.mu.Unlock()
-	for _, old := range replaced {
-		s.stopLogConn(old)
-	}
 	go s.runLogs(runCtx, lc, k, core.Pods(src.Namespace), podSelector, s.watchWorkloadDeletion(lc, workload, workloadType))
 	return status, nil
 }

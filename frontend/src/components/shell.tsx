@@ -1,17 +1,17 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, ScrollIcon, TerminalWindowIcon, WarningIcon } from "@phosphor-icons/react";
-import { ClusterService, RouteService } from "@bindings/internal/bindings";
-import { State, type Cluster } from "@bindings/internal/service";
+import { CaretDownIcon, CaretUpIcon, CubeIcon, DotsThreeIcon, ScrollIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import { ClusterService, LogService, RouteService, ShellService } from "@bindings/internal/bindings";
+import { State, type Cluster, type LogStatus, type ShellStatus } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ClusterOverview, NamespaceScope } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
 import { InspectorSlot } from "@/components/inspector";
-import { Logs, streamFor } from "@/components/logs";
-import { PodShell } from "@/components/terminal";
-import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
+import { logDetail, LogTab } from "@/components/logs";
+import { ShellView } from "@/components/terminal";
+import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, statusLabel, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +31,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
-import { openShellCount, useUIStore, type DockTab, type MainTab } from "@/store";
+import { shellEnded, useUIStore, type MainTab } from "@/store";
 import { cn, modKey } from "@/lib/utils";
 
 export function Shell() {
@@ -128,32 +128,92 @@ function TabCount({ value }: { value: number }) {
   ) : null;
 }
 
-function LogsLive({ cluster }: { cluster: Cluster }) {
-  const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
-  return stream ? <StateDot status={stream} /> : null;
-}
-
 function EventsLive({ cluster }: { cluster: Cluster }) {
   const stream = useUIStore((s) => eventStreamFor(s.eventStreams, cluster));
   return stream ? <StateDot status={stream} /> : null;
-}
-
-function ShellCount({ cluster }: { cluster: Cluster }) {
-  const open = useUIStore((s) => openShellCount(s, cluster.id));
-  return <TabCount value={open} />;
 }
 
 const dockMin = 120;
 // The view keeps at least this much of the window above the dock.
 const viewMin = 220;
 
-// Dock holds a Cluster's log stream and shells under whichever view is open, the way an editor keeps its terminal.
+// Dock holds a Cluster's log streams and shells under whichever view is open, one tab per session, the way an editor keeps its panels.
 function Dock({ cluster }: { cluster: Cluster }) {
-  const tab = useUIStore((s) => s.dockTab);
   const open = useUIStore((s) => s.dockOpen);
   const height = useUIStore((s) => s.dockHeight);
   const setDockOpen = useUIStore((s) => s.setDockOpen);
   const setDockHeight = useUIStore((s) => s.setDockHeight);
+  const order = useUIStore((s) => s.dockOrder);
+  const logStreams = useUIStore((s) => s.logStreams);
+  const shellSessions = useUIStore((s) => s.shellSessions);
+  const picked = useUIStore((s) => s.dockPicks[cluster.id]);
+  const tabs = order.flatMap((id): DockSession[] => {
+    const stream = logStreams[id];
+    if (stream?.source.clusterId === cluster.id) {
+      return [
+        {
+          id,
+          status: stream,
+          icon: <ScrollIcon />,
+          label: `${stream.source.namespace}/${stream.source.name}`,
+          detail: logDetail(stream),
+          close: () => void LogService.Stop(id),
+          view: <LogTab key={id} cluster={cluster} stream={stream} />,
+        },
+      ];
+    }
+    const shell = shellSessions[id];
+    if (shell?.target.clusterId === cluster.id) {
+      const done = shellEnded(shell);
+      return [
+        {
+          id,
+          status: shell,
+          icon: <CubeIcon />,
+          label: shell.target.pod,
+          detail: done ? "ended" : shell.target.container,
+          close: () => {
+            useUIStore.getState().closeShell(id);
+            if (!done) void ShellService.Stop(id);
+          },
+          view: <ShellView key={id} session={shell} />,
+        },
+      ];
+    }
+    return [];
+  });
+  // The picked tab, or the latest when the picked one was closed.
+  const active = tabs.find((t) => t.id === picked) ?? tabs.at(-1);
+
+  // The strip scrolls sideways, with a wheel too, and fades out on each side where it goes on.
+  const listRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const measure = () => {
+    const el = listRef.current;
+    if (el) setEdges({ left: el.scrollLeft > 0, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1 });
+  };
+  const ids = tabs.map((t) => t.id).join(" ");
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    measure();
+    // A vertical wheel or swipe scrolls the strip sideways and nothing else; React's wheel listener is passive, so this one
+    // is added here to keep the page under it from scrolling too. A sideways swipe is left to the browser.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [ids]);
+  const fade = 32;
+  const mask = `linear-gradient(to right, ${edges.left ? "transparent" : "black"}, black ${fade}px, black calc(100% - ${fade}px), ${edges.right ? "transparent" : "black"})`;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -178,44 +238,77 @@ function Dock({ cluster }: { cluster: Cluster }) {
     window.addEventListener("pointerup", up);
   };
 
+  // An empty dock has nothing to show, so it stays a bar.
+  const expanded = open && !!active;
   return (
-    <section className="relative flex shrink-0 flex-col border-t" style={open ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
-      {open && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
-      <div className="flex h-9 shrink-0 items-stretch gap-5 px-4">
-        <DockButton value="logs">
-          <ScrollIcon />
-          Logs
-          <LogsLive cluster={cluster} />
-        </DockButton>
-        <DockButton value="shell">
-          <TerminalWindowIcon />
-          Shell
-          <ShellCount cluster={cluster} />
-        </DockButton>
-        <Button variant="ghost" size="icon-xs" className="my-auto ml-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
+    <section className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
+      {expanded && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
+      <div className="flex h-9 shrink-0 items-stretch gap-2 pr-2 pl-4">
+        {tabs.length > 0 ? (
+          <div
+            ref={listRef}
+            role="tablist"
+            className="flex min-w-0 flex-1 items-stretch gap-4 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            style={{ maskImage: mask }}
+            onScroll={measure}
+          >
+            {tabs.map((t) => (
+              <DockTab key={t.id} session={t} cluster={cluster} active={open && t.id === active?.id} />
+            ))}
+          </div>
+        ) : (
+          <span className="flex-1" />
+        )}
+        {/* The panel's own control stands apart from the tabs. */}
+        <span className="my-auto h-4 w-px shrink-0 bg-border" />
+        <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
           {open ? <CaretDownIcon /> : <CaretUpIcon />}
         </Button>
       </div>
-      {open && (tab === "logs" ? <Logs key={cluster.id} cluster={cluster} /> : <PodShell key={cluster.id} cluster={cluster} />)}
+      {expanded && active.view}
     </section>
   );
 }
 
-function DockButton({ value, children }: { value: DockTab; children: ReactNode }) {
-  const active = useUIStore((s) => s.dockOpen && s.dockTab === value);
-  const selectTab = useUIStore((s) => s.selectTab);
+type DockSession = { id: string; status: LogStatus | ShellStatus; icon: ReactNode; label: string; detail: string; close: () => void; view: ReactNode };
+
+// DockTab names its session's kind with the icon, its state with the dot on the icon, and its source with the label.
+function DockTab({ session, cluster, active }: { session: DockSession; cluster: Cluster; active: boolean }) {
+  const openDock = useUIStore((s) => s.openDock);
+  const { id, status, icon, label, detail, close } = session;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [active]);
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={() => selectTab(value)}
+    <div
+      ref={ref}
       className={cn(
-        "relative flex items-center gap-1.5 text-sm text-muted-foreground outline-none [&_svg]:size-4 hover:text-foreground focus-visible:text-foreground",
+        "group relative flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground",
         active && "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground",
       )}
     >
-      {children}
-    </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        title={`${label}${detail ? ` · ${detail}` : ""}: ${statusLabel(status)}`}
+        className="flex items-center gap-1.5 whitespace-nowrap outline-none focus-visible:underline"
+        onClick={() => openDock(cluster.id, id)}
+      >
+        <span className="relative flex [&_svg]:size-4">
+          {icon}
+          <span className="absolute -right-0.5 -bottom-0.5 flex rounded-full ring-2 ring-background">
+            <StateDot status={status} />
+          </span>
+        </span>
+        <span className="max-w-64 truncate">{label}</span>
+        {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
+      </button>
+      <Button variant="ghost" size="icon-xs" title="Close" className={cn("size-5", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")} onClick={close}>
+        <XIcon />
+      </Button>
+    </div>
   );
 }
 

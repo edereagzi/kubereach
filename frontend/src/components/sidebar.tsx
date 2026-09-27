@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowsLeftRightIcon,
+  CubeIcon,
   FileIcon,
   HardDrivesIcon,
   MagnifyingGlassIcon,
   PathIcon,
   PlusIcon,
   ScrollIcon,
-  TerminalWindowIcon,
   WarningIcon,
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
@@ -399,7 +399,7 @@ function Activity({ cluster }: { cluster: Cluster }) {
       )}
       {shells > 0 && (
         <span className="flex items-center gap-0.5" title={`${shells} ${shells === 1 ? "shell" : "shells"} open`}>
-          <TerminalWindowIcon />
+          <CubeIcon />
           {shells}
         </span>
       )}

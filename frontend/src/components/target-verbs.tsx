@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsLeftRightIcon, ScrollIcon, TerminalWindowIcon } from "@phosphor-icons/react";
-import { State, type Cluster } from "@bindings/internal/service";
+import { ArrowsLeftRightIcon, CubeIcon, ScrollIcon } from "@phosphor-icons/react";
+import type { Cluster } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
-import { streamFor, useStartLogs } from "@/components/logs";
+import { streamOf, targetSource, useStartLogs } from "@/components/logs";
 import { logKind, targetValue, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
 import { configQuery } from "@/queries";
-import { useUIStore, type ClusterTab } from "@/store";
+import { shellEnded, useUIStore } from "@/store";
 
 // TargetVerbs is Forward, Logs and Shell for one object, each turning into a link to its tab once running, so a row and a detail say the same thing.
 // A row shows only what is running, as the sidebar's icons so a narrow list keeps its text, since its detail beside the list holds the verbs;
@@ -16,32 +16,36 @@ import { useUIStore, type ClusterTab } from "@/store";
 export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }: { cluster: Cluster; target: Target; onForward?: () => void; row?: boolean; onLeave?: () => void }) {
   const { data } = useQuery(configQuery);
   const selectTab = useUIStore((s) => s.selectTab);
-  const selectShell = useUIStore((s) => s.selectShell);
+  const openDock = useUIStore((s) => s.openDock);
   const forwarded = forwardsFor(data?.forwards, cluster).some(
     (f) => targetValue(f.target.kind === "service" ? "svc" : "pod", f.target.namespace, f.target.name) === target.value,
   );
-  const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
-  const following =
-    !!stream && stream.source.kind === logKind[target.kind] && stream.source.namespace === target.namespace && stream.source.name === target.name;
+  // The verb stands for the target's live logs; a previous run or another container opened elsewhere is its own tab.
+  const stream = useUIStore((s) => streamOf(s.logStreams, targetSource(cluster, target)));
   const shell = useUIStore((s) =>
     Object.values(s.shellSessions).find(
-      (x) => x.target.clusterId === cluster.id && x.target.namespace === target.namespace && x.target.pod === target.name && x.state !== State.StateStopped && x.state !== State.StateError,
+      (x) => x.target.clusterId === cluster.id && x.target.namespace === target.namespace && x.target.pod === target.name && !shellEnded(x),
     ),
   );
   const startLogs = useStartLogs(cluster);
   const variant = row ? "ghost" : "outline";
   const size = row ? "icon-xs" : "xs";
   const active = "text-primary hover:text-primary";
-  const go = (tab: ClusterTab) => {
-    selectTab(tab);
-    if (tab !== "logs" && tab !== "shell") onLeave?.();
-  };
 
   return (
     <>
       {(target.kind === "svc" || target.kind === "pod") &&
         (forwarded ? (
-          <Button variant={variant} size={size} className={active} title="Forwarding" onClick={() => go("forwards")}>
+          <Button
+            variant={variant}
+            size={size}
+            className={active}
+            title="Forwarding"
+            onClick={() => {
+              selectTab("forwards");
+              onLeave?.();
+            }}
+          >
             {row ? <ArrowsLeftRightIcon /> : "Forwarding"}
           </Button>
         ) : (
@@ -52,9 +56,9 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
           )
         ))}
       {logKind[target.kind] &&
-        (following ? (
-          <Button variant={variant} size={size} className={active} title={stream.source.previous ? "Previous logs" : "Following logs"} onClick={() => go("logs")}>
-            {row ? <ScrollIcon /> : stream.source.previous ? "Previous logs" : "Following logs"}
+        (stream ? (
+          <Button variant={variant} size={size} className={active} title="Following logs" onClick={() => openDock(cluster.id, stream.id)}>
+            {row ? <ScrollIcon /> : "Following logs"}
           </Button>
         ) : (
           !row && (
@@ -70,12 +74,9 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
             size={size}
             className={active}
             title="Shell open"
-            onClick={() => {
-              selectShell(shell.id);
-              go("shell");
-            }}
+            onClick={() => openDock(cluster.id, shell.id)}
           >
-            {row ? <TerminalWindowIcon /> : "Shell open"}
+            {row ? <CubeIcon /> : "Shell open"}
           </Button>
         ) : (
           !row && <OpenShell cluster={cluster} pods={[target]} variant={variant} size="xs" />

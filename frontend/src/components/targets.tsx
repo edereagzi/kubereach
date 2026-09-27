@@ -145,7 +145,7 @@ export function TargetRow({ target, meta }: { target: Target; meta?: ReactNode }
 
 export const portsLabel = (ports: NamedPort[]) => ports.map((p) => (p.name ? `${p.port} ${p.name}` : String(p.port))).join(" · ");
 
-// TargetPicker is the one searchable list every tab starts from; the trigger is whatever the tab shows when nothing is being picked.
+// TargetPicker is the one searchable list of a Cluster's objects; the trigger is whatever its caller shows when nothing is being picked.
 export function TargetPicker({
   groups,
   value,

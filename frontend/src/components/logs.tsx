@@ -1,23 +1,20 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, ClockIcon, MagnifyingGlassIcon, TextAlignLeftIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, ClockIcon, MagnifyingGlassIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
-import { LogSourceKind, type Cluster, type LogLine, type LogStatus } from "@bindings/internal/service";
+import { LogSourceKind, State, type Cluster, type LogLine, type LogSource, type LogStatus } from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
-import { statusLabel, StateDot } from "@/components/routes";
-import { KindBadge, logKind, TargetPicker, useTargets, type Kind, type Target } from "@/components/targets";
+import { statusLabel } from "@/components/routes";
+import { logKind, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
-import { ComboboxTrigger } from "@/components/ui/combobox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { podsQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
-const sourceKind: Record<string, Kind> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", pod: "pod" };
 // One stable colour per pod name, so a pod keeps its colour while others join and leave.
 const podColors = ["text-sky-600", "text-emerald-600", "text-amber-600", "text-rose-600", "text-violet-600", "text-teal-600", "text-orange-600", "text-fuchsia-600"];
 const podColor = (pod: string) => podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
@@ -91,96 +88,73 @@ const lineKey = (l: LogLine) => {
 export const streamFor = (streams: Record<string, LogStatus>, cluster: Cluster) =>
   Object.values(streams).find((st) => st.source.clusterId === cluster.id);
 
-export function useStartLogs(cluster: Cluster) {
-  const selectTab = useUIStore((s) => s.selectTab);
-  return useMutation({
-    mutationFn: async (target: Target & { previous?: boolean }) => {
-      await LogService.Start({
-        clusterId: cluster.id,
-        kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod,
-        namespace: target.namespace,
-        name: target.name,
-        container: target.container,
-        previous: target.previous,
-      });
-    },
-    onSuccess: () => selectTab("logs"),
-  });
+// The stream following exactly this source, if one is open.
+export const streamOf = (streams: Record<string, LogStatus>, source: LogSource) =>
+  Object.values(streams).find(
+    (st) =>
+      st.source.clusterId === source.clusterId &&
+      st.source.kind === source.kind &&
+      st.source.namespace === source.namespace &&
+      st.source.name === source.name &&
+      (st.source.container ?? "") === (source.container ?? "") &&
+      !!st.source.previous === !!source.previous,
+  );
+
+export const targetSource = (cluster: Cluster, target: Target & { previous?: boolean }): LogSource => ({
+  clusterId: cluster.id,
+  kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod,
+  namespace: target.namespace,
+  name: target.name,
+  container: target.container,
+  previous: target.previous,
+});
+
+// startLogs opens the source in its own tab, or selects the tab already following it; a tab whose stream failed is replaced.
+async function startLogs(source: LogSource, replaces?: string) {
+  const { logStreams, openDock } = useUIStore.getState();
+  const existing = streamOf(logStreams, source);
+  if (existing && existing.state !== State.StateError) return openDock(source.clusterId, existing.id);
+  useUIStore.getState().openLogTab(await LogService.Start(source), replaces ?? existing?.id);
+  if (existing) await LogService.Stop(existing.id);
 }
 
-export function Logs({ cluster }: { cluster: Cluster }) {
+export function useStartLogs(cluster: Cluster) {
+  return useMutation({ mutationFn: (target: Target & { previous?: boolean }) => startLogs(targetSource(cluster, target)) });
+}
+
+// What a log tab says after its source's name.
+export const logDetail = (stream: LogStatus) =>
+  [
+    stream.source.kind !== LogSourceKind.LogSourcePod && `${stream.pods?.length ?? 0} ${stream.pods?.length === 1 ? "pod" : "pods"}`,
+    stream.source.previous && "previous run",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+export function LogTab({ cluster, stream }: { cluster: Cluster; stream: LogStatus }) {
   const pods = useQuery(podsQuery(cluster.id));
-  const { groups, error: listError } = useTargets(cluster);
-  const stream = useUIStore((s) => streamFor(s.logStreams, cluster));
-  const start = useStartLogs(cluster);
-  const loggable = groups.filter((g) => g.label !== "Services").map((g) => ({ ...g, items: g.items.filter((t) => logKind[t.kind]) }));
-  const kind = stream ? sourceKind[stream.source.kind] ?? "pod" : "pod";
-  const current = stream ? loggable.flatMap((g) => g.items).find((t) => t.kind === kind && t.namespace === stream.source.namespace && t.name === stream.source.name) ?? null : null;
-  const error = listError ?? start.error;
   // The followed pods, with their containers from the pod list; a pod not listed yet falls back to the stream's union.
-  const shellPods = (stream?.pods ?? []).map((name) => ({
-    namespace: stream!.source.namespace,
+  const shellPods = (stream.pods ?? []).map((name) => ({
+    namespace: stream.source.namespace,
     name,
-    containers: pods.data?.find((p) => p.namespace === stream!.source.namespace && p.name === name)?.containers ?? stream!.containers ?? [],
+    containers: pods.data?.find((p) => p.namespace === stream.source.namespace && p.name === name)?.containers ?? stream.containers ?? [],
   }));
-
-  const picker = (
-    <TargetPicker groups={loggable} value={current} onPick={(t) => start.mutate(t)} placeholder="Search workloads and pods">
-      <ComboboxTrigger render={<Button variant="outline" size="sm" className="max-w-96 min-w-48 shrink" />}>
-        {stream ? (
-          <>
-            <StateDot status={stream} />
-            <KindBadge kind={kind} />
-            <span className="truncate">
-              {stream.source.namespace}/{stream.source.name}
-            </span>
-            {stream.source.kind !== LogSourceKind.LogSourcePod && (
-              <span className="text-muted-foreground">
-                · {stream.pods?.length ?? 0} {stream.pods?.length === 1 ? "pod" : "pods"}
-              </span>
-            )}
-            {stream.source.previous && <span className="text-muted-foreground">· previous run</span>}
-          </>
-        ) : (
-          "Pick a workload or pod"
-        )}
-      </ComboboxTrigger>
-    </TargetPicker>
-  );
-
-  if (!stream) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 px-4 py-2.5">{picker}</div>
-        {error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error)}</p>}
-        <Empty className="justify-start border-0 pt-12">
-          <EmptyHeader>
-            <EmptyTitle>Nothing followed yet</EmptyTitle>
-            <EmptyDescription>Pick a workload to follow all of its pods, or a single pod.</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    );
-  }
-  return (
-    <StreamPanel key={stream.id} stream={stream} picker={picker} shell={<OpenShell cluster={cluster} pods={shellPods} />} error={error} />
-  );
+  return <StreamPanel key={stream.id} stream={stream} shell={<OpenShell cluster={cluster} pods={shellPods} />} />;
 }
 
 type ViewState = { query: string; regex: boolean };
 
 // StreamPanel owns the view state of one stream; a new stream remounts it clean.
-function StreamPanel({ stream, picker, shell, error }: { stream: LogStatus; picker: ReactNode; shell: ReactNode; error: unknown }) {
+function StreamPanel({ stream, shell }: { stream: LogStatus; shell: ReactNode }) {
   const [view, setView] = useState<ViewState>({ query: "", regex: false });
   const patch = (p: Partial<ViewState>) => setView((v) => ({ ...v, ...p }));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-        {picker}
         <LogToolbar stream={stream} view={view} patch={patch} />
         {shell}
       </div>
-      {(error || stream.error) && <p className="px-4 pb-2 text-xs text-destructive">{errorText(error ?? statusLabel(stream))}</p>}
+      {stream.error && <p className="px-4 pb-2 text-xs text-destructive">{statusLabel(stream)}</p>}
       {stream.deleted && (
         <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
           {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if it is recreated.
@@ -197,9 +171,14 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
   const toggleWrap = useUIStore((s) => s.toggleLogWrap);
   const timestamps = useUIStore((s) => s.logTimestamps);
   const toggleTimestamps = useUIStore((s) => s.toggleLogTimestamps);
-  const stop = useMutation({ mutationFn: () => LogService.Stop(stream.id) });
-  // Another container is another stream: the choice is the source's, so a workload applies it to every pod.
-  const follow = useMutation({ mutationFn: (container: string) => LogService.Start({ ...stream.source, container }) });
+  // Another container is another stream, which takes this tab's place, or whose open tab is selected as this one closes;
+  // the choice is the source's, so a workload applies it to every pod.
+  const follow = useMutation({
+    mutationFn: async (container: string) => {
+      await startLogs({ ...stream.source, container }, stream.id);
+      await LogService.Stop(stream.id);
+    },
+  });
   // Save writes what the view shows: the filtered lines, drawn with the columns on screen.
   const save = useMutation({
     mutationFn: () => {
@@ -212,9 +191,6 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
   const containers = stream.allContainers ?? [];
   return (
     <>
-      <Button variant="ghost" size="icon-sm" title="Stop following" disabled={stop.isPending} onClick={() => stop.mutate()}>
-        <XIcon />
-      </Button>
       {containers.length > 1 && (
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="shrink-0" disabled={follow.isPending} />}>
