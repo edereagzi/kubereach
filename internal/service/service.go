@@ -19,6 +19,8 @@ type Service struct {
 	RouteKeepalive time.Duration
 	// ResponseHeaderTimeout is how long an API server may take to start answering; a body that is flowing is never cut.
 	ResponseHeaderTimeout time.Duration
+	// ForwardStreamTimeout is how long a forward's pod connection may take to open a stream before it counts as dead.
+	ForwardStreamTimeout time.Duration
 	// ReleasesURL is the GitHub API endpoint of the latest Kubereach release.
 	ReleasesURL string
 
@@ -45,6 +47,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		ForwardIdle:           5 * time.Minute,
 		RouteKeepalive:        15 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
+		ForwardStreamTimeout:  15 * time.Second,
 		ReleasesURL:           "https://api.github.com/repos/edereagzi/kubereach/releases/latest",
 		configPath:            configPath,
 		clients:               clients,

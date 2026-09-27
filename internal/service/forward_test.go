@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -42,6 +43,8 @@ type testAPI struct {
 	gone   map[string]bool
 	seeded int
 	stall  chan struct{}
+	// frozen, while set, holds every new stream unanswered, as a pod connection whose peer vanished during sleep.
+	frozen chan struct{}
 	// shells are the commands the exec subresource can start; execs and resizes record what it was asked.
 	shells  map[string]bool
 	execs   []string
@@ -94,8 +97,11 @@ func (a *testAPI) podHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	conn := spdy.NewResponseUpgrader().UpgradeResponse(w, r, func(s httpstream.Stream, replySent <-chan struct{}) error {
 		a.mu.Lock()
-		gone := a.gone[pod]
+		gone, frozen := a.gone[pod], a.frozen
 		a.mu.Unlock()
+		if frozen != nil {
+			<-frozen
+		}
 		done := pairDone(s.Headers().Get(corev1.PortForwardRequestIDHeader))
 		go func() {
 			<-replySent
@@ -614,6 +620,74 @@ func TestForward_DeletedPodIsDroppedAndNextConnectionReachesAnother(t *testing.T
 	}
 }
 
+func TestForward_DeadPodConnectionFailsFastAndIsRedialed(t *testing.T) {
+	f := newForwardFixture(t, pod("default", "api-0", "api", corev1.PodRunning, true, time.Now()))
+	f.svc.ForwardStreamTimeout = 200 * time.Millisecond
+	pf := f.save(t, service.TargetPod, "api-0", 8080, 0)
+	pingThroughPort(t, pf.LocalPort)
+	f.waitState(t, service.StateConnected)
+
+	// The pod connection stops answering without closing, as after the laptop slept.
+	frozen := make(chan struct{})
+	f.api.mu.Lock()
+	f.api.frozen = frozen
+	f.api.mu.Unlock()
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", pf.LocalPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Errorf("connection over the dead pod connection read = %v, want it closed fast", err)
+	}
+	if ev := f.waitState(t, service.StateError); ev.Error != "The pod connection stopped answering" {
+		t.Errorf("row over the dead pod connection = %+v, want it to say the connection stopped answering", ev)
+	}
+
+	f.api.mu.Lock()
+	f.api.frozen = nil
+	f.api.mu.Unlock()
+	close(frozen)
+	if diff := cmp.Diff([]string{"api-0:8080", "ping"}, pingThroughPort(t, pf.LocalPort)); diff != "" {
+		t.Errorf("bytes after the dead connection mismatch (-want +got):\n%s", diff)
+	}
+	f.api.mu.Lock()
+	dialed := len(f.api.conns["api-0"])
+	f.api.mu.Unlock()
+	if dialed != 2 {
+		t.Errorf("pod connections dialed = %d, want the dead one replaced by a second", dialed)
+	}
+}
+
+// flakyListener fails its first Accept the way running out of file descriptors does.
+type flakyListener struct {
+	net.Listener
+	failed bool
+}
+
+func (l *flakyListener) Accept() (net.Conn, error) {
+	if !l.failed {
+		l.failed = true
+		return nil, &net.OpError{Op: "accept", Net: "tcp", Err: syscall.EMFILE}
+	}
+	return l.Listener.Accept()
+}
+
+func TestForward_TemporaryAcceptErrorKeepsListening(t *testing.T) {
+	f := newForwardFixture(t, pod("default", "api-0", "api", corev1.PodRunning, true, time.Now()))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	pf := service.PortForward{ClusterID: f.cluster, Target: service.ForwardTarget{Kind: service.TargetPod, Namespace: "default", Name: "api-0"}, RemotePort: 8080}
+	go f.svc.ServeForwardListener(pf, &flakyListener{Listener: ln})
+	if diff := cmp.Diff([]string{"api-0:8080", "ping"}, pingThroughPort(t, ln.Addr().(*net.TCPAddr).Port)); diff != "" {
+		t.Errorf("bytes after an accept error mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestForward_TurnedOffWhileDialStallsClosesWaitingConnection(t *testing.T) {
 	f := newForwardFixture(t, pod("default", "api-0", "api", corev1.PodRunning, true, time.Now()))
 	stall := make(chan struct{})
@@ -684,6 +758,66 @@ func (f *routeFixture) saveForward(t *testing.T) service.PortForward {
 		t.Fatal(err)
 	}
 	return pf
+}
+
+// A pod connection that stops answering checks its Route: a frozen one reconnects at once, rather than after its
+// keepalives run out (15 s each here); a live one that answers its keepalive is left alone, and only the pod
+// connection is dropped.
+func TestForward_StalledStreamChecksTheRoute(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		freeze     func(t *testing.T, f *routeFixture)
+		reconnects bool
+	}{
+		{"frozen Route", func(_ *testing.T, f *routeFixture) { f.ssh.stall() }, true},
+		{"live Route", func(t *testing.T, f *routeFixture) {
+			frozen := make(chan struct{})
+			t.Cleanup(func() { close(frozen) })
+			f.podAPI.mu.Lock()
+			f.podAPI.frozen = frozen
+			f.podAPI.mu.Unlock()
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			priv, pub := newKeyPair(t)
+			f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+			// Two hops, the second reached through the first: closing the last hop's client alone ends no read there.
+			f.route.Servers = append(f.route.Servers, f.route.Servers[0])
+			if _, err := f.svc.SaveRoute(f.route); err != nil {
+				t.Fatal(err)
+			}
+			f.svc.ForwardStreamTimeout = 600 * time.Millisecond
+			forwards := f.captureForwards()
+			pf := f.saveForward(t)
+			f.connect(t)
+			pingThroughPort(t, pf.LocalPort)
+			waitForwardState(t, forwards, service.StateConnected)
+
+			tc.freeze(t, f)
+			conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", pf.LocalPort))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = conn.Close() }()
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+				t.Errorf("connection over the stalled stream read = %v, want it closed", err)
+			}
+			waitForwardState(t, forwards, service.StateError)
+			if tc.reconnects {
+				if ev := f.waitState(t, service.StateReconnecting); ev.Error != "The SSH server stopped answering" {
+					t.Errorf("reconnecting reason = %q, want the SSH server named as having stopped answering", ev.Error)
+				}
+				f.waitState(t, service.StateConnected)
+				return
+			}
+			select {
+			case ev := <-f.events:
+				t.Errorf("Route event %+v, want a live Route left alone", ev)
+			case <-time.After(time.Second):
+			}
+		})
+	}
 }
 
 func TestForward_ThroughRouteAndDownRoute(t *testing.T) {

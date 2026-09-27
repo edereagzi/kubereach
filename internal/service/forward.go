@@ -3,6 +3,7 @@ package service
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -445,11 +446,18 @@ func (d *spdyDialer) Dial(protocols ...string) (httpstream.Connection, string, e
 	return spdy.NegotiateStreaming(d.upgrader, d.client, req, protocols...)
 }
 
+const forwardAcceptRetry = 100 * time.Millisecond
+
 func (s *Service) acceptForward(ctx context.Context, fc *forwardConn) {
 	for {
 		c, err := fc.ln.Accept()
-		if err != nil {
+		if errors.Is(err, net.ErrClosed) {
 			return
+		}
+		if err != nil {
+			// Running out of file descriptors and the like passes; the port is still bound, so keep accepting.
+			time.Sleep(forwardAcceptRetry)
+			continue
 		}
 		go s.serveForward(ctx, fc, c)
 	}
@@ -468,7 +476,7 @@ func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn)
 	headers.Set(corev1.StreamType, corev1.StreamTypeError)
 	headers.Set(corev1.PortHeader, strconv.Itoa(podPort))
 	headers.Set(corev1.PortForwardRequestIDHeader, strconv.Itoa(id))
-	errStream, err := conn.CreateStream(headers)
+	errStream, err := s.createForwardStream(fc, conn, headers)
 	if err != nil {
 		return
 	}
@@ -476,7 +484,7 @@ func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn)
 	defer conn.RemoveStreams(errStream)
 	defer func() { _ = errStream.Reset() }()
 	headers.Set(corev1.StreamType, corev1.StreamTypeData)
-	data, err := conn.CreateStream(headers)
+	data, err := s.createForwardStream(fc, conn, headers)
 	if err != nil {
 		return
 	}
@@ -504,6 +512,46 @@ func (s *Service) serveForward(ctx context.Context, fc *forwardConn, c net.Conn)
 		}
 	case <-ctx.Done():
 	}
+}
+
+// createForwardStream gives up on a pod connection that does not answer within ForwardStreamTimeout, as one whose
+// peer vanished while the laptop slept, rather than waiting for client-go's 30 s on every local connection. After a
+// third of that it checks the Route, and a dead one fails the stream at once and reconnects. A stream that fails drops
+// the connection, unless it had already closed, which dropForward reports.
+func (s *Service) createForwardStream(fc *forwardConn, conn httpstream.Connection, headers http.Header) (httpstream.Stream, error) {
+	type created struct {
+		stream httpstream.Stream
+		err    error
+	}
+	result := make(chan created, 1)
+	go func() {
+		stream, err := conn.CreateStream(headers)
+		result <- created{stream, err}
+	}()
+	timeout := time.After(s.ForwardStreamTimeout)
+	quiet := s.ForwardStreamTimeout / 3
+	var c created
+	select {
+	case c = <-result:
+	case <-time.After(quiet):
+		if rc := s.clusterRoute(fc.status.Forward.ClusterID); rc != nil && rc.checkLink(quiet) {
+			c.err = userErrorf("The Route stopped answering")
+		} else {
+			select {
+			case c = <-result:
+			case <-timeout:
+				c.err = userErrorf("The pod connection stopped answering")
+			}
+		}
+	}
+	if c.err != nil {
+		select {
+		case <-conn.CloseChan():
+		default:
+			s.failForward(fc, conn, errorMessage(c.err))
+		}
+	}
+	return c.stream, c.err
 }
 
 // forwardConnection returns the pod connection, dialing a ready pod when there is none, and counts the caller
@@ -638,7 +686,8 @@ func (s *Service) dropForward(fc *forwardConn, conn httpstream.Connection) {
 }
 
 // failForward drops the pod connection after a pod-side error, since the API server keeps a deleted pod's
-// connection open; the next inbound connection resolves a ready pod again. A connection already replaced stays quiet.
+// connection open, or after a stream it could not open; the next inbound connection resolves a ready pod again.
+// A connection already replaced stays quiet.
 func (s *Service) failForward(fc *forwardConn, conn httpstream.Connection, msg string) {
 	fc.mu.Lock()
 	dropped := fc.conn == conn && !fc.closed

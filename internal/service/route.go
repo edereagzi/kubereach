@@ -82,6 +82,10 @@ type routeConn struct {
 	readMu      sync.Mutex
 	// lastServer is user@host:port of the Route's last SSH Server, where remote kubeconfigs are read.
 	lastServer string
+	// heard is when that server last sent anything, in Unix nanoseconds.
+	heard atomic.Int64
+	// closed ends the current connection with its reason.
+	closed chan error
 }
 
 // unknownHostError carries the key the user is asked to approve.
@@ -423,7 +427,7 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 	backoff := time.Second
 	s.setRouteState(rc, StateConnecting, nil)
 	for {
-		clients, err := s.dialRoute(ctx, route)
+		clients, err := s.dialRoute(ctx, route, &rc.heard)
 		if ctx.Err() != nil {
 			clients.Close()
 			s.setRouteState(rc, StateStopped, nil)
@@ -431,10 +435,13 @@ func (s *Service) runRoute(ctx context.Context, route Route, rc *routeConn) {
 		}
 		if err == nil {
 			backoff = time.Second
+			closed := make(chan error, 3)
+			rc.mu.Lock()
+			rc.closed = closed
+			rc.mu.Unlock()
 			rc.setClients(clients)
 			s.setRouteState(rc, StateConnected, nil)
 			live, stop := context.WithCancel(ctx)
-			closed := make(chan error, 2)
 			go func() { closed <- clients.last().Wait() }()
 			go func() { closed <- keepAlive(live, clients.last(), s.RouteKeepalive) }()
 			select {
@@ -516,15 +523,19 @@ func keepAlive(ctx context.Context, client *ssh.Client, interval time.Duration) 
 	}
 }
 
-// dialRoute connects each SSH Server through the previous one, in Route order.
-func (s *Service) dialRoute(ctx context.Context, route Route) (routeClients, error) {
+// dialRoute connects each SSH Server through the previous one, in Route order; heard follows the last one.
+func (s *Service) dialRoute(ctx context.Context, route Route, heard *atomic.Int64) (routeClients, error) {
 	var clients routeClients
-	for _, srv := range route.Servers {
+	for i, srv := range route.Servers {
 		var via *ssh.Client
 		if len(clients) > 0 {
 			via = clients.last()
 		}
-		client, err := s.dialServer(ctx, route.ID, via, srv)
+		var last *atomic.Int64
+		if i == len(route.Servers)-1 {
+			last = heard
+		}
+		client, err := s.dialServer(ctx, route.ID, via, srv, last)
 		if err != nil {
 			clients.Close()
 			return nil, err
@@ -537,7 +548,7 @@ func (s *Service) dialRoute(ctx context.Context, route Route) (routeClients, err
 // dialServer resolves credentials afresh so a restarted agent is picked up on reconnect,
 // and bounds the dial and handshake by ctx so Stop never waits on a stalled server.
 // Errors carry the server address so the UI can name the failed SSH Server.
-func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Client, srv SSHServer) (client *ssh.Client, err error) {
+func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Client, srv SSHServer, heard *atomic.Int64) (client *ssh.Client, err error) {
 	addr := net.JoinHostPort(srv.Host, strconv.Itoa(srv.Port))
 	defer func() {
 		if err != nil {
@@ -563,6 +574,9 @@ func (s *Service) dialServer(ctx context.Context, routeID string, via *ssh.Clien
 	}
 	if err != nil {
 		return nil, err
+	}
+	if heard != nil {
+		conn = heardConn{conn, heard}
 	}
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, &ssh.ClientConfig{
@@ -695,6 +709,64 @@ func (s *Service) setRouteState(rc *routeConn, state State, err error) {
 func (s *Service) routeSSH(routeID string) *ssh.Client {
 	if rc := s.routes[routeID]; rc != nil {
 		return rc.sshClient()
+	}
+	return nil
+}
+
+// heardConn records when its SSH Server last sent anything.
+type heardConn struct {
+	net.Conn
+	heard *atomic.Int64
+}
+
+func (c heardConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.heard.Store(time.Now().UnixNano())
+	}
+	return n, err
+}
+
+// checkLink is for a request through the Route that went unanswered: the last SSH Server is sent a keepalive, and if
+// nothing at all comes back within quiet, the link is dead, and the Route reconnects now rather than once its
+// keepalives run out. A busy link, such as one behind a big transfer, is still sending, and is left alone. It tells
+// whether the link was found dead.
+func (rc *routeConn) checkLink(quiet time.Duration) bool {
+	rc.mu.Lock()
+	clients, closed := rc.clients, rc.closed
+	rc.mu.Unlock()
+	if len(clients) == 0 {
+		return false
+	}
+	client := clients.last()
+	answered := make(chan struct{})
+	go func() {
+		// OpenSSH answers keepalive@openssh.com with a refusal; any reply proves the link.
+		if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err == nil {
+			close(answered)
+		}
+	}()
+	select {
+	case <-answered:
+		return false
+	case <-time.After(quiet):
+	}
+	if time.Since(time.Unix(0, rc.heard.Load())) < quiet {
+		return false
+	}
+	select {
+	case closed <- userErrorf("The SSH server stopped answering"):
+	default:
+	}
+	return true
+}
+
+// clusterRoute is the connection of the Route a Cluster's client goes through; nil without one.
+func (s *Service) clusterRoute(clusterID string) *routeConn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if k, ok := s.kubes[clusterID]; ok && k.cluster.RouteID != "" {
+		return s.routes[k.cluster.RouteID]
 	}
 	return nil
 }
