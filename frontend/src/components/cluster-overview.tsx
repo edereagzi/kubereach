@@ -19,12 +19,20 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Toggle } from "@/components/ui/toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
-// The search box is the only kind filter: every word must match the row's kind, group or name, so "secret pay" is the Secrets with "pay" in the name.
+// Every search word must be in the row's name; the kind is picked from the menu beside it, which lists that kind alone,
+// flat: picking Pods lists pods without the workloads that run them.
 // Running things stay in view; ConfigMaps and Secrets are looked up by name, so each namespace folds them behind one line until asked or searched.
 const folded = (group: string) => group === "ConfigMaps" || group === "Secrets";
 // "ingresses" loses two letters where "services" loses one.
@@ -32,17 +40,17 @@ const singular = (word: string) => (word.endsWith("sses") ? word.slice(0, -2) : 
 const counts = (kinds: TargetGroup[]) =>
   kinds.map((g) => `${g.items.length} ${g.items.length === 1 ? singular(g.label.toLowerCase()) : g.label.toLowerCase()}`).join(" · ");
 
-// An Ingress is searched by its hosts too: during an incident the URL is what you have, not the object's name.
-const matches = (words: string[], group: string, t: Target) => {
-  const hay = `${t.kind} ${t.workload?.kind ?? ""} ${group} ${t.label} ${t.ingress?.hosts?.join(" ") ?? ""}`.toLowerCase();
-  return words.every((w) => hay.includes(w));
-};
+const matches = (words: string[], t: Target) => words.every((w) => t.name.toLowerCase().includes(w));
+
+// The tick goes before the label, as in a macOS menu, so a count keeps the right edge to itself.
+const checkLeft = "pr-2 pl-7 *:data-[slot$=indicator]:right-auto *:data-[slot$=indicator]:left-2";
 
 // Passage states a pod goes through on its way up or out, and the end of one that finished cleanly; any other reason,
-// a pod against a limit, a stuck rollout, a failed Job, a claim no volume backs and an autoscaler that cannot scale are problems.
+// a stuck rollout, a failed Job, a claim no volume backs and an autoscaler that cannot scale are problems.
+// A pod near its limit is not: a JVM sized to its limit lives there, so it keeps its badge but raises no alarm, as in k9s and Headlamp.
 const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating", "Completed"]);
-const isProblem = (t: Target, pressure?: string) => {
-  if (t.kind === "pod") return !!pressure || (!!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, "")));
+const isProblem = (t: Target) => {
+  if (t.kind === "pod") return !!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, ""));
   if (t.ingress) return !!t.ingress.problem;
   if (t.pvc) return !!pvcReason(t.pvc);
   if (t.hpa) return !!t.hpa.problem;
@@ -67,12 +75,13 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   // A pod it retried after an error is part of that run, not a problem of its own.
   const succeeded = new Set(groups.flatMap((g) => g.items).filter((t) => t.workload?.job?.result === JobResult.JobComplete).map((t) => t.value));
   const finished = (t: Target) => succeeded.has(t.value) || (t.kind === "pod" && (t.reason === "Completed" || (!!t.owner && succeeded.has(t.owner))));
-  const problem = (t: Target) => !finished(t) && isProblem(t, pressure(t));
-  const [problems, setProblems] = useState(false);
+  const problem = (t: Target) => !finished(t) && isProblem(t);
+  const [onlyProblems, setOnlyProblems] = useState(false);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
   // Workloads whose pods or runs are folded away, by row value; open is the default, and a filter shows its matches regardless.
   const [hiddenChildren, setHiddenChildren] = useState<Record<string, boolean>>({});
   const [needle, setNeedle] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
   const [forwarding, setForwarding] = useState<Target | null>(null);
   const [inspecting, setInspecting] = useState<Target | null>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -121,7 +130,14 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   }
 
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = groups.map((g) => ({ ...g, items: g.items.filter((t) => (!problems || problem(t)) && matches(words, g.label, t)) }));
+  // A kind the scope no longer has lets go, rather than leave the list empty with no way to see why.
+  const kinds = groups.filter((g) => g.items.length);
+  const kind = kinds.some((g) => g.label === picked) ? picked : null;
+  // Counted over the scope, not the search or the kind: narrowing the list must not make the alarm go quiet.
+  const unhealthy = groups.map((g) => ({ ...g, items: g.items.filter(problem) })).filter((g) => g.items.length);
+  // Once nothing is unhealthy the filter lets go, rather than leave an empty list behind a line that is gone.
+  const problems = onlyProblems && unhealthy.length > 0;
+  const shown = groups.map((g) => ({ ...g, items: !kind || g.label === kind ? g.items.filter((t) => (!problems || problem(t)) && matches(words, t)) : [] }));
   const byNamespace = new Map<string, TargetGroup[]>();
   for (const ns of settled.current.namespaces) byNamespace.set(ns, []);
   for (const g of shown) {
@@ -141,9 +157,8 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   for (const t of everything) if (t.owner && workloads.has(t.owner) && !finished(t)) childrenOf.set(t.owner, [...(childrenOf.get(t.owner) ?? []), t]);
   const scaledBy = new Map(everything.flatMap((t) => (t.hpa && t.owner ? [[t.owner, t.hpa] as const] : [])));
   const shows = (t: Target): boolean => passing.has(t.value) || (childrenOf.get(t.value) ?? []).some(shows);
-  const filtering = words.length > 0 || problems;
-  // Counted over the scope, not the search: typing a name must not make the alarm go quiet.
-  const problemCount = groups.reduce((n, g) => n + g.items.filter(problem).length, 0);
+  const seeking = words.length > 0 || !!kind;
+  const filtering = seeking || problems;
   shownRows.current = [];
 
   return (
@@ -160,7 +175,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.kind === "svc" && <YamlDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="h-7 w-72">
-          <InputGroupInput ref={search} placeholder="Filter by name or kind" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput ref={search} placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
@@ -168,26 +183,43 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <kbd className="font-sans text-[10px] text-muted-foreground">/</kbd>
           </InputGroupAddon>
         </InputGroup>
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={problems}
-          onPressedChange={setProblems}
-          title="Only pods, workloads, jobs, autoscalers, volume claims and ingresses that are not healthy"
-          className="aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
-        >
-          Problems
-          <span
-            className={cn(
-              "rounded-full px-1.5 text-[11px] leading-4 tabular-nums",
-              problemCount > 0 ? "bg-destructive/15 text-destructive" : "bg-foreground/8 text-muted-foreground",
-              problems && problemCount > 0 && "bg-destructive text-background",
-            )}
-          >
-            {problemCount}
-          </span>
-        </Toggle>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+            {kind ?? "All"}
+            <CaretDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-48">
+            <DropdownMenuRadioGroup value={kind ?? ""} onValueChange={(v: string) => setPicked(v || null)}>
+              <DropdownMenuRadioItem value="" closeOnClick className={checkLeft}>
+                All
+              </DropdownMenuRadioItem>
+              {kinds.map((g) => (
+                <DropdownMenuRadioItem key={g.label} value={g.label} closeOnClick className={checkLeft}>
+                  {g.label}
+                  <DropdownMenuShortcut className="tracking-normal tabular-nums">{g.items.length}</DropdownMenuShortcut>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      {/* Only there while something is broken: a healthy cluster shows no counter to read. "Show only these" lists exactly what it names, so it drops the kind. */}
+      {unhealthy.length > 0 && (
+        <div className="mx-4 mb-2 flex items-center gap-3 rounded-md bg-destructive/10 py-1 pr-1 pl-3 text-sm text-destructive">
+          <span className="min-w-0 flex-1 truncate">{counts(unhealthy)} not healthy</span>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-destructive hover:bg-destructive/15 hover:text-destructive"
+            onClick={() => {
+              if (!problems) setPicked(null);
+              setOnlyProblems(!problems);
+            }}
+          >
+            {problems ? "Show everything" : "Show only these"}
+          </Button>
+        </div>
+      )}
       {groups
         .filter((g) => g.error)
         .map((g) => (
@@ -212,9 +244,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         {total === 0 && (
           <Empty className="col-span-full justify-start border-0 pt-12">
             <EmptyHeader>
-              <EmptyTitle>{!loaded ? "Loading…" : words.length ? `Nothing matches “${needle.trim()}”` : problems ? "This scope is healthy" : "Nothing to show"}</EmptyTitle>
+              <EmptyTitle>{!loaded ? "Loading…" : words.length ? `Nothing matches “${needle.trim()}”` : problems ? `No ${kind?.toLowerCase()} are unhealthy` : "Nothing to show"}</EmptyTitle>
               <EmptyDescription>
-                {!loaded ? "Its objects appear as soon as the cluster answers." : words.length ? "Try a shorter name, or a kind such as pod or secret." : problems ? "No crash loops, pull failures, pending pods, pods against a limit, stuck rollouts, failed Jobs, autoscalers that cannot scale, unbound volume claims or Ingresses that reach no pod." : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
+                {!loaded ? "Its objects appear as soon as the cluster answers." : words.length ? "Try a shorter name." : problems ? "Pick All to see the rest." : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -250,14 +282,16 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             const open = filtering || !hiddenChildren[t.value];
             return [line(t, depth, children), ...(open ? children.flatMap((c) => tree(c, (depth + 1) as Depth)) : [])];
           };
-          const rows = live.filter((t) => !(t.owner && workloads.has(t.owner))).flatMap((t) => tree(t, 0));
+          const rows = kind
+            ? live.filter((t) => passing.has(t.value)).map((t) => (shownLive.add(t.value), line(t)))
+            : live.filter((t) => !(t.owner && workloads.has(t.owner))).flatMap((t) => tree(t, 0));
           const running = groups.filter((g) => !folded(g.label)).map((g) => ({ ...g, items: g.items.filter((t) => t.namespace === ns && shownLive.has(t.value)) }));
           const foldLine = (key: string, list: Target[], label: string) => {
             if (!list.length) return null;
-            const open = words.length > 0 || !!unfolded[key];
+            const open = seeking || !!unfolded[key];
             return (
               <>
-                {words.length === 0 && (
+                {!seeking && (
                   <button
                     type="button"
                     className="col-span-full grid h-8 grid-cols-[48px_1fr] items-center gap-3 px-4 text-left text-xs text-muted-foreground hover:bg-accent"
