@@ -248,7 +248,4 @@ export const useUIStore = create<UIState>((set) => ({
 // A session that just started becomes its Cluster's tab.
 const addDockTab = (s: UIState, clusterId: string, id: string) => ({ dockOrder: [...s.dockOrder, id], dockPicks: { ...s.dockPicks, [clusterId]: id } });
 
-export const openShellCount = (s: { shellSessions: Record<string, ShellStatus> }, clusterId: string) =>
-  Object.values(s.shellSessions).filter((x) => x.target.clusterId === clusterId && !sessionEnded(x)).length;
-
 export const sessionEnded = (s: ShellStatus | TerminalStatus) => s.state === State.StateStopped || s.state === State.StateError;

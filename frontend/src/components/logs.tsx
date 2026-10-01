@@ -85,9 +85,6 @@ const lineKey = (l: LogLine) => {
   return k;
 };
 
-export const streamFor = (streams: Record<string, LogStatus>, cluster: Cluster) =>
-  Object.values(streams).find((st) => st.source.clusterId === cluster.id);
-
 // The stream following exactly this source, if one is open.
 export const streamOf = (streams: Record<string, LogStatus>, source: LogSource) =>
   Object.values(streams).find(

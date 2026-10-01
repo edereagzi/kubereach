@@ -1,21 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowsLeftRightIcon,
-  CubeIcon,
   FileIcon,
   HardDrivesIcon,
   MagnifyingGlassIcon,
-  PathIcon,
   PlusIcon,
-  ScrollIcon,
   WarningIcon,
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
 import { State, type Cluster, type RemoteKubeconfig, type RouteStatus } from "@bindings/internal/service";
-import { forwardsFor } from "@/components/forwards";
-import { streamFor } from "@/components/logs";
 import { isUp, RouteDialog, serverChain, StateDot, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { RefreshButton } from "@/components/refresh-button";
@@ -27,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
-import { openShellCount, useUIStore } from "@/store";
+import { useUIStore } from "@/store";
 import { cn, modKey } from "@/lib/utils";
 
 export function Sidebar() {
@@ -371,55 +365,8 @@ function ClusterRow({ cluster }: { cluster: Cluster }) {
       >
         <ReachabilityDot cluster={cluster} />
         <span className="min-w-0 flex-1 truncate">{cluster.name}</span>
-        <Activity cluster={cluster} />
-        <RouteMark cluster={cluster} />
       </button>
     </li>
-  );
-}
-
-// What keeps running on a Cluster while another one is looked at.
-function Activity({ cluster }: { cluster: Cluster }) {
-  const { data } = useQuery(configQuery);
-  const forwards = forwardsFor(data?.forwards, cluster).filter((f) => f.enabled).length;
-  const following = useUIStore((s) => !!streamFor(s.logStreams, cluster));
-  const shells = useUIStore((s) => openShellCount(s, cluster.id));
-  if (!forwards && !following && !shells) return null;
-  return (
-    <span className="flex shrink-0 items-center gap-2 text-[11px] font-normal text-muted-foreground tabular-nums [&_svg]:size-3.5">
-      {forwards > 0 && (
-        <span className="flex items-center gap-0.5" title={`${forwards} port ${forwards === 1 ? "forward" : "forwards"} on`}>
-          <ArrowsLeftRightIcon />
-          {forwards}
-        </span>
-      )}
-      {following && (
-        <span title="Following logs">
-          <ScrollIcon />
-        </span>
-      )}
-      {shells > 0 && (
-        <span className="flex items-center gap-0.5" title={`${shells} ${shells === 1 ? "shell" : "shells"} open`}>
-          <CubeIcon />
-          {shells}
-        </span>
-      )}
-    </span>
-  );
-}
-
-// A Cluster behind a Route says so, since that Route being down is the usual reason the Cluster cannot be reached.
-function RouteMark({ cluster }: { cluster: Cluster }) {
-  const { data } = useQuery(configQuery);
-  const status = useUIStore((s) => (cluster.route ? s.routeStatuses[cluster.route] : undefined));
-  const problem = useRouteProblem(cluster.route ?? "");
-  const route = data?.routes?.find((r) => r.id === cluster.route);
-  if (!route) return null;
-  const state = isUp(status) ? status?.state : "not connected";
-  return (
-    <span className="shrink-0 text-muted-foreground [&_svg]:size-3.5" title={`Through ${route.name}, ${state}${problem ? `: ${problem}` : ""}`}>
-      <PathIcon />
-    </span>
   );
 }
 
