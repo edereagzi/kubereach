@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClusterService } from "@bindings/internal/bindings";
-import { WorkloadKind, type Cluster, type KubeWorkload } from "@bindings/internal/service";
+import { WorkloadKind, type Cluster, type KubeNode, type KubeWorkload } from "@bindings/internal/service";
 import { objectKind, type Kind, type Target } from "@/components/targets";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -162,6 +162,33 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
           description={<>{objectRef(w)} stops starting Jobs on its schedule. Jobs already running go on.</>}
           confirm="Suspend"
           run={() => ClusterService.SuspendCronJob(cluster.id, w.namespace, w.name, true)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function NodeActions({ cluster, node: n }: { cluster: Cluster; node: KubeNode }) {
+  const name = <span className="font-mono text-foreground">{n.name}</span>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {n.unschedulable ? (
+        <WriteAction
+          cluster={cluster}
+          label="Uncordon"
+          title={`Uncordon node ${n.name}?`}
+          description={<>The scheduler can place new pods on {name} again.</>}
+          confirm="Uncordon"
+          run={() => ClusterService.CordonNode(cluster.id, n.name, false)}
+        />
+      ) : (
+        <WriteAction
+          cluster={cluster}
+          label="Cordon"
+          title={`Cordon node ${n.name}?`}
+          description={<>The scheduler places no new pods on {name}. The pods already on it keep running.</>}
+          confirm="Cordon"
+          run={() => ClusterService.CordonNode(cluster.id, n.name, true)}
         />
       )}
     </div>

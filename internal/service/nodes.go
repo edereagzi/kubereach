@@ -18,10 +18,12 @@ type KubeNode struct {
 	Roles   []string `json:"roles,omitempty"`
 	Version string   `json:"version"`
 	// Problem is the one thing wrong with the node, empty when nothing is; see NodeReason.
-	Problem     string        `json:"problem,omitempty"`
-	Allocatable ResourceUsage `json:"allocatable"`
-	Requested   ResourceUsage `json:"requested"`
-	Pods        int           `json:"pods"`
+	Problem string `json:"problem,omitempty"`
+	// Unschedulable is a cordoned node: the scheduler places no new pods on it.
+	Unschedulable bool          `json:"unschedulable,omitempty"`
+	Allocatable   ResourceUsage `json:"allocatable"`
+	Requested     ResourceUsage `json:"requested"`
+	Pods          int           `json:"pods"`
 	// PodCapacity is how many pods the node accepts, zero when it does not say.
 	PodCapacity int64 `json:"podCapacity"`
 	// Unknown marks totals that are a failed read rather than an idle node: the pods could not be listed, so
@@ -149,12 +151,13 @@ func (s *Service) DescribeNode(ctx context.Context, clusterID, name string) (Nod
 
 func nodeObject(n *corev1.Node) KubeNode {
 	return KubeNode{
-		Name:        n.Name,
-		Roles:       nodeRoles(n.Labels),
-		Version:     n.Status.NodeInfo.KubeletVersion,
-		Problem:     NodeReason(n),
-		Allocatable: resourceUsage(n.Status.Allocatable),
-		PodCapacity: n.Status.Allocatable.Pods().Value(),
+		Name:          n.Name,
+		Roles:         nodeRoles(n.Labels),
+		Version:       n.Status.NodeInfo.KubeletVersion,
+		Problem:       NodeReason(n),
+		Unschedulable: n.Spec.Unschedulable,
+		Allocatable:   resourceUsage(n.Status.Allocatable),
+		PodCapacity:   n.Status.Allocatable.Pods().Value(),
 	}
 }
 

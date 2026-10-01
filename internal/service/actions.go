@@ -107,6 +107,18 @@ func (s *Service) SuspendCronJob(ctx context.Context, clusterID, namespace, name
 	return wrapForbidden(err)
 }
 
+// CordonNode stops the scheduler placing new pods on the node, or lets it again, as kubectl cordon and uncordon do; the
+// pods already on it stay.
+func (s *Service) CordonNode(ctx context.Context, clusterID, name string, cordon bool) error {
+	k, err := s.clusterClient(clusterID)
+	if err != nil {
+		return err
+	}
+	patch := fmt.Appendf(nil, `{"spec":{"unschedulable":%t}}`, cordon)
+	_, err = k.client.CoreV1().Nodes().Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	return wrapForbidden(err)
+}
+
 // ScaleWorkload sets a Deployment's or StatefulSet's replicas through the scale subresource.
 func (s *Service) ScaleWorkload(ctx context.Context, clusterID string, kind WorkloadKind, namespace, name string, replicas int32) error {
 	if replicas < 0 {

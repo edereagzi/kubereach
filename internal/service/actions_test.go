@@ -215,6 +215,36 @@ func TestSuspendCronJob(t *testing.T) {
 	}
 }
 
+func TestCordonNode(t *testing.T) {
+	svc, cs, id := newFakeService(t, node("node-a", nodeCondition(corev1.NodeReady, corev1.ConditionTrue)))
+	ctx := context.Background()
+	// The list is what shows a cordoned node, so the toggle is read back through it.
+	cordoned := func() bool {
+		nodes, err := svc.ListNodes(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return nodes[0].Unschedulable
+	}
+
+	if err := svc.CordonNode(ctx, id, "node-a", true); err != nil {
+		t.Fatal(err)
+	}
+	if !cordoned() {
+		t.Error("node not cordoned")
+	}
+	if err := svc.CordonNode(ctx, id, "node-a", false); err != nil {
+		t.Fatal(err)
+	}
+	if cordoned() {
+		t.Error("node still cordoned after uncordon")
+	}
+	forbid(cs, "patch", "nodes", false)
+	if err := svc.CordonNode(ctx, id, "node-a", true); !errors.Is(err, service.ErrForbidden) {
+		t.Errorf("forbidden cordon err = %v; want ErrForbidden", err)
+	}
+}
+
 func TestScaleWorkload(t *testing.T) {
 	three := int32(3)
 	ss := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Namespace: "db", Name: "postgres"}, Spec: appsv1.StatefulSetSpec{Replicas: &three}}

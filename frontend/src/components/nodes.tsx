@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
+import { NodeActions } from "@/components/actions";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
 import { RefreshButton } from "@/components/refresh-button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle, useInspectorWalk } from "@/components/inspector";
@@ -46,6 +47,10 @@ function Meter({ name, label, used, requested, allocatable, named = false }: { n
       </span>
     </span>
   );
+}
+
+function CordonedBadge({ node }: { node: KubeNode }) {
+  return node.unschedulable ? <ReasonBadge reason="cordoned" title="The scheduler places no new pods on this node" /> : null;
 }
 
 // A node under pressure must be findable from anywhere, and a node belongs to no namespace, so it cannot join the
@@ -129,6 +134,7 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
                       {n.name}
                     </button>
                     <ReasonBadge reason={n.problem} className="cursor-pointer" title="What the node reports about itself" onClick={() => setInspecting(n)} />
+                    <CordonedBadge node={n} />
                   </span>
                 </TableCell>
                 <TableCell className="max-w-48 truncate font-mono text-xs text-muted-foreground" title={n.roles?.join(", ")}>
@@ -167,6 +173,7 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
         <InspectorTitle className="flex items-center gap-2 pr-8">
           <span className="truncate">{n.name}</span>
           <ReasonBadge reason={n.problem} />
+          <CordonedBadge node={n} />
           <RefreshButton
             fetching={q.isFetching || metrics.isFetching}
             onRefresh={() => {
@@ -180,6 +187,7 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
           <Meter named name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
           <Meter named name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
         </InspectorDescription>
+        <NodeActions cluster={cluster} node={n} />
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind="node" namespace="" name={n.name}>

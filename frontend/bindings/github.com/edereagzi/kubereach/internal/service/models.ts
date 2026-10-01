@@ -361,6 +361,11 @@ export interface KubeNode {
      * Problem is the one thing wrong with the node, empty when nothing is; see NodeReason.
      */
     "problem"?: string;
+
+    /**
+     * Unschedulable is a cordoned node: the scheduler places no new pods on it.
+     */
+    "unschedulable"?: boolean;
     "allocatable": ResourceUsage;
     "requested": ResourceUsage;
     "pods": number;

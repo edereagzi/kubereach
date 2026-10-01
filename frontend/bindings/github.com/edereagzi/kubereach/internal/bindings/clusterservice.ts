@@ -17,6 +17,10 @@ export function CheckReachability(clusterID: string): $CancellablePromise<string
     return $Call.ByID(273405860, clusterID);
 }
 
+export function CordonNode(clusterID: string, name: string, cordon: boolean): $CancellablePromise<void> {
+    return $Call.ByID(726073816, clusterID, name, cordon);
+}
+
 export function Delete(clusterID: string): $CancellablePromise<void> {
     return $Call.ByID(2664650794, clusterID);
 }

@@ -15,7 +15,7 @@ import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // States that are normal passage or a deliberate choice rather than a fault; a complete rollout has nothing to say on a row.
-const calmReasons = new Set(["ContainerCreating", "PodInitializing", "Pending", "Terminating", "Completed", "progressing", "suspended"]);
+const calmReasons = new Set(["ContainerCreating", "PodInitializing", "Pending", "Terminating", "Completed", "progressing", "suspended", "cordoned"]);
 
 // Shaped like KindBadge so the two sit on one row as one system; red only when the reason is a fault.
 export function ReasonBadge({ reason, className, ...props }: { reason?: string } & ComponentProps<typeof Badge>) {

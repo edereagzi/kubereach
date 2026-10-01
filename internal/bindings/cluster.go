@@ -168,6 +168,10 @@ func (c *ClusterService) SuspendCronJob(ctx context.Context, clusterID, namespac
 	return c.svc.SuspendCronJob(ctx, clusterID, namespace, name, suspend)
 }
 
+func (c *ClusterService) CordonNode(ctx context.Context, clusterID, name string, cordon bool) error {
+	return c.svc.CordonNode(ctx, clusterID, name, cordon)
+}
+
 func (c *ClusterService) ScaleWorkload(ctx context.Context, clusterID string, kind service.WorkloadKind, namespace, name string, replicas int32) error {
 	return c.svc.ScaleWorkload(ctx, clusterID, kind, namespace, name, replicas)
 }
