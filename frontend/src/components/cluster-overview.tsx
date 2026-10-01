@@ -265,7 +265,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
                 scaledBy={scaledBy.get(t.value)}
                 done={finished(t)}
                 selected={t.value === inspecting?.value}
-                onInspect={() => setInspecting(t)}
+                onInspect={() => setInspecting(t.value === inspecting?.value ? null : t)}
                 depth={depth}
                 fold={children?.length ? { open: filtering || !hiddenChildren[t.value], toggle: () => setHiddenChildren((h) => ({ ...h, [t.value]: !h[t.value] })) } : undefined}
               />
