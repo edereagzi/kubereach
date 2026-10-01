@@ -122,7 +122,9 @@ func TestDeleteObject(t *testing.T) {
 	if _, err := cs.CoreV1().PersistentVolumeClaims("default").Get(ctx, "data", metav1.GetOptions{}); err != nil {
 		t.Errorf("PVC gone: %v", err)
 	}
-	cs.Tracker().Add(deployment("default", "api"))
+	if err := cs.Tracker().Add(deployment("default", "api")); err != nil {
+		t.Fatal(err)
+	}
 	forbid(cs, "delete", "deployments", false)
 	if err := svc.DeleteObject(ctx, id, service.ObjectDeployment, "default", "api"); !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("forbidden delete err = %v; want ErrForbidden", err)
