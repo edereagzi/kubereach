@@ -365,7 +365,7 @@ function ClusterRow({ cluster }: { cluster: Cluster }) {
         type="button"
         onClick={() => selectCluster(cluster.id)}
         className={cn(
-          "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring/50",
+          "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-ring",
           selected && "bg-primary/10 font-medium text-primary hover:bg-primary/15",
         )}
       >

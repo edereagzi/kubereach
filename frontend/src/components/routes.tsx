@@ -165,7 +165,7 @@ export function RouteChip({ cluster }: { cluster: Cluster }) {
       <DropdownMenu>
         <DropdownMenuTrigger
           title={problem ?? statusLabel(status)}
-          className="inline-flex h-7 max-w-48 items-center gap-1.5 rounded-full border px-2.5 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-muted"
+          className="inline-flex h-7 max-w-48 items-center gap-1.5 rounded-full border px-2.5 text-xs text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-muted"
         >
           <StateDot status={status} />
           <span className="truncate">via {route.name}</span>

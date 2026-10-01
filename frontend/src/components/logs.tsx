@@ -342,7 +342,7 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
       <div
         ref={parentRef}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
+        className="min-h-0 flex-1 overflow-auto py-1 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
         onScroll={(e) => {
           const el = e.currentTarget;
           const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;

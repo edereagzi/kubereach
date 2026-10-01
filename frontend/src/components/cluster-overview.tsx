@@ -547,9 +547,9 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
         else setQuery("");
       }}
     >
-      {/* A fixed width and the spinner in the caret's place keep the button still while the scope changes. */}
+      {/* The caret sits by the name, and the spinner takes its place while the scope saves. */}
       <ComboboxTrigger
-        render={<Button variant="ghost" size="sm" className={cn("-ml-2 w-60 justify-between text-muted-foreground", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
+        render={<Button variant="ghost" size="sm" className={cn("max-w-60 bg-foreground/6 text-muted-foreground [&>svg:last-child]:size-3.5", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
       >
         <span ref={labelRef} className="flex min-w-0 flex-1 items-center gap-1.5">
           <span className="truncate">{label}</span>
