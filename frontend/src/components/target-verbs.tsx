@@ -47,7 +47,7 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
             }}
           >
             <ArrowsLeftRightIcon />
-            {!row && "Forwarding"}
+            {!row && "Forward"}
           </Button>
         ) : (
           !row && (
@@ -61,7 +61,7 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
         (stream ? (
           <Button variant={variant} size={size} className={active} title="Following logs" onClick={() => openDock(cluster.id, stream.id)}>
             <ScrollIcon />
-            {!row && "Following logs"}
+            {!row && "Logs"}
           </Button>
         ) : (
           !row && (
@@ -92,7 +92,7 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
             ) : (
               <>
                 <TerminalIcon />
-                Shell open
+                Shell
               </>
             )}
           </Button>
