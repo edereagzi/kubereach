@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { EventService } from "@bindings/internal/bindings";
 import { State, type Cluster, type EventStatus, type KubeEvent } from "@bindings/internal/service";
 import { statusLabel, StateDot } from "@/components/routes";
 import { KindBadge, type Kind } from "@/components/targets";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Toggle } from "@/components/ui/toggle";
 import { errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -38,12 +40,18 @@ const queued = <T,>(run: () => Promise<T>) => {
   watchQueue = next.catch(() => {});
   return next;
 };
+// As in the Overview's filter, every word must match, so "pod backoff" is the back-offs of pods.
+const matches = (words: string[], e: KubeEvent) => {
+  const hay = `${e.kind} ${shortKind[e.kind] ?? ""} ${e.reason} ${e.message} ${e.namespace}/${e.name}`.toLowerCase();
+  return words.every((w) => hay.includes(w));
+};
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // The watch runs while the tab is open: it starts on mount and stops on unmount.
 export function ClusterEvents({ cluster }: { cluster: Cluster }) {
   const [error, setError] = useState<unknown>(null);
   const [warningsOnly, setWarningsOnly] = useState(false);
+  const [needle, setNeedle] = useState("");
   const stream = useUIStore((s) => eventStreamFor(s.eventStreams, cluster));
   const buffer = useUIStore((s) => (stream ? s.eventBuffers[stream.id] : undefined));
   useEffect(() => {
@@ -61,7 +69,8 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
 
   const events = buffer?.events ?? [];
   const warnings = events.filter((e) => e.type === "Warning");
-  const shown = warningsOnly ? warnings : events;
+  const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = (warningsOnly ? warnings : events).filter((e) => matches(words, e));
   const problem = error ?? (stream?.error && statusLabel(stream));
   const opening = !error && stream?.state !== State.StateConnected && stream?.state !== State.StateError;
   return (
@@ -71,6 +80,12 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
         <span className="text-sm text-muted-foreground">
           {plural(events.length, "event")} · {plural(warnings.length, "warning")}
         </span>
+        <InputGroup className="h-7 w-72">
+          <InputGroupInput placeholder="Filter by kind, object, reason or message" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupAddon>
+            <MagnifyingGlassIcon />
+          </InputGroupAddon>
+        </InputGroup>
         <Toggle variant="outline" size="sm" pressed={warningsOnly} onPressedChange={setWarningsOnly} className={cn(warningsOnly && "text-destructive")}>
           Warnings only
         </Toggle>
@@ -81,13 +96,17 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
       ) : (
         <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
-            <EmptyTitle>{opening ? "Opening the event watch" : warningsOnly ? "No warnings" : "No events"}</EmptyTitle>
+            <EmptyTitle>{opening ? "Opening the event watch" : words.length ? `Nothing matches “${needle.trim()}”` : warningsOnly ? "No warnings" : "No events"}</EmptyTitle>
             <EmptyDescription>
               {opening
                 ? "Recent events arrive as soon as the cluster answers."
-                : warningsOnly
-                  ? "None of the recent events in this scope is a Warning."
-                  : "Events appear here as they happen in this scope."}
+                : words.length
+                  ? warningsOnly
+                    ? "Try fewer words, or turn off Warnings only."
+                    : "Try fewer words, or a kind such as pod or node."
+                  : warningsOnly
+                    ? "None of the recent events in this scope is a Warning."
+                    : "Events appear here as they happen in this scope."}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
