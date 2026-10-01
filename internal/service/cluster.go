@@ -58,6 +58,8 @@ type KubePod struct {
 	// Reason is what is wrong with the pod, empty when nothing is; see PodReason.
 	Reason   string `json:"reason,omitempty"`
 	Restarts int32  `json:"restarts"`
+	// Ready counts the containers that are ready, of Containers; init containers are not counted, as in kubectl.
+	Ready int32 `json:"ready"`
 	// LastRestart is when a container last ended before its current run, zero when none has.
 	LastRestart time.Time `json:"lastRestart"`
 	// Requests and Limits are summed over the measured containers; a zero limit means at least one container has none.
@@ -322,6 +324,9 @@ func kubePod(pod *corev1.Pod) KubePod {
 		}
 	}
 	for _, st := range pod.Status.ContainerStatuses {
+		if st.Ready {
+			kp.Ready++
+		}
 		if t := st.LastTerminationState.Terminated; t != nil && t.FinishedAt.After(kp.LastRestart) {
 			kp.LastRestart = t.FinishedAt.Time
 		}

@@ -533,3 +533,24 @@ func TestListPods_Owner(t *testing.T) {
 		t.Errorf("owners mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// A row's Ready reads like kubectl's: the pod's containers that are ready over all of them, init containers not counted.
+func TestListPods_Ready(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api"},
+		Spec:       corev1.PodSpec{InitContainers: []corev1.Container{{Name: "migrate"}}, Containers: []corev1.Container{{Name: "app"}, {Name: "proxy"}}},
+		Status: corev1.PodStatus{
+			InitContainerStatuses: []corev1.ContainerStatus{{Name: "migrate", Ready: true}},
+			ContainerStatuses:     []corev1.ContainerStatus{{Name: "app", Ready: true}, {Name: "proxy"}},
+		},
+	}
+	svc, _, cluster := newFakeService(t, pod)
+
+	pods, err := svc.ListPods(context.Background(), cluster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pods[0].Ready; got != 1 {
+		t.Errorf("ready = %d, want 1 of the 2 containers", got)
+	}
+}

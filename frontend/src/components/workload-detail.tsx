@@ -41,7 +41,7 @@ function took(j: JobState) {
 }
 
 // jobLabel is a Job's state as its row says it; completions are counted where more than one is needed, or the run failed.
-export function jobLabel(j: JobState) {
+function jobLabel(j: JobState) {
   const count = `${j.succeeded}/${j.completions} · `;
   const time = isZeroTime(j.startedAt) ? "" : ` in ${took(j)}`;
   if (j.result === JobResult.JobComplete) return `succeeded${time}`;

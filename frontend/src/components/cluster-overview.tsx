@@ -1,16 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowCounterClockwiseIcon, CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { JobResult, RolloutState, type Cluster, type KubeHPA, type Rollout } from "@bindings/internal/service";
+import { JobResult, RolloutState, type Cluster, type KubeHPA } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { HPADetail, metricsLabel, metricsTitle } from "@/components/hpa-detail";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useInspectorWalk } from "@/components/inspector";
-import { PodDetail, ReasonBadge, restartsLabel, since, usagePressure } from "@/components/pod-detail";
+import { ago, PodDetail, ReasonBadge, restartsLabel, since, usagePressure } from "@/components/pod-detail";
 import { PVCDetail, pvcLabel, pvcReason } from "@/components/pvc-detail";
-import { jobLabel, WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
+import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDetail } from "@/components/yaml-view";
 import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
@@ -147,7 +147,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   shownRows.current = [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="@container flex min-h-0 flex-1 flex-col">
       {forwarding && (
         <AddForward cluster={cluster} saved={forwardsFor(config?.forwards, cluster)} initial={forwarding} onClose={() => setForwarding(null)} />
       )}
@@ -195,14 +195,17 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
-      {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, badges, figure, age, verbs.
-          The name takes what is left, but never less than 40% of the list (at most 12rem): when the list is narrow, one long reason
-          such as BackoffLimitExceeded must not squeeze every name, so the badges give way and truncate, their reason in the title.
-          Badges, figure, age and verbs are otherwise as wide as the widest row needs, the figure at most 16rem.
+      {/* Every row is a subgrid of this one, so its columns line up across rows: kind, name, details, age, verbs.
+          The list holds every kind, so only columns every kind fills get one: a problem's badge follows the name, and Details is each
+          kind's one key fact. Details takes what is left, so a long one has room and Age sits at the right edge, as in Lens.
+          No header row names them: each column means one thing, which the kind badge and the value's own shape already say.
+          The name is as wide as its widest cell, but never less than 40% of the list (at most 12rem).
+          When the list is narrow (a detail open beside it), Age steps aside with its header, the gutters shrink to 20px and Details
+          keeps at least 8rem, so long pod names are cut before the squares and ports are.
           The edge columns are auto because a row's padding is laid into them, which a fixed width would not fit. */}
       <div
         className={cn(
-          "@container grid min-h-0 flex-1 grid-cols-[auto_minmax(min(12rem,40%),1fr)_auto_fit-content(16rem)_auto_auto] content-start gap-x-3 overflow-x-hidden overflow-y-auto pb-4 transition-opacity",
+          "grid min-h-0 flex-1 grid-cols-[auto_minmax(min(12rem,40%),auto)_minmax(8rem,1fr)_auto] content-start gap-x-5 overflow-x-hidden overflow-y-auto pb-4 transition-opacity @2xl:grid-cols-[auto_minmax(min(12rem,40%),auto)_1fr_auto_auto] @2xl:gap-x-8",
           rescoping && "opacity-50",
         )}
       >
@@ -271,9 +274,14 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           };
           return (
             <section key={ns} className="col-span-full grid grid-cols-subgrid">
-              <h3 className="sticky top-0 z-10 col-span-full flex items-baseline gap-2 bg-background px-4 pt-3 pb-1 text-sm font-medium whitespace-nowrap">
-                <span className="truncate">{ns}</span>
-                <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">{counts(running.filter((g) => g.items.length))}</span>
+              {/* Laid on the rows' columns: the namespace across kind and name, its counts where Details starts, so neither runs across a column's start. */}
+              <h3 className="sticky top-0 z-10 col-span-full grid grid-cols-subgrid items-baseline bg-background px-4 pt-3 pb-1 text-sm font-medium whitespace-nowrap">
+                <span className="col-span-2 truncate" title={ns}>
+                  {ns}
+                </span>
+                <span className="min-w-0 truncate text-xs font-normal text-muted-foreground" title={counts(running.filter((g) => g.items.length))}>
+                  {counts(running.filter((g) => g.items.length))}
+                </span>
               </h3>
               {rows}
               {foldLine(`${ns}:finished`, done, `${counts([{ label: "Jobs", items: done.filter((t) => t.kind === "job") }, { label: "Pods", items: done.filter((t) => t.kind === "pod") }].filter((g) => g.items.length))} finished`)}
@@ -286,8 +294,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   );
 }
 
-// A row is identity, what is wrong, and its state: a rollout's ready over desired, whether a pod runs or has finished
-// and how often it restarted, or one short figure: a service's ports, an Ingress's host, a CronJob's schedule, a claim's size
+// Details is the one short figure each kind has: a service's ports, an Ingress's host, a CronJob's schedule, a claim's size
 // and class, what drives an autoscaler, or a config object's key count. The sentence behind a figure is its title; containers, images and keys are in the detail, where they are acted on.
 type Figure = { text: string; title?: string; mono?: boolean };
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
@@ -301,29 +308,26 @@ const figure = (t: Target): Figure | null => {
   return null;
 };
 
-// Ready over desired, with one tick per replica where there is room: the gap is what is missing, red when the rollout is stuck.
-// An autoscaled workload's strip runs on to its maximum, the replicas it may still add drawn as stubs on the baseline.
-const maxTicks = 12;
-function Replicas({ rollout: r, scaledBy: h }: { rollout: Rollout; scaledBy?: KubeHPA }) {
-  const stuck = r.state === RolloutState.RolloutStuck;
-  const slots = Math.max(r.desired, h?.max ?? 0);
-  const ticks = Math.min(slots, maxTicks);
-  const scale = (n: number) => (slots > maxTicks ? Math.round((n * maxTicks) / slots) : n);
-  const [filled, wanted] = [scale(r.ready), scale(r.desired)];
+// Ready as Lens draws it, the same in every row: one square per replica, container or completion, filled when it is ready
+// and hollow when it is not, hollow in red when the rollout is stuck or the Job failed. The squares start where the column does,
+// so rows line up; the count is in the title. An autoscaled workload runs on to its maximum, the replicas it may still add drawn
+// as stubs on the baseline, and past 12 slots each square stands for a share.
+const maxSlots = 12;
+function Slots({ ready, of, max = 0, failed, title }: { ready: number; of: number; max?: number; failed?: boolean; title: string }) {
+  const slots = Math.max(of, max);
+  const scale = (n: number) => (slots > maxSlots ? Math.round((n * maxSlots) / slots) : n);
+  const [filled, wanted] = [scale(ready), scale(of)];
   return (
-    <span
-      className={cn("flex items-center gap-2", stuck && "text-destructive")}
-      title={`${r.ready} of ${r.desired} ready${h ? `, autoscaled between ${h.min} and ${h.max}` : ""}`}
-    >
-      <span className="hidden h-2.5 gap-px @2xl:flex" aria-hidden>
-        {Array.from({ length: ticks }, (_, i) => (
-          <span
-            key={i}
-            className={cn("w-1 rounded-[1px]", i < filled ? "bg-foreground/55" : i >= wanted ? "h-px self-end bg-foreground/30" : stuck ? "bg-destructive/70" : "bg-foreground/15")}
-          />
-        ))}
-      </span>
-      {r.ready}/{r.desired}
+    <span className="flex h-2.5 items-end gap-[3px]" title={title}>
+      {Array.from({ length: Math.min(slots, maxSlots) }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "w-2.5 rounded-[2px]",
+            i < filled ? "h-2.5 bg-foreground/60" : i >= wanted ? "h-px bg-foreground/30" : cn("h-2.5 border", failed ? "border-destructive" : "border-foreground/45"),
+          )}
+        />
+      ))}
     </span>
   );
 }
@@ -332,8 +336,8 @@ function Replicas({ rollout: r, scaledBy: h }: { rollout: Rollout; scaledBy?: Ku
 type Depth = 0 | 1 | 2;
 const indent: Record<Depth, string> = { 0: "pl-5", 1: "ml-1.5 border-l pl-8", 2: "ml-1.5 border-l pl-13" };
 
-// Ready counts, restarts, a Job's run and a finished pod stay when the list is narrow (a detail open beside it); ticks, "running",
-// figures and ages step aside for every row at once, rather than being truncated row by row.
+// Name and Details stay when the list is narrow (a detail open beside it); Age steps aside for every row at once,
+// rather than being truncated row by row.
 function TargetLine({
   cluster,
   target,
@@ -359,16 +363,18 @@ function TargetLine({
 }) {
   const f = figure(target);
   const job = target.workload?.job;
-  const completed = target.kind === "pod" && target.reason === "Completed";
+  const reason = target.workload && workloadReason(target.workload);
   return (
     <div
       data-row={target.value}
       className={cn(
-        "group col-span-full grid h-8 grid-cols-subgrid items-center px-4 hover:bg-accent focus-within:bg-accent",
+        "group col-span-full grid h-8 grid-cols-subgrid items-center px-4 text-[13px] tabular-nums hover:bg-accent focus-within:bg-accent",
         selected && "bg-accent shadow-[inset_2px_0_0_var(--primary)]",
+        done && "text-muted-foreground",
       )}
     >
-      <KindBadge kind={target.kind} />
+      {/* 12px between the kind and its name, which belong together, rather than a whole gutter. */}
+      <KindBadge kind={target.kind} className="-mr-2 @2xl:-mr-5" />
       <span className={cn("flex min-w-0 items-center self-stretch", indent[depth])}>
         {fold && (
           <button
@@ -383,60 +389,60 @@ function TargetLine({
         )}
         <button
           type="button"
-          className={cn("truncate text-left hover:underline", target.workload && !depth && "font-medium", done && "text-muted-foreground")}
+          className={cn("truncate text-left text-sm hover:underline", target.workload && !depth && "font-medium")}
           title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : target.ingress ? `What does ${target.name} reach?` : `Why is ${target.name} in this state?`}
           onClick={onInspect}
         >
           {target.name}
         </button>
-      </span>
-      <span className="flex min-w-0 items-center gap-1.5">
+        {/* Only what is wrong, or on its way, right after the name: a healthy or finished object says nothing, and the name is cut before the badge. */}
         {target.kind === "pod" && (
           <>
-            <ReasonBadge reason={completed ? undefined : target.reason} className="cursor-pointer" onClick={onInspect} />
-            <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
+            <ReasonBadge reason={target.reason === "Completed" ? undefined : target.reason} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />
+            <ReasonBadge reason={pressure} className="ml-2 shrink-0 cursor-pointer" title="Close to its limit" onClick={onInspect} />
           </>
         )}
-        {target.workload && <ReasonBadge reason={workloadReason(target.workload)} className="cursor-pointer" onClick={onInspect} />}
-        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="cursor-pointer" onClick={onInspect} />}
-        {target.hpa && <ReasonBadge reason={target.hpa.problem} className="cursor-pointer" onClick={onInspect} />}
-        {target.ingress && <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />}
-      </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {target.workload?.rollout && <Replicas rollout={target.workload.rollout} scaledBy={scaledBy} />}
-        {job && (
-          <span className={cn("flex min-w-0 items-center gap-1", job.result === JobResult.JobFailed && "text-destructive")} title={job.message || undefined}>
-            {job.result === JobResult.JobComplete && <CheckIcon className="size-3 shrink-0" weight="bold" />}
-            <span className="truncate">{jobLabel(job)}</span>
-          </span>
+        {target.workload && <ReasonBadge reason={reason} className="ml-2 shrink-0 cursor-pointer" title={job?.message || reason} onClick={onInspect} />}
+        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />}
+        {target.hpa && <ReasonBadge reason={target.hpa.problem} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />}
+        {target.ingress && (
+          <ReasonBadge reason={target.ingress.problem} className="ml-2 shrink-0 cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />
         )}
-        {completed ? (
-          <span className="flex items-center gap-1">
-            <CheckIcon className="size-3" weight="bold" />
-            completed
-          </span>
-        ) : (
-          target.kind === "pod" && !target.reason && <span className="hidden @2xl:inline">running</span>
+      </span>
+      {/* Each kind's one key fact: a workload's replicas, a Job's completions or a pod's containers as squares, as kubectl counts them,
+          a pod's restarts beside them once there are any, or the figure of a kind that runs nothing. */}
+      <span className="flex min-w-0 items-center gap-2.5">
+        {target.workload?.rollout && (
+          <Slots
+            ready={target.workload.rollout.ready}
+            of={target.workload.rollout.desired}
+            max={scaledBy?.max}
+            failed={target.workload.rollout.state === RolloutState.RolloutStuck}
+            title={`${target.workload.rollout.ready} of ${target.workload.rollout.desired} ready${scaledBy ? `, autoscaled between ${scaledBy.min} and ${scaledBy.max}` : ""}`}
+          />
+        )}
+        {job && (
+          <Slots ready={job.succeeded} of={job.completions} failed={job.result === JobResult.JobFailed} title={`${job.succeeded} of ${job.completions} completed`} />
+        )}
+        {target.kind === "pod" && target.reason !== "Completed" && (
+          <Slots ready={target.ready ?? 0} of={target.containers.length} title={`${target.ready ?? 0} of ${target.containers.length} containers ready`} />
         )}
         {!!target.restarts && (
-          <span className="flex items-center gap-0.5" title={restartsLabel(target.restarts, target.lastRestart)}>
-            <ArrowCounterClockwiseIcon className="size-3 shrink-0" aria-label="restarts" />
-            {target.restarts}
+          <span
+            className={cn("shrink-0", target.reason === "CrashLoopBackOff" ? "text-destructive" : "text-muted-foreground")}
+            title={restartsLabel(target.restarts, target.lastRestart)}
+          >
+            {target.restarts === 1 ? "1 restart" : `${target.restarts} restarts`}
           </span>
         )}
         {f && (
-          <span className={cn("hidden min-w-0 @2xl:flex", f.mono && "font-mono")} title={f.title ?? f.text}>
-            <span className="truncate">{f.text}</span>
+          <span className={cn("truncate text-xs", f.mono && "font-mono")} title={f.title ?? f.text}>
+            {f.text}
           </span>
         )}
       </span>
-      {/* Always laid out, so the verbs keep their column when the age steps aside. */}
-      <span className="flex justify-end text-xs text-muted-foreground tabular-nums">
-        {target.created && !isZeroTime(target.created) && (
-          <span className="hidden @2xl:inline" title={new Date(target.created).toLocaleString()}>
-            {since(target.created)}
-          </span>
-        )}
+      <span className="hidden @2xl:flex">
+        {target.created && !isZeroTime(target.created) && <span title={`Created ${ago(target.created)}, ${new Date(target.created).toLocaleString()}`}>{since(target.created)}</span>}
       </span>
       <span className="flex justify-end gap-0.5">
         <TargetVerbs cluster={cluster} target={target} row />

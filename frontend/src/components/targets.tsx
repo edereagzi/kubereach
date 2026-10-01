@@ -31,9 +31,10 @@ export type Target = {
   created?: string;
   // Set when the row stands for one container of a pod rather than the pod itself.
   container?: string;
-  // Pods only: what is wrong, how often it restarted, and what its containers ask for.
+  // Pods only: what is wrong, how often it restarted, how many of its containers are ready, and what they ask for.
   reason?: string;
   restarts?: number;
+  ready?: number;
   lastRestart?: string;
   requests?: ResourceUsage;
   limits?: ResourceUsage;
@@ -119,7 +120,7 @@ export function useTargets(cluster: Cluster, overview = false) {
           { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c), pvc: c })), error: pvcs.error },
         ]
       : []),
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
+    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, ready: p.ready, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
   ];
   if (overview) {
     groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i), ingress: i })), error: ingresses.error });

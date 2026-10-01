@@ -422,6 +422,11 @@ export interface KubePod {
     "restarts": number;
 
     /**
+     * Ready counts the containers that are ready, of Containers; init containers are not counted, as in kubectl.
+     */
+    "ready": number;
+
+    /**
      * LastRestart is when a container last ended before its current run, zero when none has.
      */
     "lastRestart": string;
