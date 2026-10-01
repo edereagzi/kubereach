@@ -51,6 +51,7 @@ func TestIngress_RulesResolveThroughServiceToPods(t *testing.T) {
 				ingressPath("api.example.com", "/metrics", "api", 8080),
 				ingressPath("old.example.com", "/", "gone", 80),
 			},
+			TLS: []networkingv1.IngressTLS{{Hosts: []string{"api.example.com"}}},
 		},
 	}
 	objects := []runtime.Object{
@@ -82,8 +83,8 @@ func TestIngress_RulesResolveThroughServiceToPods(t *testing.T) {
 	wantChain := service.IngressDiagnosis{
 		Ingress: want[1],
 		Paths: []service.IngressPath{
-			{Host: "api.example.com", Path: "/v1", Service: "api", Port: "8080", Pods: behind},
-			{Host: "api.example.com", Path: "/metrics", Service: "api", Port: "8080", Pods: behind},
+			{Host: "api.example.com", Path: "/v1", TLS: true, Service: "api", Port: "8080", Pods: behind},
+			{Host: "api.example.com", Path: "/metrics", TLS: true, Service: "api", Port: "8080", Pods: behind},
 			{Host: "old.example.com", Path: "/", Service: "gone", Port: "80", Problem: "no Service gone"},
 		},
 	}
@@ -116,7 +117,10 @@ func TestDescribeIngress_BackendNamesAPortTheServiceDoesNotExpose(t *testing.T) 
 	svc, _, id := newFakeService(t,
 		&networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
-			Spec:       networkingv1.IngressSpec{Rules: []networkingv1.IngressRule{ingressPath("a.example", "/", "api", 9999)}},
+			Spec: networkingv1.IngressSpec{
+				Rules: []networkingv1.IngressRule{ingressPath("api.a.example", "/", "api", 9999)},
+				TLS:   []networkingv1.IngressTLS{{Hosts: []string{"*.a.example"}}},
+			},
 		},
 		k8sService("default", "api", 8080),
 		endpointSlice("default", "api", map[string]bool{"api-0": true}),
@@ -127,7 +131,7 @@ func TestDescribeIngress_BackendNamesAPortTheServiceDoesNotExpose(t *testing.T) 
 		t.Fatal(err)
 	}
 	want := []service.IngressPath{{
-		Host: "a.example", Path: "/", Service: "api", Port: "9999",
+		Host: "api.a.example", Path: "/", TLS: true, Service: "api", Port: "9999",
 		Pods:    []service.IngressPod{{Namespace: "default", Name: "api-0", Ready: true}},
 		Problem: "Service api has no port 9999",
 	}}

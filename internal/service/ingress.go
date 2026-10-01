@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -29,8 +30,10 @@ type KubeIngress struct {
 
 // IngressPath is one rule of an Ingress followed to the pods that serve it. Host and Path are empty for the default backend.
 type IngressPath struct {
-	Host    string `json:"host,omitempty"`
-	Path    string `json:"path,omitempty"`
+	Host string `json:"host,omitempty"`
+	Path string `json:"path,omitempty"`
+	// TLS is whether the Ingress terminates TLS for Host, so the detail opens the path over https rather than http.
+	TLS     bool   `json:"tls,omitempty"`
 	Service string `json:"service,omitempty"`
 	// Port is the backend port by name or number, as the Ingress names it.
 	Port string       `json:"port,omitempty"`
@@ -198,13 +201,26 @@ func (b *backends) follow(ing *networkingv1.Ingress) []IngressPath {
 			continue
 		}
 		for _, p := range r.HTTP.Paths {
-			out = append(out, b.path(ing.Namespace, r.Host, p.Path, p.Backend))
+			ip := b.path(ing.Namespace, r.Host, p.Path, p.Backend)
+			ip.TLS = r.Host != "" && servesTLS(ing.Spec.TLS, r.Host)
+			out = append(out, ip)
 		}
 	}
 	if ing.Spec.DefaultBackend != nil {
 		out = append(out, b.path(ing.Namespace, "", "", *ing.Spec.DefaultBackend))
 	}
 	return out
+}
+
+// servesTLS is whether a TLS entry names host, directly or by a wildcard for its first label.
+func servesTLS(tls []networkingv1.IngressTLS, host string) bool {
+	_, parent, _ := strings.Cut(host, ".")
+	for _, t := range tls {
+		if slices.Contains(t.Hosts, host) || (parent != "" && slices.Contains(t.Hosts, "*."+parent)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *backends) path(namespace, host, path string, backend networkingv1.IngressBackend) IngressPath {

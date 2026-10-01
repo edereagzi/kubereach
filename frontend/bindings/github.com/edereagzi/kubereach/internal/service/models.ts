@@ -191,6 +191,11 @@ export interface IngressDiagnosis {
 export interface IngressPath {
     "host"?: string;
     "path"?: string;
+
+    /**
+     * TLS is whether the Ingress terminates TLS for Host, so the detail opens the path over https rather than http.
+     */
+    "tls"?: boolean;
     "service"?: string;
 
     /**
