@@ -205,12 +205,11 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       </div>
       {/* Only there while something is broken: a healthy cluster shows no counter to read. "Show only these" lists exactly what it names, so it drops the kind. */}
       {unhealthy.length > 0 && (
-        <div className="mx-4 mb-2 flex items-center gap-3 rounded-md bg-destructive/10 py-1 pr-1 pl-3 text-sm text-destructive">
+        <div className="mx-4 mb-2 flex items-center gap-3 rounded-md bg-muted/60 py-1 pr-1 pl-3 text-sm text-muted-foreground">
           <span className="min-w-0 flex-1 truncate">{counts(unhealthy)} not healthy</span>
           <Button
             variant="ghost"
             size="xs"
-            className="text-destructive hover:bg-destructive/15 hover:text-destructive"
             onClick={() => {
               if (!problems) setPicked(null);
               setOnlyProblems(!problems);
@@ -343,11 +342,11 @@ const figure = (t: Target): Figure | null => {
 };
 
 // Ready as Lens draws it, the same in every row: one square per replica, container or completion, filled when it is ready
-// and hollow when it is not, hollow in red when the rollout is stuck or the Job failed. The squares start where the column does,
+// and hollow when it is not; why a rollout is stuck or a Job failed is its badge. The squares start where the column does,
 // so rows line up; the count is in the title. An autoscaled workload runs on to its maximum, the replicas it may still add drawn
 // as stubs on the baseline, and past 12 slots each square stands for a share.
 const maxSlots = 12;
-function Slots({ ready, of, max = 0, failed, title }: { ready: number; of: number; max?: number; failed?: boolean; title: string }) {
+function Slots({ ready, of, max = 0, title }: { ready: number; of: number; max?: number; title: string }) {
   const slots = Math.max(of, max);
   const scale = (n: number) => (slots > maxSlots ? Math.round((n * maxSlots) / slots) : n);
   const [filled, wanted] = [scale(ready), scale(of)];
@@ -358,7 +357,7 @@ function Slots({ ready, of, max = 0, failed, title }: { ready: number; of: numbe
           key={i}
           className={cn(
             "w-2.5 rounded-[2px]",
-            i < filled ? "h-2.5 bg-foreground/60" : i >= wanted ? "h-px bg-foreground/30" : cn("h-2.5 border", failed ? "border-destructive" : "border-foreground/45"),
+            i < filled ? "h-2.5 bg-foreground/60" : i >= wanted ? "h-px bg-foreground/30" : "h-2.5 border border-foreground/45",
           )}
         />
       ))}
@@ -429,43 +428,41 @@ function TargetLine({
         >
           {target.name}
         </button>
-        {/* Only what is wrong, or on its way, right after the name: a healthy or finished object says nothing, and the name is cut before the badge. */}
-        {target.kind === "pod" && (
-          <>
-            <ReasonBadge reason={target.reason === "Completed" ? undefined : target.reason} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />
-            <ReasonBadge reason={pressure} className="ml-2 shrink-0 cursor-pointer" title="Close to its limit" onClick={onInspect} />
-          </>
-        )}
-        {target.workload && <ReasonBadge reason={reason} className="ml-2 shrink-0 cursor-pointer" title={job?.message || reason} onClick={onInspect} />}
-        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />}
-        {target.hpa && <ReasonBadge reason={target.hpa.problem} className="ml-2 shrink-0 cursor-pointer" onClick={onInspect} />}
-        {target.ingress && (
-          <ReasonBadge reason={target.ingress.problem} className="ml-2 shrink-0 cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />
-        )}
       </span>
       {/* Each kind's one key fact: a workload's replicas, a Job's completions or a pod's containers as squares, as kubectl counts them,
           a pod's restarts beside them once there are any, or the figure of a kind that runs nothing. */}
-      <span className="flex min-w-0 items-center gap-2.5">
+      {/* One line: the first fact is cut if it must be, and any after it either fits whole or wraps out of sight,
+          so "10 restarts" is never read as "1". */}
+      <span className="flex h-5 min-w-0 flex-wrap items-center gap-x-2.5 overflow-hidden">
+        {/* What is wrong, or on its way, leads the column, so the name keeps the width; a healthy or finished object says nothing. */}
+        {target.kind === "pod" && (
+          <>
+            <ReasonBadge reason={target.reason === "Completed" ? undefined : target.reason} className="cursor-pointer" onClick={onInspect} />
+            <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={onInspect} />
+          </>
+        )}
+        {target.workload && <ReasonBadge reason={reason} className="cursor-pointer" title={job?.message || reason} onClick={onInspect} />}
+        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="cursor-pointer" onClick={onInspect} />}
+        {target.hpa && <ReasonBadge reason={target.hpa.problem} className="cursor-pointer" onClick={onInspect} />}
+        {target.ingress && (
+          <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={onInspect} />
+        )}
         {target.workload?.rollout && (
           <Slots
             ready={target.workload.rollout.ready}
             of={target.workload.rollout.desired}
             max={scaledBy?.max}
-            failed={target.workload.rollout.state === RolloutState.RolloutStuck}
             title={`${target.workload.rollout.ready} of ${target.workload.rollout.desired} ready${scaledBy ? `, autoscaled between ${scaledBy.min} and ${scaledBy.max}` : ""}`}
           />
         )}
         {job && (
-          <Slots ready={job.succeeded} of={job.completions} failed={job.result === JobResult.JobFailed} title={`${job.succeeded} of ${job.completions} completed`} />
+          <Slots ready={job.succeeded} of={job.completions} title={`${job.succeeded} of ${job.completions} completed`} />
         )}
-        {target.kind === "pod" && target.reason !== "Completed" && (
+        {target.kind === "pod" && !isProblem(target) && target.reason !== "Completed" && (
           <Slots ready={target.ready ?? 0} of={target.containers.length} title={`${target.ready ?? 0} of ${target.containers.length} containers ready`} />
         )}
         {!!target.restarts && (
-          <span
-            className={cn("shrink-0", target.reason === "CrashLoopBackOff" ? "text-destructive" : "text-muted-foreground")}
-            title={restartsLabel(target.restarts, target.lastRestart)}
-          >
+          <span className="shrink-0 text-muted-foreground" title={restartsLabel(target.restarts, target.lastRestart)}>
             {target.restarts === 1 ? "1 restart" : `${target.restarts} restarts`}
           </span>
         )}

@@ -151,7 +151,10 @@ function StreamPanel({ stream, shell }: { stream: LogStatus; shell: ReactNode })
         <LogToolbar stream={stream} view={view} patch={patch} />
         {shell}
       </div>
-      {stream.error && <p className="px-4 pb-2 text-xs text-destructive">{statusLabel(stream)}</p>}
+      {/* Reconnecting is a crash loop between runs, not a failure of the follow, so it is said quietly. */}
+      {stream.error && (
+        <p className={cn("px-4 pb-2 text-xs", stream.state === State.StateReconnecting ? "text-muted-foreground" : "text-destructive")}>{statusLabel(stream)}</p>
+      )}
       {stream.deleted && (
         <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
           {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if it is recreated.
