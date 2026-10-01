@@ -71,6 +71,23 @@ export const objectKind: Record<Kind, ObjectKind> = {
   node: ObjectKind.ObjectNode,
 };
 
+// kindName is how Kubernetes spells a kind, for a detail to say what it shows; the API's own values are lower case.
+export const kindName: Record<Kind, string> = {
+  svc: "Service",
+  deploy: "Deployment",
+  sts: "StatefulSet",
+  ds: "DaemonSet",
+  cron: "CronJob",
+  job: "Job",
+  pod: "Pod",
+  cm: "ConfigMap",
+  secret: "Secret",
+  ing: "Ingress",
+  pvc: "PersistentVolumeClaim",
+  hpa: "HorizontalPodAutoscaler",
+  node: "Node",
+};
+
 export const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron", job: "job" };
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {
   deploy: LogSourceKind.LogSourceDeployment,

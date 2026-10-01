@@ -10,7 +10,7 @@ import { DeleteAction, WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorActions, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { hpasQuery, workloadQuery, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
@@ -64,19 +64,22 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName namespace={w.namespace} name={w.name} />
+        <InspectorTitle>
+          <InspectorName kind={kind} namespace={w.namespace} name={w.name} />
           <ReasonBadge reason={workloadReason(w)} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
+          <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorDescription>{[w.kind, workloadLabel(w), d?.events?.[0] && `last event ${ago(d.events[0].time)}`].filter(Boolean).join(" · ")}</InspectorDescription>
-        <div className="flex flex-wrap gap-1.5">
-          <TargetVerbs cluster={cluster} target={target} onLeave={onClose} />
-          <WorkloadActions cluster={cluster} workload={w} />
-          <span className="ml-auto">
-            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
-          </span>
-        </div>
+        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} onLeave={onClose} />} change={<WorkloadActions cluster={cluster} workload={w} />} />
+        <InspectorFacts
+          facts={[
+            ["Ready", r && `${r.ready}/${r.desired}`],
+            ["Schedule", w.cronJob?.schedule && <span className="font-mono">{w.cronJob.schedule}</span>],
+            ["Last run", w.cronJob && !isZeroTime(w.cronJob.lastScheduled) && ago(w.cronJob.lastScheduled)],
+            ["Status", w.job && jobLabel(w.job)],
+            ["Last event", d?.events?.[0] && ago(d.events[0].time)],
+          ]}
+        />
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind={kind} namespace={w.namespace} name={w.name}>

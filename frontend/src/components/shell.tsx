@@ -112,7 +112,7 @@ function ClusterTabs() {
           </InspectorSlot.Provider>
           <div
             ref={setSlot}
-            className="w-0 shrink-0 overflow-hidden bg-background has-[[data-slot=inspector]]:w-1/2 has-[[data-slot=inspector]]:max-w-[44rem] has-[[data-slot=inspector]]:border-l [&>*]:h-full"
+            className="relative w-0 shrink-0 overflow-hidden bg-background has-[[data-slot=inspector]]:w-1/2 has-[[data-slot=inspector]]:max-w-[44rem] has-[[data-slot=inspector]]:overflow-visible has-[[data-slot=inspector]]:border-l [&>section]:h-full"
           />
         </div>
       </Tabs>

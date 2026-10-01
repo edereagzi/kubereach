@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowsLeftRightIcon, CubeIcon, ScrollIcon } from "@phosphor-icons/react";
+import { ArrowsLeftRightIcon, CubeIcon, ScrollIcon, TerminalIcon } from "@phosphor-icons/react";
 import type { Cluster } from "@bindings/internal/service";
 import { forwardsFor } from "@/components/forwards";
 import { streamOf, targetSource, useStartLogs } from "@/components/logs";
@@ -46,11 +46,13 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
               onLeave?.();
             }}
           >
-            {row ? <ArrowsLeftRightIcon /> : "Forwarding"}
+            <ArrowsLeftRightIcon />
+            {!row && "Forwarding"}
           </Button>
         ) : (
           !row && (
             <Button variant={variant} size="xs" onClick={onForward}>
+              <ArrowsLeftRightIcon />
               Forward
             </Button>
           )
@@ -58,12 +60,14 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
       {logKind[target.kind] &&
         (stream ? (
           <Button variant={variant} size={size} className={active} title="Following logs" onClick={() => openDock(cluster.id, stream.id)}>
-            {row ? <ScrollIcon /> : "Following logs"}
+            <ScrollIcon />
+            {!row && "Following logs"}
           </Button>
         ) : (
           !row && (
             <>
               <Button variant={variant} size="xs" disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
+                <ScrollIcon />
                 Logs
               </Button>
               {startLogs.error && (
@@ -83,7 +87,14 @@ export function TargetVerbs({ cluster, target, onForward, row = false, onLeave }
             title="Shell open"
             onClick={() => openDock(cluster.id, shell.id)}
           >
-            {row ? <CubeIcon /> : "Shell open"}
+            {row ? (
+              <CubeIcon />
+            ) : (
+              <>
+                <TerminalIcon />
+                Shell open
+              </>
+            )}
           </Button>
         ) : (
           !row && <OpenShell cluster={cluster} pods={[target]} variant={variant} size="xs" />

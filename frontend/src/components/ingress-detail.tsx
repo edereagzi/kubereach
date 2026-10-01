@@ -6,7 +6,7 @@ import { DeleteAction } from "@/components/actions";
 import { ReasonBadge, Section } from "@/components/pod-detail";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { ingressQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -48,16 +48,11 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName namespace={target.namespace} name={target.name} />
+        <InspectorTitle>
+          <InspectorName kind="ing" namespace={target.namespace} name={target.name} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
+          <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorDescription>Ingress</InspectorDescription>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="ml-auto">
-            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
-          </span>
-        </div>
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind="ing" namespace={target.namespace} name={target.name}>

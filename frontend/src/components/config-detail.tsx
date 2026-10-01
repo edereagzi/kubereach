@@ -7,12 +7,10 @@ import { CopyButton } from "@/components/copy-button";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { configObjectQuery, errorText } from "@/queries";
 import { cn } from "@/lib/utils";
-
-const keysLabel = (n: number) => `${n} key${n === 1 ? "" : "s"}`;
 
 export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; target: Target; onClose: () => void }) {
   const secret = target.kind === "secret";
@@ -23,16 +21,17 @@ export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; t
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName namespace={target.namespace} name={target.name} />
+        <InspectorTitle>
+          <InspectorName kind={target.kind} namespace={target.namespace} name={target.name} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
+          <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorDescription>{[secret ? "Secret" : "ConfigMap", o?.type, keysLabel(keys.length)].filter(Boolean).join(" · ")}</InspectorDescription>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="ml-auto">
-            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
-          </span>
-        </div>
+        <InspectorFacts
+          facts={[
+            ["Type", o?.type && <span className="font-mono">{o.type}</span>],
+            ["Keys", keys.length],
+          ]}
+        />
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name}>

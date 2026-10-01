@@ -1,15 +1,21 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsVerticalIcon, CheckCircleIcon, PauseIcon, PlayIcon, ProhibitIcon, TrashIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { WorkloadKind, type Cluster, type KubeNode, type KubeWorkload } from "@bindings/internal/service";
 import { objectKind, type Kind, type Target } from "@/components/targets";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
 type ActionProps = {
   cluster: Cluster;
   label: string;
+  // The icon goes before the label, as Forward's and Logs' do. iconOnly drops the label to its tooltip,
+  // for an action that sits among the title's icons.
+  icon?: ReactNode;
+  iconOnly?: boolean;
   title: string;
   description: ReactNode;
   confirm: string;
@@ -22,7 +28,7 @@ type ActionProps = {
 };
 
 // WriteAction changes the Cluster only after a confirmation that names it.
-function WriteAction({ cluster, label, title, description, confirm, destructive, disabled, children, run, onDone, onOpen }: ActionProps) {
+function WriteAction({ cluster, label, icon, iconOnly, title, description, confirm, destructive, disabled, children, run, onDone, onOpen }: ActionProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const action = useMutation({
@@ -36,15 +42,18 @@ function WriteAction({ cluster, label, title, description, confirm, destructive,
   return (
     <>
       <Button
-        variant="outline"
-        size="xs"
+        variant={iconOnly ? "ghost" : "outline"}
+        size={iconOnly ? "icon-sm" : "xs"}
+        title={iconOnly ? label : undefined}
+        className={cn(iconOnly && destructive && "hover:text-destructive dark:hover:text-destructive")}
         onClick={() => {
           action.reset();
           onOpen?.();
           setOpen(true);
         }}
       >
-        {label}
+        {icon}
+        {!iconOnly && label}
       </Button>
       <ConfirmDialog
         open={open}
@@ -83,6 +92,7 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
       <WriteAction
         cluster={cluster}
         label="Restart"
+        icon={<ArrowClockwiseIcon />}
         title={`Restart ${w.kind} ${w.name}?`}
         description={<>Every pod of {objectRef(w)} is replaced, as its rollout strategy allows.</>}
         confirm="Restart"
@@ -92,6 +102,7 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
         <WriteAction
           cluster={cluster}
           label="Scale"
+          icon={<ArrowsVerticalIcon />}
           title={`Scale ${w.kind} ${w.name}?`}
           description={<>Sets the replicas of {objectRef(w)}.</>}
           confirm={validNext ? `Scale to ${next}` : "Scale"}
@@ -120,6 +131,7 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
         <WriteAction
           cluster={cluster}
           label="Roll back"
+          icon={<ArrowCounterClockwiseIcon />}
           title={`Roll back deployment ${w.name}?`}
           description={
             <>
@@ -140,6 +152,7 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
       <WriteAction
         cluster={cluster}
         label="Run now"
+        icon={<PlayIcon />}
         title={`Run cronjob ${w.name} now?`}
         description={<>A Job starts from the template of {objectRef(w)} now, even if a scheduled run is going. It is listed under the CronJob.</>}
         confirm="Run now"
@@ -149,6 +162,7 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
         <WriteAction
           cluster={cluster}
           label="Resume"
+          icon={<PlayIcon />}
           title={`Resume cronjob ${w.name}?`}
           description={<>{objectRef(w)} starts Jobs on its schedule again. A run it missed while suspended may start right away.</>}
           confirm="Resume"
@@ -158,6 +172,7 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
         <WriteAction
           cluster={cluster}
           label="Suspend"
+          icon={<PauseIcon />}
           title={`Suspend cronjob ${w.name}?`}
           description={<>{objectRef(w)} stops starting Jobs on its schedule. Jobs already running go on.</>}
           confirm="Suspend"
@@ -176,6 +191,7 @@ export function NodeActions({ cluster, node: n }: { cluster: Cluster; node: Kube
         <WriteAction
           cluster={cluster}
           label="Uncordon"
+          icon={<CheckCircleIcon />}
           title={`Uncordon node ${n.name}?`}
           description={<>The scheduler can place new pods on {name} again.</>}
           confirm="Uncordon"
@@ -185,6 +201,7 @@ export function NodeActions({ cluster, node: n }: { cluster: Cluster; node: Kube
         <WriteAction
           cluster={cluster}
           label="Cordon"
+          icon={<ProhibitIcon />}
           title={`Cordon node ${n.name}?`}
           description={<>The scheduler places no new pods on {name}. The pods already on it keep running.</>}
           confirm="Cordon"
@@ -218,6 +235,8 @@ export function DeleteAction({ cluster, target, onDone }: { cluster: Cluster; ta
     <WriteAction
       cluster={cluster}
       label="Delete"
+      icon={<TrashIcon />}
+      iconOnly
       title={`Delete ${kind} ${target.name}?`}
       description={
         <>

@@ -3,7 +3,7 @@ import type { Cluster, KubePVC } from "@bindings/internal/service";
 import { Events, PodList, ReasonBadge, Section } from "@/components/pod-detail";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { pvcQuery, errorText } from "@/queries";
 import { cn } from "@/lib/utils";
@@ -21,12 +21,11 @@ export function PVCDetail({ cluster, target, pvc, onClose }: { cluster: Cluster;
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName namespace={c.namespace} name={c.name} />
+        <InspectorTitle>
+          <InspectorName kind="pvc" namespace={c.namespace} name={c.name} />
           <ReasonBadge reason={pvcReason(c)} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
-        <InspectorDescription>{["PersistentVolumeClaim", pvcLabel(c)].join(" · ")}</InspectorDescription>
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind="pvc" namespace={c.namespace} name={c.name}>

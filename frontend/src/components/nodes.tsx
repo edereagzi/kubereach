@@ -4,7 +4,7 @@ import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/intern
 import { NodeActions } from "@/components/actions";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle, useInspectorWalk } from "@/components/inspector";
+import { Inspector, InspectorActions, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle, useInspectorWalk } from "@/components/inspector";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DetailTabs } from "@/components/yaml-view";
@@ -13,14 +13,13 @@ import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
 const percent = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 100) : 0);
-const podsLabel = (n: number) => `${n} pod${n === 1 ? "" : "s"}`;
 
 // Meter is one resource of a node: what its pods reserved, and what they are using of it. The two are drawn on one bar
 // because the gap between them is the question — a node reserved solid but idle is not the same as a node actually full.
 // A number nothing measured is a dash, never a zero; what is wrong with a node is the badge's job, so the bar stays neutral.
 // Used is the fill and requested is a tick on it, not a second fill: a node using more than it reserved would otherwise
 // paint over the reservation and hide it, which is the case worth seeing.
-function Meter({ name, label, used, requested, allocatable, named = false }: { name: string; label: (n: number) => string; used?: number; requested?: number; allocatable: number; named?: boolean }) {
+function Meter({ name, label, used, requested, allocatable, inline = false }: { name: string; label: (n: number) => string; used?: number; requested?: number; allocatable: number; inline?: boolean }) {
   const [usedPct, requestedPct] = [percent(used ?? 0, allocatable), percent(requested ?? 0, allocatable)];
   // The tick is two pixels wide on a bar of sixty-four, so at the extremes it is held just inside the track;
   // clipped in half against the edge it reads as a rendering fault rather than as a reservation.
@@ -31,17 +30,15 @@ function Meter({ name, label, used, requested, allocatable, named = false }: { n
       className="flex items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground"
       title={`${name}: ${said(used, "used")}, ${said(requested, "requested")} of ${label(allocatable)} allocatable`}
     >
-      {/* The table names these in its column headers; on their own, as in the node detail, they have to name themselves. */}
-      {named && <span className="shrink-0">{name === "memory" ? "mem" : name}</span>}
       <span className="relative h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
         {used !== undefined && <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/55" style={{ width: `${Math.min(usedPct, 100)}%` }} />}
         {requested !== undefined && (
           <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-foreground/90" style={{ left: `${tickAt}%` }} />
         )}
       </span>
-      {/* In the table the pair is a column and holds a width wide enough for "100% / 100%"; named, it sits in a
-          sentence, where that width would strand it a centimetre from its own bar. */}
-      <span className={cn("shrink-0 whitespace-nowrap", named ? "" : "w-24 text-right")}>
+      {/* In the table the pair is a column and holds a width wide enough for "100% / 100%"; inline, as in the node detail's
+          facts, that width would strand it a centimetre from its own bar. */}
+      <span className={cn("shrink-0 whitespace-nowrap", inline ? "" : "w-24 text-right")}>
         {used === undefined ? "—" : `${usedPct}%`}
         <span className="opacity-60"> / {requested === undefined ? "—" : `${requestedPct}%`}</span>
       </span>
@@ -170,8 +167,8 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName name={n.name} />
+        <InspectorTitle>
+          <InspectorName kind="node" name={n.name} />
           <ReasonBadge reason={n.problem} />
           <CordonedBadge node={n} />
           <RefreshButton
@@ -182,12 +179,16 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
             }}
           />
         </InspectorTitle>
-        <InspectorDescription className="flex flex-wrap items-center gap-x-3">
-          {[n.roles?.join(", "), n.version, !n.unknown && podsLabel(n.pods)].filter(Boolean).join(" · ")}
-          <Meter named name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
-          <Meter named name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
-        </InspectorDescription>
-        <NodeActions cluster={cluster} node={n} />
+        <InspectorActions change={<NodeActions cluster={cluster} node={n} />} />
+        <InspectorFacts
+          facts={[
+            ["Roles", n.roles?.join(", ")],
+            ["Version", n.version && <span className="font-mono">{n.version}</span>],
+            ["Pods", !n.unknown && n.pods],
+            ["CPU", <Meter inline name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />],
+            ["Memory", <Meter inline name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />],
+          ]}
+        />
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind="node" namespace="" name={n.name}>

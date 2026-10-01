@@ -1,4 +1,4 @@
-import { Fragment, type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, KubePod, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 import { DeleteAction } from "@/components/actions";
@@ -8,7 +8,7 @@ import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorActions, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { podMetricsQuery, podQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -77,31 +77,23 @@ export function usagePressure(usage?: ResourceUsage, limits?: ResourceUsage) {
   return worst.pct >= pressureThreshold ? `${worst.name} ${worst.pct}%` : undefined;
 }
 
-// UsageMeters answers "is it starving": one short bar and a percentage per resource, red once a limit is nearly reached.
+// UsageMeter answers "is it starving" for one resource: a short bar and a percentage, red once a limit is nearly reached.
 // A pod without a limit has no ratio and shows the bare usage instead; the tooltip carries the absolute numbers.
-export function UsageMeters({ usage, limits, requests }: { usage: ResourceUsage; limits?: ResourceUsage; requests?: ResourceUsage }) {
-  const meter = (name: string, short: string, label: (n: number) => string, used: number, limit = 0, request = 0) => {
-    const pct = limit ? Math.round((used / limit) * 100) : null;
-    const hot = pct !== null && pct >= pressureThreshold;
-    return (
-      <span
-        className={cn("flex items-center gap-1.5", hot ? "text-destructive" : "text-muted-foreground")}
-        title={`${name} ${label(used)} used, ${request ? `${label(request)} requested` : "no request"}, ${limit ? `${label(limit)} limit` : "no limit"}`}
-      >
-        <span>{short}</span>
-        {pct !== null && (
-          <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
-            <span className={cn("block h-full rounded-full", hot ? "bg-destructive" : "bg-foreground/40")} style={{ width: `${Math.min(pct, 100)}%` }} />
-          </span>
-        )}
-        <span className={cn(pct !== null && "w-10 text-right")}>{pct !== null ? `${pct}%` : label(used)}</span>
-      </span>
-    );
-  };
+// Its fact row names the resource, as a node's does, so the meter does not.
+function UsageMeter({ name, label, used, limit = 0, request = 0 }: { name: string; label: (n: number) => string; used: number; limit?: number; request?: number }) {
+  const pct = limit ? Math.round((used / limit) * 100) : null;
+  const hot = pct !== null && pct >= pressureThreshold;
   return (
-    <span className="flex shrink-0 gap-3 font-mono text-xs tabular-nums">
-      {meter("cpu", "cpu", cpuLabel, usage.cpu, limits?.cpu, requests?.cpu)}
-      {meter("memory", "mem", memoryLabel, usage.memory, limits?.memory, requests?.memory)}
+    <span
+      className={cn("flex items-center gap-2 font-mono text-xs tabular-nums", hot ? "text-destructive" : "text-muted-foreground")}
+      title={`${name} ${label(used)} used, ${request ? `${label(request)} requested` : "no request"}, ${limit ? `${label(limit)} limit` : "no limit"}`}
+    >
+      {pct !== null && (
+        <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
+          <span className={cn("block h-full rounded-full", hot ? "bg-destructive" : "bg-foreground/40")} style={{ width: `${Math.min(pct, 100)}%` }} />
+        </span>
+      )}
+      {pct !== null ? `${pct}%` : label(used)}
     </span>
   );
 }
@@ -128,58 +120,47 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
     selectTab("nodes");
     onClose();
   };
-  const facts: ReactNode[] = d
+  const facts: [string, ReactNode][] = d
     ? [
-        d.phase,
-        owner &&
-          (ownerKind ? (
-            <Link title={`Open the ${owner.kind}`} onClick={() => requestInspect({ clusterId: cluster.id, kind: ownerKind, namespace: target.namespace, name: owner.name })}>
-              {owner.kind} {owner.name}
-            </Link>
-          ) : (
-            `${owner.kind} ${owner.name}`
-          )),
-        d.node && (
-          <>
-            on{" "}
+        ["Status", d.phase],
+        [
+          "Owner",
+          owner &&
+            (ownerKind ? (
+              <Link title={`Open the ${owner.kind}`} onClick={() => requestInspect({ clusterId: cluster.id, kind: ownerKind, namespace: target.namespace, name: owner.name })}>
+                {owner.kind} {owner.name}
+              </Link>
+            ) : (
+              `${owner.kind} ${owner.name}`
+            )),
+        ],
+        [
+          "Node",
+          d.node && (
             <Link title="Open the node" onClick={() => openNode(d.node)}>
               {d.node}
             </Link>
-          </>
-        ),
-        d.ip,
-        <span title={isZeroTime(d.startedAt) ? "Not started yet" : `Started ${new Date(d.startedAt).toLocaleString()}`}>age {since(d.created)}</span>,
-        target.ports.length > 0 && portsLabel(target.ports),
-        d.events?.[0] && `last event ${ago(d.events[0].time)}`,
-      ].filter(Boolean)
+          ),
+        ],
+        ["IP", d.ip && <span className="font-mono">{d.ip}</span>],
+        ["Age", <span title={isZeroTime(d.startedAt) ? "Not started yet" : `Started ${new Date(d.startedAt).toLocaleString()}`}>{since(d.created)}</span>],
+        ["Ports", target.ports.length > 0 && <span className="font-mono">{portsLabel(target.ports)}</span>],
+        ["CPU", usage && <UsageMeter name="cpu" label={cpuLabel} used={usage.usage.cpu} limit={target.limits?.cpu} request={target.requests?.cpu} />],
+        ["Memory", usage && <UsageMeter name="memory" label={memoryLabel} used={usage.usage.memory} limit={target.limits?.memory} request={target.requests?.memory} />],
+        ["Last event", d.events?.[0] && ago(d.events[0].time)],
+      ]
     : [];
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="flex items-center gap-2 pr-8">
-          <InspectorName namespace={target.namespace} name={target.name} />
+        <InspectorTitle>
+          <InspectorName kind="pod" namespace={target.namespace} name={target.name} />
           {d && <ReasonBadge reason={d.reason} />}
           <RefreshButton fetching={pod.isFetching} onRefresh={() => pod.refetch()} />
+          <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorDescription className="flex flex-wrap items-center gap-x-3">
-          <span>
-            {d
-              ? facts.map((f, i) => (
-                  <Fragment key={i}>
-                    {i > 0 && " · "}
-                    {f}
-                  </Fragment>
-                ))
-              : "Loading…"}
-          </span>
-          {usage && <UsageMeters usage={usage.usage} limits={target.limits} requests={target.requests} />}
-        </InspectorDescription>
-        <div className="flex flex-wrap gap-1.5">
-          <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
-          <span className="ml-auto">
-            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
-          </span>
-        </div>
+        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />} />
+        {d && <InspectorFacts facts={facts} />}
       </InspectorHeader>
       {pod.error && <p className="text-xs text-destructive">{errorText(pod.error)}</p>}
       <DetailTabs cluster={cluster} kind="pod" namespace={target.namespace} name={target.name}>
@@ -216,8 +197,15 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
 }
 
 // A link inside a line of muted text, told apart by its colour.
+// Underlined faintly at rest, as an Ingress's paths are, so a link reads as one beside plain values of the same colour.
 function Link({ className, ...props }: ComponentProps<"button">) {
-  return <button type="button" className={cn("text-foreground hover:underline", className)} {...props} />;
+  return (
+    <button
+      type="button"
+      className={cn("text-left text-foreground underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-foreground", className)}
+      {...props}
+    />
+  );
 }
 
 // Labels are looked up rather than read, so they fold behind their keys.
