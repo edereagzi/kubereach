@@ -6,7 +6,7 @@ import { ReasonBadge, Section } from "@/components/pod-detail";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { ingressQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -33,9 +33,7 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">
-            {target.namespace}/{target.name}
-          </span>
+          <InspectorName namespace={target.namespace} name={target.name} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{["Ingress", ing?.hosts?.join(", ")].filter(Boolean).join(" · ")}</InspectorDescription>

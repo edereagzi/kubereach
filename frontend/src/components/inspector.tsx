@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "@phosphor-icons/react";
+import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,20 @@ export function InspectorHeader({ className, ...props }: ComponentProps<"div">) 
 
 export function InspectorTitle({ className, ...props }: ComponentProps<"h2">) {
   return <h2 className={cn("font-heading text-base leading-none font-medium", className)} {...props} />;
+}
+
+// InspectorName is an object's name in its detail title. The namespace steps back, so the name reads as what the button
+// beside it copies: the part kubectl takes.
+export function InspectorName({ namespace, name }: { namespace?: string; name: string }) {
+  return (
+    <>
+      <span className="truncate">
+        {namespace && <span className="text-muted-foreground">{namespace}/</span>}
+        {name}
+      </span>
+      <CopyButton text={name} title="Copy name" size="icon-sm" className="opacity-100" />
+    </>
+  );
 }
 
 export function InspectorDescription({ className, ...props }: ComponentProps<"div">) {

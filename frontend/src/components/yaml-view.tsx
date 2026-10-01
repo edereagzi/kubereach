@@ -14,7 +14,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import { objectKind, type Kind, type Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -289,8 +289,8 @@ export function YamlDetail({ cluster, target, onForward, onClose }: { cluster: C
   return (
     <Inspector onClose={onClose}>
       <InspectorHeader>
-        <InspectorTitle className="truncate pr-8">
-          {target.namespace}/{target.name}
+        <InspectorTitle className="flex items-center gap-2 pr-8">
+          <InspectorName namespace={target.namespace} name={target.name} />
         </InspectorTitle>
         <InspectorDescription>{objectKind[target.kind]}</InspectorDescription>
         <div className="flex flex-wrap gap-1.5">

@@ -4,7 +4,7 @@ import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/intern
 import { NodeActions } from "@/components/actions";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle, useInspectorWalk } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle, useInspectorWalk } from "@/components/inspector";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DetailTabs } from "@/components/yaml-view";
@@ -171,7 +171,7 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">{n.name}</span>
+          <InspectorName name={n.name} />
           <ReasonBadge reason={n.problem} />
           <CordonedBadge node={n} />
           <RefreshButton

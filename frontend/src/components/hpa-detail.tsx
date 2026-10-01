@@ -4,7 +4,7 @@ import type { Cluster, HPAMetric, KubeHPA } from "@bindings/internal/service";
 import { Events, ReasonBadge, Section } from "@/components/pod-detail";
 import { rowKind, type Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { hpaQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -35,9 +35,7 @@ export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster;
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">
-            {h.namespace}/{h.name}
-          </span>
+          <InspectorName namespace={h.namespace} name={h.name} />
           <ReasonBadge reason={h.problem} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>

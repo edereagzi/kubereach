@@ -8,7 +8,7 @@ import { TargetVerbs } from "@/components/target-verbs";
 import { Badge } from "@/components/ui/badge";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { podMetricsQuery, podQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
@@ -157,9 +157,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">
-            {target.namespace}/{target.name}
-          </span>
+          <InspectorName namespace={target.namespace} name={target.name} />
           {d && <ReasonBadge reason={d.reason} />}
           <RefreshButton fetching={pod.isFetching} onRefresh={() => pod.refetch()} />
         </InspectorTitle>

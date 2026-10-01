@@ -10,7 +10,7 @@ import { DeleteAction, WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { hpasQuery, workloadQuery, errorText } from "@/queries";
 import { cn, isZeroTime } from "@/lib/utils";
@@ -65,9 +65,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">
-            {w.namespace}/{w.name}
-          </span>
+          <InspectorName namespace={w.namespace} name={w.name} />
           <ReasonBadge reason={workloadReason(w)} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>

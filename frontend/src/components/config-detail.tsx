@@ -7,7 +7,7 @@ import { CopyButton } from "@/components/copy-button";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
+import { Inspector, InspectorDescription, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { DetailTabs } from "@/components/yaml-view";
 import { configObjectQuery, errorText } from "@/queries";
 import { cn } from "@/lib/utils";
@@ -24,9 +24,7 @@ export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; t
     <Inspector onClose={onClose}>
       <InspectorHeader>
         <InspectorTitle className="flex items-center gap-2 pr-8">
-          <span className="truncate">
-            {target.namespace}/{target.name}
-          </span>
+          <InspectorName namespace={target.namespace} name={target.name} />
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{[secret ? "Secret" : "ConfigMap", o?.type, keysLabel(keys.length)].filter(Boolean).join(" · ")}</InspectorDescription>
