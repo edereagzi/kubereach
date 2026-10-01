@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeHPA, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
+import { LogSourceKind, ObjectKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeHPA, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -53,6 +53,22 @@ export type Target = {
 
 // error is set when the group could not be listed while the rest of the scope could; the Overview shows it beside the list.
 export type TargetGroup = { label: string; items: Target[]; error?: unknown };
+
+export const objectKind: Record<Kind, ObjectKind> = {
+  svc: ObjectKind.ObjectService,
+  deploy: ObjectKind.ObjectDeployment,
+  sts: ObjectKind.ObjectStatefulSet,
+  ds: ObjectKind.ObjectDaemonSet,
+  cron: ObjectKind.ObjectCronJob,
+  job: ObjectKind.ObjectJob,
+  pod: ObjectKind.ObjectPod,
+  cm: ObjectKind.ObjectConfigMap,
+  secret: ObjectKind.ObjectSecret,
+  ing: ObjectKind.ObjectIngress,
+  pvc: ObjectKind.ObjectPVC,
+  hpa: ObjectKind.ObjectHPA,
+  node: ObjectKind.ObjectNode,
+};
 
 export const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron", job: "job" };
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {

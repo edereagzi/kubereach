@@ -196,12 +196,14 @@ func unchangedSince(live runtime.Object, original string) bool {
 type objectClient struct {
 	get    func(context.Context, string) (runtime.Object, error)
 	update func(context.Context, runtime.Object, metav1.UpdateOptions) (runtime.Object, error)
+	delete func(context.Context, string, metav1.DeleteOptions) error
 	is     func(runtime.Object) bool
 }
 
 type typedClient[T runtime.Object] interface {
 	Get(context.Context, string, metav1.GetOptions) (T, error)
 	Update(context.Context, T, metav1.UpdateOptions) (T, error)
+	Delete(context.Context, string, metav1.DeleteOptions) error
 }
 
 func typedObjects[T runtime.Object](c typedClient[T]) objectClient {
@@ -212,7 +214,8 @@ func typedObjects[T runtime.Object](c typedClient[T]) objectClient {
 		update: func(ctx context.Context, obj runtime.Object, opts metav1.UpdateOptions) (runtime.Object, error) {
 			return c.Update(ctx, obj.(T), opts)
 		},
-		is: func(obj runtime.Object) bool { _, ok := obj.(T); return ok },
+		delete: c.Delete,
+		is:     func(obj runtime.Object) bool { _, ok := obj.(T); return ok },
 	}
 }
 

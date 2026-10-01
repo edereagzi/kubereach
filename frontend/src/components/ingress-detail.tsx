@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import type { Cluster, IngressPath } from "@bindings/internal/service";
+import { DeleteAction } from "@/components/actions";
 import { ReasonBadge, Section } from "@/components/pod-detail";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
@@ -38,6 +39,11 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{["Ingress", ing?.hosts?.join(", ")].filter(Boolean).join(" · ")}</InspectorDescription>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="ml-auto">
+            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
+          </span>
+        </div>
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind="ing" namespace={target.namespace} name={target.name}>

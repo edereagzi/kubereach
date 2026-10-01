@@ -1,7 +1,7 @@
 import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, KubePod, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
-import { DeletePodAction } from "@/components/actions";
+import { DeleteAction } from "@/components/actions";
 import { useStartLogs } from "@/components/logs";
 import { portsLabel, workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
@@ -179,7 +179,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
         <div className="flex flex-wrap gap-1.5">
           <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
           <span className="ml-auto">
-            <DeletePodAction cluster={cluster} target={target} onDone={onClose} />
+            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
           </span>
         </div>
       </InspectorHeader>

@@ -21,8 +21,8 @@ export function Delete(clusterID: string): $CancellablePromise<void> {
     return $Call.ByID(2664650794, clusterID);
 }
 
-export function DeletePod(clusterID: string, $namespace: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(3476169333, clusterID, $namespace, name);
+export function DeleteObject(clusterID: string, kind: service$0.ObjectKind, $namespace: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(4012633153, clusterID, kind, $namespace, name);
 }
 
 export function DescribeHPA(clusterID: string, $namespace: string, name: string): $CancellablePromise<service$0.HPADiagnosis> {

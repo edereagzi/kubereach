@@ -35,13 +35,21 @@ func (s *Service) RestartWorkload(ctx context.Context, clusterID string, kind Wo
 	return wrapForbidden(err)
 }
 
-// DeletePod deletes a pod with its default grace period, so its controller replaces it.
-func (s *Service) DeletePod(ctx context.Context, clusterID, namespace, name string) error {
-	k, err := s.clusterClient(clusterID)
+// DeleteObject deletes an object the way kubectl delete does: what it owns, such as a Job's pods, goes with it, and a pod
+// stops with its grace period. PersistentVolumeClaims are left to the Terminal, since their data usually goes with them.
+func (s *Service) DeleteObject(ctx context.Context, clusterID string, kind ObjectKind, namespace, name string) error {
+	switch kind {
+	case ObjectPod, ObjectDeployment, ObjectStatefulSet, ObjectDaemonSet, ObjectJob, ObjectCronJob, ObjectService, ObjectIngress, ObjectConfigMap, ObjectSecret:
+	default:
+		return userErrorf("A %s cannot be deleted from Kubereach", kind)
+	}
+	c, err := s.objectClient(clusterID, kind, namespace)
 	if err != nil {
 		return err
 	}
-	return wrapForbidden(k.client.CoreV1().Pods(namespace).Delete(ctx, name, metav1.DeleteOptions{}))
+	// batch/v1 would orphan a Job's pods by default.
+	background := metav1.DeletePropagationBackground
+	return wrapForbidden(c.delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &background}))
 }
 
 // ScaleWorkload sets a Deployment's or StatefulSet's replicas through the scale subresource.

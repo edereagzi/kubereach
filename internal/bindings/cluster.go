@@ -156,8 +156,8 @@ func (c *ClusterService) RestartWorkload(ctx context.Context, clusterID string, 
 	return c.svc.RestartWorkload(ctx, clusterID, kind, namespace, name)
 }
 
-func (c *ClusterService) DeletePod(ctx context.Context, clusterID, namespace, name string) error {
-	return c.svc.DeletePod(ctx, clusterID, namespace, name)
+func (c *ClusterService) DeleteObject(ctx context.Context, clusterID string, kind service.ObjectKind, namespace, name string) error {
+	return c.svc.DeleteObject(ctx, clusterID, kind, namespace, name)
 }
 
 func (c *ClusterService) ScaleWorkload(ctx context.Context, clusterID string, kind service.WorkloadKind, namespace, name string, replicas int32) error {

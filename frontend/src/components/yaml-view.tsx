@@ -8,32 +8,17 @@ import { tags } from "@lezer/highlight";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EyeIcon, EyeSlashIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { ObjectKind, type Cluster } from "@bindings/internal/service";
+import type { Cluster } from "@bindings/internal/service";
+import { DeleteAction } from "@/components/actions";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
-import type { Kind, Target } from "@/components/targets";
+import { objectKind, type Kind, type Target } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Inspector, InspectorDescription, InspectorHeader, InspectorTitle } from "@/components/inspector";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { yamlQuery, errorText, isConflict } from "@/queries";
-
-const objectKind: Record<Kind, ObjectKind> = {
-  svc: ObjectKind.ObjectService,
-  deploy: ObjectKind.ObjectDeployment,
-  sts: ObjectKind.ObjectStatefulSet,
-  ds: ObjectKind.ObjectDaemonSet,
-  cron: ObjectKind.ObjectCronJob,
-  job: ObjectKind.ObjectJob,
-  pod: ObjectKind.ObjectPod,
-  cm: ObjectKind.ObjectConfigMap,
-  secret: ObjectKind.ObjectSecret,
-  ing: ObjectKind.ObjectIngress,
-  pvc: ObjectKind.ObjectPVC,
-  hpa: ObjectKind.ObjectHPA,
-  node: ObjectKind.ObjectNode,
-};
 
 type YamlProps = { cluster: Cluster; kind: Kind; namespace: string; name: string };
 
@@ -308,11 +293,12 @@ export function YamlDetail({ cluster, target, onForward, onClose }: { cluster: C
           {target.namespace}/{target.name}
         </InspectorTitle>
         <InspectorDescription>{objectKind[target.kind]}</InspectorDescription>
-        {onForward && (
-          <div className="flex flex-wrap gap-1.5">
-            <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          {onForward && <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />}
+          <span className="ml-auto">
+            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
+          </span>
+        </div>
       </InspectorHeader>
       <YamlView cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name} />
     </Inspector>

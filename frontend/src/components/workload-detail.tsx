@@ -6,7 +6,7 @@ import { ago, Events, PodList, ReasonBadge, Section } from "@/components/pod-det
 import { rowKind, workloadKind, type Target } from "@/components/targets";
 import { TargetVerbs } from "@/components/target-verbs";
 import { useUIStore } from "@/store";
-import { WorkloadActions } from "@/components/actions";
+import { DeleteAction, WorkloadActions } from "@/components/actions";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/copy-button";
 import { RefreshButton } from "@/components/refresh-button";
@@ -75,6 +75,9 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
         <div className="flex flex-wrap gap-1.5">
           <TargetVerbs cluster={cluster} target={target} onLeave={onClose} />
           <WorkloadActions cluster={cluster} workload={w} />
+          <span className="ml-auto">
+            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
+          </span>
         </div>
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}

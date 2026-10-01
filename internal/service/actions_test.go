@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -70,18 +74,56 @@ func TestRestartWorkload(t *testing.T) {
 	}
 }
 
-func TestDeletePod(t *testing.T) {
-	svc, cs, id := newFakeService(t, pod("default", "api-1", "api", corev1.PodRunning, true, diagEpoch))
+func TestDeleteObject(t *testing.T) {
+	meta := func(name string) metav1.ObjectMeta { return metav1.ObjectMeta{Namespace: "default", Name: name} }
+	objects := map[service.ObjectKind]runtime.Object{
+		service.ObjectPod:         pod("default", "api-1", "api", corev1.PodRunning, true, diagEpoch),
+		service.ObjectDeployment:  deployment("default", "api"),
+		service.ObjectStatefulSet: &appsv1.StatefulSet{ObjectMeta: meta("db")},
+		service.ObjectDaemonSet:   &appsv1.DaemonSet{ObjectMeta: meta("agent")},
+		service.ObjectJob:         &batchv1.Job{ObjectMeta: meta("migrate")},
+		service.ObjectCronJob:     &batchv1.CronJob{ObjectMeta: meta("backup")},
+		service.ObjectService:     k8sService("default", "web", 80),
+		service.ObjectIngress:     &networkingv1.Ingress{ObjectMeta: meta("web")},
+		service.ObjectConfigMap:   &corev1.ConfigMap{ObjectMeta: meta("settings")},
+		service.ObjectSecret:      &corev1.Secret{ObjectMeta: meta("token")},
+	}
+	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: meta("data")}
+	svc, cs, id := newFakeService(t, append(slices.Collect(maps.Values(objects)), pvc)...)
 	ctx := context.Background()
 
-	if err := svc.DeletePod(ctx, id, "default", "api-1"); err != nil {
-		t.Fatal(err)
+	// kubectl deletes a Job's or CronJob's pods with it; the API default for batch/v1 would orphan them.
+	policies := map[string]metav1.DeletionPropagation{}
+	cs.PrependReactor("delete", "*", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if p := a.(k8stesting.DeleteActionImpl).DeleteOptions.PropagationPolicy; p != nil {
+			policies[a.GetResource().Resource] = *p
+		}
+		return false, nil, nil
+	})
+	for kind, obj := range objects {
+		name := obj.(metav1.Object).GetName()
+		if err := svc.DeleteObject(ctx, id, kind, "default", name); err != nil {
+			t.Fatalf("delete %s: %v", kind, err)
+		}
+		if _, err := svc.GetYAML(ctx, id, kind, "default", name, false); !apierrors.IsNotFound(err) {
+			t.Errorf("%s %s still there: %v", kind, name, err)
+		}
 	}
-	if _, err := cs.CoreV1().Pods("default").Get(ctx, "api-1", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
-		t.Errorf("pod still there: %v", err)
+	for _, r := range []string{"jobs", "cronjobs"} {
+		if policies[r] != metav1.DeletePropagationBackground {
+			t.Errorf("%s propagation = %q; want Background", r, policies[r])
+		}
 	}
-	forbid(cs, "delete", "pods", false)
-	if err := svc.DeletePod(ctx, id, "default", "api-1"); !errors.Is(err, service.ErrForbidden) {
+
+	if err := svc.DeleteObject(ctx, id, service.ObjectPVC, "default", "data"); err == nil {
+		t.Error("PVC deleted without error")
+	}
+	if _, err := cs.CoreV1().PersistentVolumeClaims("default").Get(ctx, "data", metav1.GetOptions{}); err != nil {
+		t.Errorf("PVC gone: %v", err)
+	}
+	cs.Tracker().Add(deployment("default", "api"))
+	forbid(cs, "delete", "deployments", false)
+	if err := svc.DeleteObject(ctx, id, service.ObjectDeployment, "default", "api"); !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("forbidden delete err = %v; want ErrForbidden", err)
 	}
 }

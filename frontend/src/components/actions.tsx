@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClusterService } from "@bindings/internal/bindings";
 import { WorkloadKind, type Cluster, type KubeWorkload } from "@bindings/internal/service";
-import type { Target } from "@/components/targets";
+import { objectKind, type Kind, type Target } from "@/components/targets";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,16 +133,38 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
   );
 }
 
-export function DeletePodAction({ cluster, target, onDone }: { cluster: Cluster; target: Target; onDone: () => void }) {
+// What deleting each kind takes with it, after the object's name; a kind missing here has no Delete. PVCs are left to
+// the Terminal, since their data usually goes with them.
+const deletes: Partial<Record<Kind, string>> = {
+  pod: "stops with its grace period. Its controller, if it has one, creates a replacement.",
+  deploy: "and its pods are deleted, with its rollout history.",
+  sts: "and its pods are deleted. Its PersistentVolumeClaims stay unless its retention policy deletes them.",
+  ds: "and its pods on every node are deleted.",
+  job: "and its pods are deleted, with their logs.",
+  cron: "stops running, and the Jobs it started are deleted with their pods.",
+  svc: "is deleted. Clients lose its address; the pods behind it keep running.",
+  ing: "is deleted. Its hosts and paths stop reaching their Services.",
+  cm: "is deleted. Running pods keep what they read; new pods that need it cannot start.",
+  secret: "is deleted. Running pods keep what they read; new pods that need it cannot start.",
+};
+
+export function DeleteAction({ cluster, target, onDone }: { cluster: Cluster; target: Target; onDone: () => void }) {
+  const consequence = deletes[target.kind];
+  if (!consequence) return null;
+  const kind = objectKind[target.kind];
   return (
     <WriteAction
       cluster={cluster}
-      label="Delete pod"
-      title={`Delete pod ${target.name}?`}
-      description={<>{objectRef(target)} stops with its grace period. Its controller, if it has one, creates a replacement.</>}
-      confirm="Delete pod"
+      label="Delete"
+      title={`Delete ${kind} ${target.name}?`}
+      description={
+        <>
+          {objectRef(target)} {consequence}
+        </>
+      }
+      confirm={`Delete ${kind}`}
       destructive
-      run={() => ClusterService.DeletePod(cluster.id, target.namespace, target.name)}
+      run={() => ClusterService.DeleteObject(cluster.id, kind, target.namespace, target.name)}
       onDone={onDone}
     />
   );

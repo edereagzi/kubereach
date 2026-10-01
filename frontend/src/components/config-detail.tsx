@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EyeIcon, EyeSlashIcon } from "@phosphor-icons/react";
 import type { Cluster } from "@bindings/internal/service";
+import { DeleteAction } from "@/components/actions";
 import { CopyButton } from "@/components/copy-button";
 import type { Target } from "@/components/targets";
 import { RefreshButton } from "@/components/refresh-button";
@@ -29,6 +30,11 @@ export function ConfigDetail({ cluster, target, onClose }: { cluster: Cluster; t
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
         </InspectorTitle>
         <InspectorDescription>{[secret ? "Secret" : "ConfigMap", o?.type, keysLabel(keys.length)].filter(Boolean).join(" · ")}</InspectorDescription>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="ml-auto">
+            <DeleteAction cluster={cluster} target={target} onDone={onClose} />
+          </span>
+        </div>
       </InspectorHeader>
       {q.error && <p className="text-xs text-destructive">{errorText(q.error)}</p>}
       <DetailTabs cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name}>
