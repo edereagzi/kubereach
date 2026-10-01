@@ -73,6 +73,7 @@ const objectRef = (w: { namespace: string; name: string }) => (
 
 export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; workload: KubeWorkload }) {
   const [replicas, setReplicas] = useState("");
+  if (w.cronJob) return <CronJobActions cluster={cluster} workload={w} />;
   if (!w.rollout) return null;
   const current = w.rollout.desired;
   const next = replicas === "" ? NaN : Number(replicas);
@@ -127,6 +128,40 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
           }
           confirm="Roll back"
           run={() => ClusterService.RollbackDeployment(cluster.id, w.namespace, w.name)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: KubeWorkload }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <WriteAction
+        cluster={cluster}
+        label="Run now"
+        title={`Run cronjob ${w.name} now?`}
+        description={<>A Job starts from the template of {objectRef(w)} now, even if a scheduled run is going. It is listed under the CronJob.</>}
+        confirm="Run now"
+        run={() => ClusterService.RunCronJob(cluster.id, w.namespace, w.name)}
+      />
+      {w.cronJob?.suspend ? (
+        <WriteAction
+          cluster={cluster}
+          label="Resume"
+          title={`Resume cronjob ${w.name}?`}
+          description={<>{objectRef(w)} starts Jobs on its schedule again. A run it missed while suspended may start right away.</>}
+          confirm="Resume"
+          run={() => ClusterService.SuspendCronJob(cluster.id, w.namespace, w.name, false)}
+        />
+      ) : (
+        <WriteAction
+          cluster={cluster}
+          label="Suspend"
+          title={`Suspend cronjob ${w.name}?`}
+          description={<>{objectRef(w)} stops starting Jobs on its schedule. Jobs already running go on.</>}
+          confirm="Suspend"
+          run={() => ClusterService.SuspendCronJob(cluster.id, w.namespace, w.name, true)}
         />
       )}
     </div>

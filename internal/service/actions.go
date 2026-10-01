@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strconv"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/utils/ptr"
 )
 
 const revisionAnnotation = "deployment.kubernetes.io/revision"
@@ -50,6 +55,56 @@ func (s *Service) DeleteObject(ctx context.Context, clusterID string, kind Objec
 	// batch/v1 would orphan a Job's pods by default.
 	background := metav1.DeletePropagationBackground
 	return wrapForbidden(c.delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &background}))
+}
+
+// RunCronJob starts a Job from the CronJob's template now, as kubectl create job --from=cronjob/<name> does; the CronJob
+// controls it, so it is listed under the CronJob.
+func (s *Service) RunCronJob(ctx context.Context, clusterID, namespace, name string) error {
+	k, err := s.clusterClient(clusterID)
+	if err != nil {
+		return err
+	}
+	cj, err := k.client.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return wrapForbidden(err)
+	}
+	t := cj.Spec.JobTemplate
+	annotations := map[string]string{"cronjob.kubernetes.io/instantiate": "manual"}
+	maps.Copy(annotations, t.Annotations)
+	// A Job's name goes into its pods' job-name label, which allows 63 characters; the suffix is random, as generateName
+	// makes it, so two runs never clash. A cut name cannot end in a dot before the dash.
+	const manual, suffix = "-manual-", 5
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        strings.TrimRight(name[:min(len(name), 63-len(manual)-suffix)], ".") + manual + utilrand.String(suffix),
+			Namespace:   namespace,
+			Labels:      t.Labels,
+			Annotations: annotations,
+			// Not metav1.NewControllerRef: blocking the CronJob's deletion needs RBAC on cronjobs/finalizers, which kubectl
+			// avoids too.
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: batchv1.SchemeGroupVersion.String(),
+				Kind:       "CronJob",
+				Name:       cj.Name,
+				UID:        cj.UID,
+				Controller: ptr.To(true),
+			}},
+		},
+		Spec: t.Spec,
+	}
+	_, err = k.client.BatchV1().Jobs(namespace).Create(ctx, job, metav1.CreateOptions{})
+	return wrapForbidden(err)
+}
+
+// SuspendCronJob stops the CronJob scheduling new Jobs, or lets it again; Jobs already running go on.
+func (s *Service) SuspendCronJob(ctx context.Context, clusterID, namespace, name string, suspend bool) error {
+	k, err := s.clusterClient(clusterID)
+	if err != nil {
+		return err
+	}
+	patch := fmt.Appendf(nil, `{"spec":{"suspend":%t}}`, suspend)
+	_, err = k.client.BatchV1().CronJobs(namespace).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	return wrapForbidden(err)
 }
 
 // ScaleWorkload sets a Deployment's or StatefulSet's replicas through the scale subresource.

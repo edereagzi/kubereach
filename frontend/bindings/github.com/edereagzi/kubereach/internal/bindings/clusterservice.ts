@@ -148,10 +148,18 @@ export function RollbackDeployment(clusterID: string, $namespace: string, name: 
     return $Call.ByID(1589258054, clusterID, $namespace, name);
 }
 
+export function RunCronJob(clusterID: string, $namespace: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(633177913, clusterID, $namespace, name);
+}
+
 export function ScaleWorkload(clusterID: string, kind: service$0.WorkloadKind, $namespace: string, name: string, replicas: number): $CancellablePromise<void> {
     return $Call.ByID(176363600, clusterID, kind, $namespace, name, replicas);
 }
 
 export function SetNamespaces(clusterID: string, namespaces: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(1583854951, clusterID, namespaces);
+}
+
+export function SuspendCronJob(clusterID: string, $namespace: string, name: string, suspend: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2914383702, clusterID, $namespace, name, suspend);
 }

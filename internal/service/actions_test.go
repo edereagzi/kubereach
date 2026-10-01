@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +126,92 @@ func TestDeleteObject(t *testing.T) {
 	forbid(cs, "delete", "deployments", false)
 	if err := svc.DeleteObject(ctx, id, service.ObjectDeployment, "default", "api"); !errors.Is(err, service.ErrForbidden) {
 		t.Errorf("forbidden delete err = %v; want ErrForbidden", err)
+	}
+}
+
+func cronJob(ns, name string) *batchv1.CronJob {
+	return &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, UID: types.UID(name + "-uid")},
+		Spec: batchv1.CronJobSpec{
+			Schedule: "0 3 * * *",
+			JobTemplate: batchv1.JobTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "backup"}},
+				Spec: batchv1.JobSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers:    []corev1.Container{{Name: "dump", Image: "pg:17"}},
+				}}},
+			},
+		},
+	}
+}
+
+func TestRunCronJob(t *testing.T) {
+	long := strings.Repeat("n", 52)
+	svc, cs, id := newFakeService(t, cronJob("db", "backup"), cronJob("db", long))
+	ctx := context.Background()
+
+	if err := svc.RunCronJob(ctx, id, "db", "backup"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RunCronJob(ctx, id, "db", long); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := cs.BatchV1().Jobs("db").List(ctx, metav1.ListOptions{})
+	if len(jobs.Items) != 2 {
+		t.Fatalf("jobs = %d; want 2", len(jobs.Items))
+	}
+	for _, j := range jobs.Items {
+		// As kubectl does, the owner does not block the CronJob's deletion, which would need RBAC on cronjobs/finalizers.
+		owner := metav1.GetControllerOf(&j)
+		if owner == nil || owner.Kind != "CronJob" || !strings.HasPrefix(j.Name, owner.Name[:min(len(owner.Name), 50)]) || owner.UID != types.UID(owner.Name+"-uid") || owner.BlockOwnerDeletion != nil {
+			t.Errorf("%s controller = %+v; want its CronJob, not blocking deletion", j.Name, owner)
+		}
+		if !strings.Contains(j.Name, "-manual-") || len(j.Name) > 63 {
+			t.Errorf("job name = %q; want <cronjob>-manual-<suffix>, at most 63 characters", j.Name)
+		}
+		if j.Annotations["cronjob.kubernetes.io/instantiate"] != "manual" || j.Labels["app"] != "backup" || j.Spec.Template.Spec.Containers[0].Image != "pg:17" {
+			t.Errorf("job %s is not the CronJob's template: %+v", j.Name, j)
+		}
+	}
+	if !slices.ContainsFunc(jobs.Items, func(j batchv1.Job) bool { return strings.HasPrefix(j.Name, "backup-manual-") }) {
+		t.Errorf("no job named backup-manual-*: %+v", jobs.Items)
+	}
+
+	if err := svc.RunCronJob(ctx, id, "db", "missing"); err == nil {
+		t.Error("ran a missing CronJob without error")
+	}
+	forbid(cs, "create", "jobs", false)
+	if err := svc.RunCronJob(ctx, id, "db", "backup"); !errors.Is(err, service.ErrForbidden) {
+		t.Errorf("forbidden run err = %v; want ErrForbidden", err)
+	}
+}
+
+func TestSuspendCronJob(t *testing.T) {
+	svc, cs, id := newFakeService(t, cronJob("db", "backup"))
+	ctx := context.Background()
+	suspended := func() bool {
+		cj, err := cs.BatchV1().CronJobs("db").Get(ctx, "backup", metav1.GetOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cj.Spec.Suspend != nil && *cj.Spec.Suspend
+	}
+
+	if err := svc.SuspendCronJob(ctx, id, "db", "backup", true); err != nil {
+		t.Fatal(err)
+	}
+	if !suspended() {
+		t.Error("CronJob not suspended")
+	}
+	if err := svc.SuspendCronJob(ctx, id, "db", "backup", false); err != nil {
+		t.Fatal(err)
+	}
+	if suspended() {
+		t.Error("CronJob still suspended after resume")
+	}
+	forbid(cs, "patch", "cronjobs", false)
+	if err := svc.SuspendCronJob(ctx, id, "db", "backup", true); !errors.Is(err, service.ErrForbidden) {
+		t.Errorf("forbidden suspend err = %v; want ErrForbidden", err)
 	}
 }
 
