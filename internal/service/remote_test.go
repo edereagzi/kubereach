@@ -102,21 +102,44 @@ func TestRemoteKubeconfig_MissingFileNamesThePath(t *testing.T) {
 	}
 }
 
-// A remote kubeconfig must not make Kubereach run a local program or send a local file to the server.
-func TestRemoteKubeconfig_RefusesLocalProgramsAndFiles(t *testing.T) {
-	edits := map[string][2]string{
-		"exec":       {"{token: t}", "{exec: {apiVersion: client.authentication.k8s.io/v1, command: /bin/sh}}"},
-		"token file": {"{token: t}", "{tokenFile: /home/me/.ssh/id_ed25519}"},
-		"client key": {"{token: t}", "{client-key: /home/me/.ssh/id_ed25519}"},
-		"CA file":    {"{server: https://staging.example:6443}", "{server: https://staging.example:6443, certificate-authority: /etc/ca.crt}"},
+// A remote kubeconfig must not make Kubereach run a program, nor read a file here; a file it cannot read on the server
+// is named in the reason.
+func TestRemoteKubeconfig_RefusesProgramsAndUnreadableFiles(t *testing.T) {
+	edits := map[string][3]string{
+		"exec":       {"{token: t}", "{exec: {apiVersion: client.authentication.k8s.io/v1, command: /bin/sh}}", "program"},
+		"token file": {"{token: t}", "{tokenFile: /home/me/token}", "/home/me/token"},
+		"client key": {"{token: t}", "{client-key: /home/me/.ssh/id_ed25519}", "/home/me/.ssh/id_ed25519"},
+		"CA file":    {"{server: https://staging.example:6443}", "{server: https://staging.example:6443, certificate-authority: /etc/ca.crt}", "/etc/ca.crt"},
 	}
 	for name, edit := range edits {
 		t.Run(name, func(t *testing.T) {
 			f := newRemoteFixture(t, strings.Replace(twoContextKubeconfig, edit[0], edit[1], 1))
-			if _, err := f.svc.ImportRemoteCluster(f.route.ID, "~/.kube/config", "staging-admin"); err == nil {
-				t.Error("import should fail")
+			_, err := f.svc.ImportRemoteCluster(f.route.ID, "~/.kube/config", "staging-admin")
+			if msg := service.Describe(err).Message; !strings.Contains(msg, edit[2]) {
+				t.Errorf("message = %q, want it to name %s", msg, edit[2])
 			}
 		})
+	}
+}
+
+// minikube's kubeconfig names its certificates by path; they are read on the server, once each, relative ones from the
+// kubeconfig's directory.
+func TestRemoteKubeconfig_ReadsTheFilesItNamesOnTheServer(t *testing.T) {
+	kubeconfig := strings.NewReplacer(
+		"{server: https://staging.example:6443}", "{server: https://staging.example:6443, certificate-authority: /home/me/.minikube/ca.crt}",
+		"{server: https://prod.example:6443}", "{server: https://prod.example:6443, certificate-authority: /home/me/.minikube/ca.crt}",
+		"{token: t}", "{client-certificate: profiles/client.crt, client-key: /home/me/it's.key}",
+	).Replace(twoContextKubeconfig)
+	f := newRemoteFixture(t, kubeconfig)
+	files := []string{"cat '/home/me/.minikube/ca.crt'", "cat ~/'.kube/profiles/client.crt'", `cat '/home/me/it'\''s.key'`}
+	f.setOutputs(map[string]string{service.DetectKubeconfig: "~/.kube/config\n", readKubeconfig: kubeconfig, files[0]: "CA", files[1]: "CERT", files[2]: "KEY"})
+
+	if _, err := f.svc.ImportRemoteCluster(f.route.ID, "~/.kube/config", "staging-admin"); err != nil {
+		t.Fatal(err)
+	}
+	ran := f.ssh.ran()
+	if diff := cmp.Diff(slices.Sorted(slices.Values(append([]string{readKubeconfig}, files...))), slices.Sorted(slices.Values(ran))); diff != "" {
+		t.Errorf("commands (-want +got), want each file read once:\n%s", diff)
 	}
 }
 

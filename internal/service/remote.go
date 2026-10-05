@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ type remoteSource struct {
 }
 
 // remoteSources are the kubeconfigs Kubereach reads on an SSH Server, the first found winning: a distro's own before
-// ~/.kube/config. Only these ever run, so a Cluster from an imported configuration cannot run anything else there.
+// ~/.kube/config. Only these, and cat of the files the kubeconfig they print names, ever run, so a Cluster from an
+// imported configuration cannot run anything else there.
 var remoteSources = []remoteSource{
 	fileSource("/etc/rancher/k3s/k3s.yaml", writeMode("k3s")),
 	fileSource("/etc/rancher/rke2/rke2.yaml", writeMode("rke2")),
@@ -157,9 +159,19 @@ func remoteRESTConfig(data []byte, context string) (*rest.Config, error) {
 		return nil, userErrorf("The kubeconfig on the SSH server has no context %s", context)
 	}
 	u, c := kc.AuthInfos[ctx.AuthInfo], kc.Clusters[ctx.Cluster]
-	if u != nil && (u.Exec != nil || u.AuthProvider != nil || u.TokenFile != "" || u.ClientCertificate != "" || u.ClientKey != "") ||
-		c != nil && c.CertificateAuthority != "" {
-		return nil, userErrorf("The kubeconfig on the SSH server refers to local files or programs, which Kubereach does not use from an SSH server")
+	if u != nil && (u.Exec != nil || u.AuthProvider != nil) {
+		return nil, userErrorf("The kubeconfig on the SSH server signs in with a program, which Kubereach does not run from an SSH server")
+	}
+	var file string
+	if u != nil {
+		file = cmp.Or(u.TokenFile, u.ClientCertificate, u.ClientKey)
+	}
+	if c != nil {
+		file = cmp.Or(file, c.CertificateAuthority)
+	}
+	if file != "" {
+		// embedRemoteFiles left it: it could not be read on the server, and it must not be read here.
+		return nil, userErrorf("The kubeconfig on the SSH server refers to %s, which Kubereach could not read on the server", file)
 	}
 	return clientcmd.NewNonInteractiveClientConfig(*kc, context, &clientcmd.ConfigOverrides{}, nil).ClientConfig()
 }
@@ -223,6 +235,9 @@ func (s *Service) readKubeconfig(rc *routeConn, src remoteSource) ([]byte, error
 	if r.err != nil && !errors.Is(r.err, errRemoteTimeout) {
 		r.data, r.err = s.sudoRead(client, rc.lastServer, src, r.err)
 	}
+	if r.err == nil {
+		r.data = s.embedRemoteFiles(client, src, r.data)
+	}
 	if errors.Is(r.err, errRemoteTimeout) {
 		r.err = userErrorf("Reading %s on the SSH server did not finish within %s", src.name, s.RemoteCommandTimeout)
 	}
@@ -235,6 +250,63 @@ func (s *Service) readKubeconfig(rc *routeConn, src remoteSource) ([]byte, error
 	}
 	rc.mu.Unlock()
 	return r.data, r.err
+}
+
+// embedRemoteFiles puts the files a kubeconfig names, such as minikube's certificates, into it, read on the same SSH
+// Server; a relative path is taken from the kubeconfig's own directory, as kubectl does. A file that cannot be read stays
+// a reference, which remoteRESTConfig refuses, so it fails only the contexts that use it.
+func (s *Service) embedRemoteFiles(client *ssh.Client, src remoteSource, data []byte) []byte {
+	kc, err := clientcmd.Load(data)
+	if err != nil {
+		return data
+	}
+	read := map[string][]byte{}
+	changed := false
+	embed := func(file *string, into *[]byte) {
+		if *file == "" {
+			return
+		}
+		p := *file
+		if !path.IsAbs(p) && !strings.HasPrefix(p, "~/") {
+			p = path.Join(path.Dir(src.name), p)
+		}
+		b, ok := read[p]
+		if !ok {
+			b, _ = s.runRemote(client, "cat "+shellPath(p), "")
+			read[p] = b
+		}
+		if len(b) > 0 {
+			*into, *file, changed = b, "", true
+		}
+	}
+	for _, u := range kc.AuthInfos {
+		embed(&u.ClientCertificate, &u.ClientCertificateData)
+		embed(&u.ClientKey, &u.ClientKeyData)
+		var token []byte
+		if embed(&u.TokenFile, &token); token != nil {
+			u.Token = strings.TrimSpace(string(token))
+		}
+	}
+	for _, c := range kc.Clusters {
+		embed(&c.CertificateAuthority, &c.CertificateAuthorityData)
+	}
+	if !changed {
+		return data
+	}
+	out, err := clientcmd.Write(*kc)
+	if err != nil {
+		return data
+	}
+	return out
+}
+
+// shellPath quotes p for the server's shell, leaving a leading ~/ to expand to the user's home.
+func shellPath(p string) string {
+	home := ""
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		home, p = "~/", rest
+	}
+	return home + "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }
 
 // SetSudoPassword keeps the sudo password of the Route's last SSH Server for the session, never on disk; the next read
