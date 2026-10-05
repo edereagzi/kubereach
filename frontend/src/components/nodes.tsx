@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { InfoIcon } from "@phosphor-icons/react";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
 import { NodeActions } from "@/components/actions";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
@@ -19,7 +20,7 @@ const percent = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 100) 
 // A number nothing measured is a dash, never a zero; what is wrong with a node is the badge's job, so the bar stays neutral.
 // Used is the fill and requested is a tick on it, not a second fill: a node using more than it reserved would otherwise
 // paint over the reservation and hide it, which is the case worth seeing.
-function Meter({ name, label, used, requested, allocatable, inline = false }: { name: string; label: (n: number) => string; used?: number; requested?: number; allocatable: number; inline?: boolean }) {
+function Meter({ name, label, used, requested, allocatable, inline = false, unmeasured = false }: { name: string; label: (n: number) => string; used?: number; requested?: number; allocatable: number; inline?: boolean; unmeasured?: boolean }) {
   const [usedPct, requestedPct] = [percent(used ?? 0, allocatable), percent(requested ?? 0, allocatable)];
   // The tick is two pixels wide on a bar of sixty-four, so at the extremes it is held just inside the track;
   // clipped in half against the edge it reads as a rendering fault rather than as a reservation.
@@ -28,7 +29,7 @@ function Meter({ name, label, used, requested, allocatable, inline = false }: { 
   return (
     <span
       className="flex items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground"
-      title={`${name}: ${said(used, "used")}, ${said(requested, "requested")} of ${label(allocatable)} allocatable`}
+      title={`${name}: ${said(used, "used")}, ${said(requested, "requested")} of ${label(allocatable)} allocatable${unmeasured ? ". This Cluster has no metrics-server, so nothing measured what the node uses" : ""}`}
     >
       <span className="relative h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
         {used !== undefined && <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/55" style={{ width: `${Math.min(usedPct, 100)}%` }} />}
@@ -39,8 +40,15 @@ function Meter({ name, label, used, requested, allocatable, inline = false }: { 
       {/* In the table the pair is a column and holds a width wide enough for "100% / 100%"; inline, as in the node detail's
           facts, that width would strand it a centimetre from its own bar. */}
       <span className={cn("shrink-0 whitespace-nowrap", inline ? "" : "w-24 text-right")}>
-        {used === undefined ? "—" : `${usedPct}%`}
-        <span className="opacity-60"> / {requested === undefined ? "—" : `${requestedPct}%`}</span>
+        {/* Unmeasured, the column header or, inline, the word says the one number is the reservation. */}
+        {unmeasured ? (
+          `${requested === undefined ? "—" : `${requestedPct}%`}${inline ? " requested" : ""}`
+        ) : (
+          <>
+            {used === undefined ? "—" : `${usedPct}%`}
+            <span className="opacity-60"> / {requested === undefined ? "—" : `${requestedPct}%`}</span>
+          </>
+        )}
       </span>
     </span>
   );
@@ -66,6 +74,7 @@ export function NodeProblems({ cluster }: { cluster: Cluster }) {
 export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   const nodes = useQuery(nodesQuery(cluster.id));
   const usage = useQuery(nodeMetricsQuery(cluster.id)).data;
+  const unmeasured = usage?.size === 0;
   const [inspecting, setInspecting] = useState<KubeNode | null>(null);
   const rows = useRef<KubeNode[]>([]);
   rows.current = nodes.data ?? [];
@@ -111,8 +120,8 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
             <TableHead>Node</TableHead>
             <TableHead>Roles</TableHead>
             <TableHead>Version</TableHead>
-            <TableHead title="Used and requested, against the node's allocatable CPU">CPU used / requested</TableHead>
-            <TableHead title="Used and requested, against the node's allocatable memory">Memory used / requested</TableHead>
+            <TableHead title={`${unmeasured ? "Requested" : "Used and requested"}, against the node's allocatable CPU`}>{unmeasured ? "CPU requested" : "CPU used / requested"}</TableHead>
+            <TableHead title={`${unmeasured ? "Requested" : "Used and requested"}, against the node's allocatable memory`}>{unmeasured ? "Memory requested" : "Memory used / requested"}</TableHead>
             <TableHead className="text-right" title="Running on the node, of the pods it accepts">Pods</TableHead>
           </TableRow>
         </TableHeader>
@@ -139,10 +148,10 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
                 </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{n.version}</TableCell>
                 <TableCell>
-                  <Meter name="cpu" label={cpuLabel} used={used?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
+                  <Meter name="cpu" label={cpuLabel} used={used?.cpu} unmeasured={unmeasured} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />
                 </TableCell>
                 <TableCell>
-                  <Meter name="memory" label={memoryLabel} used={used?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
+                  <Meter name="memory" label={memoryLabel} used={used?.memory} unmeasured={unmeasured} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />
                 </TableCell>
                 <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground" title={n.unknown ? "The Cluster's pods could not be listed" : undefined}>
                   {n.unknown ? "—" : n.podCapacity ? `${n.pods} / ${n.podCapacity}` : n.pods}
@@ -152,6 +161,12 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
           })}
         </TableBody>
       </Table>
+      {unmeasured && (
+        <p className="flex items-center gap-1.5 px-2 pt-3 text-xs text-muted-foreground">
+          <InfoIcon className="size-3.5 shrink-0" />
+          This Cluster has no metrics-server, so only requests are shown.
+        </p>
+      )}
     </div>
   );
 }
@@ -185,8 +200,8 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
             ["Roles", n.roles?.join(", ")],
             ["Version", n.version && <span className="font-mono">{n.version}</span>],
             ["Pods", !n.unknown && n.pods],
-            ["CPU", <Meter inline name="cpu" label={cpuLabel} used={usage?.cpu} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />],
-            ["Memory", <Meter inline name="memory" label={memoryLabel} used={usage?.memory} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />],
+            ["CPU", <Meter inline name="cpu" label={cpuLabel} used={usage?.cpu} unmeasured={metrics.data?.size === 0} requested={n.unknown ? undefined : n.requested.cpu} allocatable={n.allocatable.cpu} />],
+            ["Memory", <Meter inline name="memory" label={memoryLabel} used={usage?.memory} unmeasured={metrics.data?.size === 0} requested={n.unknown ? undefined : n.requested.memory} allocatable={n.allocatable.memory} />],
           ]}
         />
       </InspectorHeader>
