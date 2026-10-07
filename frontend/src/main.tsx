@@ -35,8 +35,13 @@ Events.On("route:state", ({ data }) => {
     if (cluster.route === data.routeId) queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
   }
 });
+// An open detail is fetched under its kind's singular key, so it follows its list, through an outage and back included.
+const detailKey: Record<string, string> = { pods: "pod", workloads: "workload", nodes: "node", pvcs: "pvc", hpas: "hpa", ingresses: "ingress", configmaps: "cm", secrets: "secret" };
 Events.On("cluster:changed", ({ data }) => {
-  for (const kind of data.kinds ?? []) queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
+  for (const kind of data.kinds ?? []) {
+    queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
+    if (detailKey[kind]) queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, detailKey[kind]] });
+  }
 });
 Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));

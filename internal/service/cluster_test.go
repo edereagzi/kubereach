@@ -364,11 +364,19 @@ func TestClusterClient_BuiltOnceUntilTheClusterOrItsKubeconfigChanges(t *testing
 // kubeconfigService uses the real client factory against srv, with a header timeout short enough to outlive in a test.
 func kubeconfigService(t *testing.T, srv *httptest.Server) (*service.Service, string) {
 	t.Helper()
+	return kubeconfigServiceAt(t, srv, srv.URL)
+}
+
+// kubeconfigServiceAt reaches srv at server, such as through a relay; TLS is not verified, so any address will do.
+func kubeconfigServiceAt(t *testing.T, srv *httptest.Server, server string) (*service.Service, string) {
+	t.Helper()
 	t.Cleanup(srv.Close)
+	// Watches hold their requests open; closing their connections first lets Close return.
+	t.Cleanup(srv.CloseClientConnections)
 	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
 	if err := os.WriteFile(kubeconfig, []byte(`apiVersion: v1
 kind: Config
-clusters: [{name: c, cluster: {server: `+srv.URL+`}}]
+clusters: [{name: c, cluster: {server: `+server+`, insecure-skip-tls-verify: true}}]
 users: [{name: u, user: {token: t}}]
 contexts: [{name: ctx, context: {cluster: c, user: u}}]
 current-context: ctx

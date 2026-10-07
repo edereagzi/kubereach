@@ -1,12 +1,16 @@
 package service
 
 import (
+	"cmp"
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -36,9 +40,16 @@ type watchCache struct {
 	mu        sync.Mutex
 	kinds     map[string]*watchedKind
 	pending   []string
+	// forbidden are the keys the role may not watch, which are never started again.
+	forbidden map[string]bool
+	// down is why a direct Cluster's keepalive found it dead, nil while it answers; downKinds are the kinds read meanwhile,
+	// announced again once it answers.
+	down      error
+	downKinds []string
 }
 
 type watchedKind struct {
+	kinds  []string
 	ctx    context.Context
 	cancel context.CancelFunc
 	stores []cache.Store
@@ -55,7 +66,7 @@ type listWatchFuncs struct {
 
 func newWatchCache(clusterID string, emit func(string, any)) *watchCache {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &watchCache{ctx: ctx, cancel: cancel, clusterID: clusterID, emit: emit, kinds: map[string]*watchedKind{}}
+	return &watchCache{ctx: ctx, cancel: cancel, clusterID: clusterID, emit: emit, kinds: map[string]*watchedKind{}, forbidden: map[string]bool{}}
 }
 
 func (w *watchCache) stop() {
@@ -73,6 +84,18 @@ func (w *watchCache) reset() {
 	clear(w.kinds)
 }
 
+// forbid stops the informers under key for good: a role that may list but not watch would otherwise relist on every
+// backoff, announcing each time.
+func (w *watchCache) forbid(key string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if k := w.kinds[key]; k != nil {
+		k.cancel()
+		delete(w.kinds, key)
+	}
+	w.forbidden[key] = true
+}
+
 // list returns the objects of the informers under key once they have synced. A failing list or watch is returned even after
 // sync, so a Cluster that stopped answering is not shown as its last known state. kinds are announced when they change.
 func (w *watchCache) list(ctx context.Context, key string, kinds []string, namespaces []string, obj runtime.Object, lw listWatchFuncs) ([]any, error) {
@@ -80,6 +103,19 @@ func (w *watchCache) list(ctx context.Context, key string, kinds []string, names
 	if w.ctx.Err() != nil {
 		w.mu.Unlock()
 		return nil, errClientReplaced
+	}
+	if w.forbidden[key] {
+		w.mu.Unlock()
+		return nil, fmt.Errorf("%w: watch %s", ErrForbidden, key)
+	}
+	if down := w.down; down != nil {
+		for _, kind := range kinds {
+			if !slices.Contains(w.downKinds, kind) {
+				w.downKinds = append(w.downKinds, kind)
+			}
+		}
+		w.mu.Unlock()
+		return nil, down
 	}
 	k := w.kinds[key]
 	if k == nil {
@@ -89,7 +125,9 @@ func (w *watchCache) list(ctx context.Context, key string, kinds []string, names
 	w.mu.Unlock()
 	err := wait.PollUntilContextCancel(ctx, 50*time.Millisecond, true, func(context.Context) (bool, error) {
 		if k.ctx.Err() != nil {
-			return false, errClientReplaced
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			return false, cmp.Or(w.down, errClientReplaced)
 		}
 		synced := !slices.ContainsFunc(k.ctrls, func(c cache.Controller) bool { return !c.HasSynced() })
 		k.mu.Lock()
@@ -113,7 +151,7 @@ func (w *watchCache) list(ctx context.Context, key string, kinds []string, names
 
 func (w *watchCache) start(kinds []string, namespaces []string, obj runtime.Object, lw listWatchFuncs) *watchedKind {
 	ctx, cancel := context.WithCancel(w.ctx)
-	k := &watchedKind{ctx: ctx, cancel: cancel, errs: map[string]error{}}
+	k := &watchedKind{kinds: kinds, ctx: ctx, cancel: cancel, errs: map[string]error{}}
 	changed := func() { w.changed(ctx, kinds) }
 	for _, ns := range namespaces {
 		report := func(err error) {
@@ -153,6 +191,68 @@ func (w *watchCache) start(kinds []string, namespaces []string, obj runtime.Obje
 		go ctrl.RunWithContext(ctx)
 	}
 	return k
+}
+
+// keepAlive probes a direct Cluster's API server every interval while its watches run, as a Route's keepalive probes its
+// SSH Server. A probe unanswered within twice the interval fails every watched list at once and stops the watches, so
+// the Cluster is listed fresh, not after the reflector's backoff, once a probe is answered again. Any answer proves the
+// link, an API error included.
+func (w *watchCache) keepAlive(interval time.Duration, probe func(context.Context) error) {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+		w.mu.Lock()
+		idle := len(w.kinds) == 0 && w.down == nil
+		w.mu.Unlock()
+		if idle {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(w.ctx, 2*interval)
+		err := probe(ctx)
+		cancel()
+		var status apierrors.APIStatus
+		switch {
+		case w.ctx.Err() != nil:
+			return
+		case unanswered(err):
+			w.setDown(&userError{msg: fmt.Sprintf("The Cluster did not answer within %v", 2*interval), err: err})
+		// A Cluster that refuses the connection, say, did answer; its lists say so in their own words.
+		case err == nil || errors.As(err, &status):
+			w.setDown(nil)
+		}
+	}
+}
+
+// unanswered is a request that ran out of time, unlike one the Cluster answered, if only with a refusal.
+func unanswered(err error) bool {
+	var t interface{ Timeout() bool }
+	return errors.Is(err, context.DeadlineExceeded) || errors.As(err, &t) && t.Timeout()
+}
+
+// setDown announces every watched kind when the Cluster stops answering, and every kind read meanwhile when it answers again.
+func (w *watchCache) setDown(err error) {
+	w.mu.Lock()
+	if (w.down == nil) == (err == nil) {
+		w.mu.Unlock()
+		return
+	}
+	w.down = err
+	var kinds []string
+	if err != nil {
+		for _, k := range w.kinds {
+			k.cancel()
+			kinds = append(kinds, k.kinds...)
+		}
+		clear(w.kinds)
+		w.downKinds = slices.Clone(kinds)
+	} else {
+		kinds, w.downKinds = w.downKinds, nil
+	}
+	w.mu.Unlock()
+	w.changed(w.ctx, kinds)
 }
 
 // changed queues kinds for the next coalesced ClusterChange; ctx is the informer's, so a stopped one announces nothing.

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -49,6 +50,8 @@ type testAPI struct {
 	shells  map[string]bool
 	execs   []string
 	resizes []remotecommand.TerminalSize
+	// versions counts the requests for the API server's version.
+	versions atomic.Int32
 }
 
 func newTestAPI() *testAPI {

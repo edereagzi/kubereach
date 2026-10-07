@@ -124,7 +124,7 @@ func (h headerTimeout) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = resp.Body.Close()
 		}
 		cancel()
-		return nil, &userError{msg: fmt.Sprintf("The Cluster did not answer within %v", h.d), err: fmt.Errorf("%s %s", req.Method, req.URL.Redacted())}
+		return nil, &userError{msg: fmt.Sprintf("The Cluster did not answer within %v", h.d), err: fmt.Errorf("%s %s: %w", req.Method, req.URL.Redacted(), context.DeadlineExceeded)}
 	}
 	if err != nil {
 		cancel()
@@ -261,18 +261,32 @@ func (s *Service) CheckReachability(ctx context.Context, clusterID string) (stri
 	return v.GitVersion, nil
 }
 
-// ListNamespaces returns every namespace of the Cluster, whatever its scope, so a scope can be widened again.
+// ListNamespaces returns every namespace of the Cluster, whatever its scope, so a scope can be widened again. They are
+// watched cluster-wide like pods, so a namespace created or deleted, and a failure and its recovery, are announced.
 func (s *Service) ListNamespaces(ctx context.Context, clusterID string) ([]string, error) {
 	k, err := s.clusterClient(clusterID)
 	if err != nil {
 		return nil, err
 	}
-	list, err := k.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, wrapForbidden(err)
+	namespaces, err := cached(ctx, k, "namespaces", []string{"namespaces"}, []string{metav1.NamespaceAll}, &corev1.Namespace{}, func(string) listWatcher[*corev1.NamespaceList] { return k.client.CoreV1().Namespaces() })
+	if errors.Is(err, ErrForbidden) {
+		// A role that may list namespaces but not watch them lists them on every read instead, as one that may do neither
+		// is told so by the same list.
+		k.watch.forbid("namespaces")
+		var list *corev1.NamespaceList
+		if list, err = k.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{}); err == nil {
+			namespaces = nil
+			for i := range list.Items {
+				namespaces = append(namespaces, &list.Items[i])
+			}
+		}
+		err = wrapForbidden(err)
 	}
-	names := make([]string, 0, len(list.Items))
-	for _, ns := range list.Items {
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(namespaces))
+	for _, ns := range namespaces {
 		names = append(names, ns.Name)
 	}
 	slices.Sort(names)
@@ -453,6 +467,13 @@ func (s *Service) clusterClient(clusterID string) (kube, error) {
 		return kube{}, err
 	}
 	k.watch = newWatchCache(clusterID, func(name string, data any) { s.Emit(name, data) })
+	// A Cluster behind a Route learns of a dead SSH Server from the Route's keepalive, which resets its watches.
+	if c.RouteID == "" {
+		go k.watch.keepAlive(s.ClusterKeepalive, func(ctx context.Context) error {
+			_, err := k.client.Discovery().ServerVersionWithContext(ctx)
+			return err
+		})
+	}
 	s.kubes[clusterID] = cachedKube{kube: k, stamp: stamp}
 	return k, nil
 }

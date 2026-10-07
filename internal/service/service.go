@@ -17,6 +17,9 @@ type Service struct {
 	// ForwardIdle is how long a forward's pod connection outlives its last local connection.
 	ForwardIdle    time.Duration
 	RouteKeepalive time.Duration
+	// ClusterKeepalive is how often a direct Cluster's API server is probed while its watches run; a probe unanswered
+	// within twice that marks it dead.
+	ClusterKeepalive time.Duration
 	// ResponseHeaderTimeout is how long an API server may take to start answering; a body that is flowing is never cut.
 	ResponseHeaderTimeout time.Duration
 	// ForwardStreamTimeout is how long a forward's pod connection may take to open a stream before it counts as dead.
@@ -48,6 +51,7 @@ func New(configPath string, clients ClientFactory) *Service {
 		KnownHostsPath:        filepath.Join(home, ".ssh", "known_hosts"),
 		ForwardIdle:           5 * time.Minute,
 		RouteKeepalive:        15 * time.Second,
+		ClusterKeepalive:      5 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
 		ForwardStreamTimeout:  15 * time.Second,
 		RemoteCommandTimeout:  20 * time.Second,

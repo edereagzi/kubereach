@@ -3,6 +3,13 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,7 +19,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	k8stesting "k8s.io/client-go/testing"
 )
@@ -218,5 +228,233 @@ func TestWatchCache_TheRestOfTheOverviewFollowsChanges(t *testing.T) {
 	waitChange(t, changes, service.ClusterChange{ClusterID: cluster, Kinds: []string{"configmaps"}})
 	if got, err := svc.ListConfigMaps(ctx, cluster); err != nil || len(got) != 0 {
 		t.Errorf("ListConfigMaps = %+v, %v; want none", got, err)
+	}
+}
+
+func TestWatchCache_NamespacesRecoverLikeEveryOtherList(t *testing.T) {
+	svc, cs, cluster := newFakeService(t, namespace("default"), namespace("payments"))
+	first := watch.NewFake()
+	var calls atomic.Int32
+	var failing atomic.Bool
+	cs.PrependWatchReactor("namespaces", func(k8stesting.Action) (bool, watch.Interface, error) {
+		switch {
+		case calls.Add(1) == 1:
+			return true, first, nil
+		case failing.Load():
+			return true, nil, errors.New("connection reset")
+		}
+		return false, nil, nil
+	})
+	cs.PrependReactor("list", "namespaces", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if failing.Load() {
+			return true, nil, errors.New("connection reset")
+		}
+		return false, nil, nil
+	})
+	changes := clusterChanges(svc)
+	ctx := context.Background()
+	if _, err := svc.ListNamespaces(ctx, cluster); err != nil {
+		t.Fatal(err)
+	}
+
+	failing.Store(true)
+	first.Stop()
+	waitChange(t, changes, service.ClusterChange{ClusterID: cluster, Kinds: []string{"namespaces"}})
+	if _, err := svc.ListNamespaces(ctx, cluster); err == nil {
+		t.Fatal("a Cluster whose namespaces fail still served its last known namespaces")
+	}
+
+	failing.Store(false)
+	waitChange(t, changes, service.ClusterChange{ClusterID: cluster, Kinds: []string{"namespaces"}})
+	if got, err := svc.ListNamespaces(ctx, cluster); err != nil || !slices.Equal(got, []string{"default", "payments"}) {
+		t.Fatalf("after recovery ListNamespaces = %v, %v; want default and payments", got, err)
+	}
+}
+
+func TestWatchCache_NewNamespacesAreAnnounced(t *testing.T) {
+	svc, cs, cluster := newFakeService(t, namespace("default"))
+	changes := clusterChanges(svc)
+	ctx := context.Background()
+	if _, err := svc.ListNamespaces(ctx, cluster); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.CoreV1().Namespaces().Create(ctx, namespace("payments"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	waitChange(t, changes, service.ClusterChange{ClusterID: cluster, Kinds: []string{"namespaces"}})
+	if got, err := svc.ListNamespaces(ctx, cluster); err != nil || !slices.Equal(got, []string{"default", "payments"}) {
+		t.Fatalf("ListNamespaces = %v, %v; want default and payments", got, err)
+	}
+}
+
+func TestListNamespaces_ARoleThatMayNotWatchThemStillListsThem(t *testing.T) {
+	svc, cs, cluster := newFakeService(t, namespace("default"), namespace("payments"))
+	cs.PrependWatchReactor("namespaces", func(k8stesting.Action) (bool, watch.Interface, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "namespaces"}, "", errors.New("rbac"))
+	})
+	ctx := context.Background()
+	for range 2 {
+		got, err := svc.ListNamespaces(ctx, cluster)
+		if err != nil || !slices.Equal(got, []string{"default", "payments"}) {
+			t.Fatalf("ListNamespaces = %v, %v; want default and payments", got, err)
+		}
+	}
+}
+
+// podsAPI answers the version, holds every watch open, and serves list from a pod list.
+func podsAPI(list func(w http.ResponseWriter)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/version":
+			_, _ = w.Write([]byte(`{"gitVersion":"v1.37.0"}`))
+		case r.URL.Query().Get("watch") == "true":
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		default:
+			list(w)
+		}
+	})
+}
+
+const podList = `{"kind":"PodList","apiVersion":"v1","metadata":{"resourceVersion":"1"},"items":[{"metadata":{"namespace":"ns","name":"web"}}]}`
+
+// relay passes TCP through to target until frozen, then holds every byte as a paused API server's host would.
+type relay struct {
+	mu     sync.Mutex
+	thawed chan struct{}
+}
+
+func startRelay(t *testing.T, target string) (*relay, string) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	r := &relay{thawed: make(chan struct{})}
+	close(r.thawed)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				up, err := net.Dial("tcp", target)
+				if err != nil {
+					_ = c.Close()
+					return
+				}
+				go r.pipe(up, c)
+				r.pipe(c, up)
+			}()
+		}
+	}()
+	return r, ln.Addr().String()
+}
+
+func (r *relay) pipe(dst, src net.Conn) {
+	defer func() { _ = dst.Close() }()
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := src.Read(buf)
+		r.mu.Lock()
+		thawed := r.thawed
+		r.mu.Unlock()
+		<-thawed
+		if n > 0 {
+			if _, err := dst.Write(buf[:n]); err != nil {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (r *relay) freeze() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.thawed = make(chan struct{})
+}
+
+func (r *relay) thaw() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	select {
+	case <-r.thawed:
+	default:
+		close(r.thawed)
+	}
+}
+
+func TestKeepalive_ADirectClusterThatStopsAnsweringFailsItsListsUntilItAnswers(t *testing.T) {
+	srv := httptest.NewUnstartedServer(podsAPI(func(w http.ResponseWriter) { _, _ = w.Write([]byte(podList)) }))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	relay, addr := startRelay(t, srv.Listener.Addr().String())
+	svc, id := kubeconfigServiceAt(t, srv, "https://"+addr)
+	svc.ClusterKeepalive = 100 * time.Millisecond
+	t.Cleanup(relay.thaw)
+	changes := clusterChanges(svc)
+	ctx := context.Background()
+	if _, err := svc.ListPods(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	relay.freeze()
+	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods"}})
+	_, err := svc.ListPods(ctx, id)
+	if msg := service.Describe(err).Message; !strings.Contains(msg, "The Cluster did not answer") {
+		t.Fatalf("ListPods while frozen says %q", msg)
+	}
+
+	relay.thaw()
+	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods"}})
+	start := time.Now()
+	if pods, err := svc.ListPods(ctx, id); err != nil || len(pods) != 1 {
+		t.Fatalf("after thawing ListPods = %v, %v; want web", pods, err)
+	}
+	if waited := time.Since(start); waited > time.Second {
+		t.Fatalf("the list after thawing took %v, as if waiting out a backoff", waited)
+	}
+}
+
+// The counterpart of TestKubeconfigClient_SlowBodyFlowsButLateHeadersFail: a list that streams for many keepalive
+// timeouts is not a dead Cluster.
+func TestKeepalive_ASlowButAliveClusterIsNeverCut(t *testing.T) {
+	srv := httptest.NewServer(podsAPI(func(w http.ResponseWriter) {
+		for chunk := range slices.Chunk([]byte(podList), len(podList)/10+1) {
+			_, _ = w.Write(chunk)
+			w.(http.Flusher).Flush()
+			time.Sleep(60 * time.Millisecond)
+		}
+	}))
+	svc, id := kubeconfigService(t, srv)
+	svc.ClusterKeepalive = 50 * time.Millisecond
+	changes := clusterChanges(svc)
+	if pods, err := svc.ListPods(context.Background(), id); err != nil || len(pods) != 1 {
+		t.Fatalf("ListPods = %v, %v; want web", pods, err)
+	}
+	select {
+	case c := <-changes:
+		t.Fatalf("a slow but alive Cluster announced %+v", c)
+	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+// A Cluster that refuses the connection answered, so its lists keep their own words for what is wrong.
+func TestKeepalive_ARefusedConnectionIsNotCalledUnanswered(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	svc, id := kubeconfigServiceAt(t, srv, fmt.Sprintf("https://127.0.0.1:%d", closedPort(t)))
+	svc.ClusterKeepalive = 50 * time.Millisecond
+	ctx := context.Background()
+	_, _ = svc.ListPods(ctx, id)
+	time.Sleep(500 * time.Millisecond)
+	_, err := svc.ListPods(ctx, id)
+	if msg := service.Describe(err).Message; !strings.HasSuffix(msg, "refused the connection") {
+		t.Fatalf("a refused connection reads %q", msg)
 	}
 }

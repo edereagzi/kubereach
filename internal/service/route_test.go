@@ -303,6 +303,7 @@ func startAPIServer(t *testing.T, pods *testAPI) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
+		pods.versions.Add(1)
 		_, _ = w.Write([]byte(`{"gitVersion":"v1.30.0-test"}`))
 	})
 	mux.HandleFunc("/api/v1/namespaces/", pods.podHandler)
@@ -994,5 +995,19 @@ func TestRoute_DeleteInUseLeavesItConnected(t *testing.T) {
 	}
 	if _, err := f.svc.CheckReachability(context.Background(), f.cluster); err != nil {
 		t.Errorf("after refused delete: %v, want the Route still connected", err)
+	}
+}
+
+// A Route learns of a dead SSH Server from its own keepalive, so a Cluster behind one is never probed.
+func TestRoute_ClusterBehindARouteIsNotProbed(t *testing.T) {
+	priv, pub := newKeyPair(t)
+	f := newRouteFixture(t, writeKeyFile(t, priv, ""), pub)
+	f.svc.ClusterKeepalive = 20 * time.Millisecond
+	f.connect(t)
+	// This API has no pod list, so the watch keeps failing, but it runs.
+	_, _ = f.svc.ListPods(context.Background(), f.cluster)
+	time.Sleep(300 * time.Millisecond)
+	if n := f.podAPI.versions.Load(); n != 0 {
+		t.Fatalf("the API server was probed %d times through the Route", n)
 	}
 }
