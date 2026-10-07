@@ -1,4 +1,4 @@
-import { type ComponentProps, type ReactNode } from "react";
+import { Fragment, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cluster, ContainerDiagnosis, ContainerState, KubeEvent, KubePod, PodCondition, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 import { DeleteAction } from "@/components/actions";
@@ -50,10 +50,18 @@ export function since(iso: string) {
   return `${Math.floor(seconds / size)}${unit}`;
 }
 
+// duration renders how long since an ISO stamp as "74 days", for a state that is still going.
+const duration = (iso: string) => {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const [unit, size] = units.find(([, s]) => seconds >= s) ?? ["second", 1];
+  return new Intl.NumberFormat(undefined, { style: "unit", unit, unitDisplay: "long" }).format(Math.floor(seconds / size));
+};
+
 const stateLabel = (st: ContainerState) => {
   if (!st.status) return "not started";
+  // A running state carries no reason, only when it started.
+  if (st.status === "running" && !isZeroTime(st.startedAt)) return `running for ${duration(st.startedAt)}`;
   const parts = [st.status, st.reason];
-  if (st.status === "running") parts.push(`since ${ago(st.startedAt)}`);
   if (st.status === "terminated") parts.push(`exit ${st.exitCode}`, `ended ${ago(st.finishedAt)}`);
   return parts.filter(Boolean).join(" · ");
 };
@@ -97,11 +105,6 @@ function UsageMeter({ name, label, used, limit = 0, request = 0 }: { name: strin
     </span>
   );
 }
-
-const resources = (r?: { [_ in string]?: string } | null) =>
-  Object.entries(r ?? {})
-    .map(([k, v]) => `${k} ${v}`)
-    .join(", ") || "—";
 
 export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cluster; target: Target; onForward: () => void; onClose: () => void }) {
   const pod = useQuery(podQuery(cluster.id, target.namespace, target.name));
@@ -269,10 +272,7 @@ function Container({ container: c, usage, onPrevious, pending }: { container: Co
         <span className="min-w-0 truncate font-mono text-muted-foreground" title={c.image}>
           {c.image}
         </span>
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {restartsLabel(c.restarts)}
-          {c.restarts > 0 && c.lastState && ` · last ${ago(c.lastState.finishedAt)}`}
-        </span>
+        {c.restarts > 0 && <span className="ml-auto shrink-0 text-muted-foreground">{restartsLabel(c.restarts, c.lastState?.finishedAt)}</span>}
       </div>
       <dl className="mt-1.5 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5">
         <dt className="text-muted-foreground">State</dt>
@@ -295,14 +295,47 @@ function Container({ container: c, usage, onPrevious, pending }: { container: Co
             </dd>
           </>
         )}
-        <dt className="text-muted-foreground">Resources</dt>
-        <dd>
-          {usage && `using cpu ${cpuLabel(usage.cpu)}, memory ${memoryLabel(usage.memory)} · `}
-          requests {resources(c.requests)} · limits {resources(c.limits)}
-          {oom && <span className="text-destructive">{c.limits?.memory ? " · killed at the memory limit" : " · killed by the node, no memory limit set"}</span>}
-        </dd>
+        <Resources requests={c.requests} limits={c.limits} usage={usage} />
+        {oom && <dd className="col-start-2 text-destructive">{c.limits?.memory ? "killed at the memory limit" : "killed by the node, no memory limit set"}</dd>}
       </dl>
     </div>
+  );
+}
+
+// Resources reads usage, request and limit of one resource along one row of the card's facts, under a header row that lines up with them.
+// The Using column is left out without metrics-server. CPU and memory always have a row, so a missing request is said rather than hidden.
+function Resources({ requests, limits, usage }: Pick<ContainerDiagnosis, "requests" | "limits"> & { usage?: ResourceUsage }) {
+  const names = [...new Set(["cpu", "memory", ...Object.keys(requests ?? {}), ...Object.keys(limits ?? {})])];
+  // Each column says what an empty cell means; usage is measured for CPU and memory alone, so another resource has nothing to say there.
+  const columns: [string, { [_ in string]?: string }, string][] = [
+    ["Request", requests ?? {}, "not set"],
+    ["Limit", limits ?? {}, "not set"],
+  ];
+  if (usage) columns.unshift(["Using", { cpu: cpuLabel(usage.cpu), memory: memoryLabel(usage.memory) }, ""]);
+  // Equal columns, capped, so a narrow panel keeps "not set" on one line and a wide one does not spread the row apart.
+  const rowClass = cn("grid gap-x-3", usage ? "max-w-72 grid-cols-3" : "max-w-48 grid-cols-2");
+  return (
+    <>
+      <dt className="text-muted-foreground">Resources</dt>
+      <dd className={cn(rowClass, "text-muted-foreground")} aria-hidden>
+        {columns.map(([header]) => (
+          <span key={header}>{header}</span>
+        ))}
+      </dd>
+      {names.map((n) => (
+        <Fragment key={n}>
+          <dt className="text-muted-foreground">{{ cpu: "CPU", memory: "Memory" }[n] ?? n}</dt>
+          <dd className={rowClass}>
+            {columns.map(([header, values, unset]) => (
+              <span key={header} className="truncate">
+                {(values[n] || unset) && <span className="sr-only">{header} </span>}
+                {values[n] ? <span className="font-mono tabular-nums">{values[n]}</span> : <span className="text-muted-foreground">{unset}</span>}
+              </span>
+            ))}
+          </dd>
+        </Fragment>
+      ))}
+    </>
   );
 }
 
