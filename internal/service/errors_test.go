@@ -67,6 +67,14 @@ func TestDescribe(t *testing.T) {
 			service.ErrorInfo{Message: "10.0.0.1:6443 did not answer in time"}},
 		{"dns", apiURL(&net.DNSError{Name: "k8s.example.com", Err: "no such host", IsNotFound: true}),
 			service.ErrorInfo{Message: "k8s.example.com could not be resolved"}},
+		{"tls handshake timeout", apiURL(tlsHandshakeTimeout{}),
+			service.ErrorInfo{Message: "The Cluster did not answer in time"}},
+		{"http2 ping failed", apiURL(errors.New("http2: client connection lost")),
+			service.ErrorInfo{Message: "The Cluster did not answer in time"}},
+		{"http2 ping failed mid-watch", fmt.Errorf("watch pods: %w", errors.New("http2: client connection lost")),
+			service.ErrorInfo{Message: "The Cluster did not answer in time"}},
+		{"request deadline", apiURL(context.DeadlineExceeded),
+			service.ErrorInfo{Message: "The Cluster did not answer in time"}},
 		{"deadline", fmt.Errorf("dial pod: %w", context.DeadlineExceeded),
 			service.ErrorInfo{Message: "The request timed out"}},
 		{"untrusted certificate", apiURL(x509.UnknownAuthorityError{}),
@@ -94,3 +102,10 @@ type timeoutError struct{}
 func (timeoutError) Error() string   { return "i/o timeout" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
+
+// tlsHandshakeTimeout is what net/http returns when a TLS handshake goes unanswered; its own type is unexported.
+type tlsHandshakeTimeout struct{}
+
+func (tlsHandshakeTimeout) Error() string   { return "net/http: TLS handshake timeout" }
+func (tlsHandshakeTimeout) Timeout() bool   { return true }
+func (tlsHandshakeTimeout) Temporary() bool { return true }

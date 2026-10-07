@@ -211,6 +211,8 @@ func describeTransport(err error) string {
 		default:
 			return addr + " cannot be reached"
 		}
+	case clusterTimedOut(err):
+		return "The Cluster did not answer in time"
 	case errors.As(err, &channel):
 		return "The Route's last SSH server cannot reach " + urlHost(err)
 	case errors.As(err, &authority), errors.As(err, &hostname), errors.As(err, &invalid), errors.As(err, &verification):
@@ -227,6 +229,13 @@ func describeTransport(err error) string {
 		return "The login command in the kubeconfig failed"
 	}
 	return ""
+}
+
+// clusterTimedOut is an API server that stopped answering mid-connection: a TLS handshake or a request to it that ran out
+// of time, or an HTTP/2 connection whose ping went unanswered, which net/http words only in its text.
+func clusterTimedOut(err error) bool {
+	var u *url.Error
+	return errors.As(err, &u) && u.Timeout() || strings.Contains(err.Error(), "http2: client connection lost")
 }
 
 func urlHost(err error) string {
