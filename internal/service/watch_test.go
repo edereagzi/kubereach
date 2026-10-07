@@ -405,15 +405,26 @@ func TestKeepalive_ADirectClusterThatStopsAnsweringFailsItsListsUntilItAnswers(t
 	}
 
 	relay.freeze()
-	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods"}})
+	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods", "reachability"}})
 	_, err := svc.ListPods(ctx, id)
 	if msg := service.Describe(err).Message; !strings.Contains(msg, "The Cluster did not answer") {
 		t.Fatalf("ListPods while frozen says %q", msg)
 	}
+	start := time.Now()
+	_, err = svc.CheckReachability(ctx, id)
+	if msg := service.Describe(err).Message; !strings.Contains(msg, "The Cluster did not answer") {
+		t.Fatalf("CheckReachability while frozen says %q", msg)
+	}
+	if waited := time.Since(start); waited > 50*time.Millisecond {
+		t.Fatalf("CheckReachability while frozen took %v, as if asking the Cluster again", waited)
+	}
 
 	relay.thaw()
-	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods"}})
-	start := time.Now()
+	waitChange(t, changes, service.ClusterChange{ClusterID: id, Kinds: []string{"nodes", "pods", "reachability"}})
+	if _, err := svc.CheckReachability(ctx, id); err != nil {
+		t.Fatalf("after thawing CheckReachability = %v", err)
+	}
+	start = time.Now()
 	if pods, err := svc.ListPods(ctx, id); err != nil || len(pods) != 1 {
 		t.Fatalf("after thawing ListPods = %v, %v; want web", pods, err)
 	}

@@ -254,6 +254,10 @@ func (s *Service) CheckReachability(ctx context.Context, clusterID string) (stri
 	if err != nil {
 		return "", err
 	}
+	// A Cluster its keepalive found dead is not asked again until a probe is answered, which announces it.
+	if err := k.watch.downErr(); err != nil {
+		return "", err
+	}
 	v, err := k.client.Discovery().ServerVersionWithContext(ctx)
 	if err != nil {
 		return "", err

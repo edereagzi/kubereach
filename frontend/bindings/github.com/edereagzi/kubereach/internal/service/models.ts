@@ -30,6 +30,7 @@ export interface Cluster {
 
 /**
  * ClusterChange names the lists of a Cluster that changed or began or stopped failing; a kind is the list's query key, such as "pods" or "nodes".
+ * "reachability" is the check of whether the Cluster answers, named when its keepalive finds it dead or back.
  */
 export interface ClusterChange {
     "clusterId": string;

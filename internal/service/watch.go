@@ -22,6 +22,7 @@ import (
 const EventClusterChanged = "cluster:changed"
 
 // ClusterChange names the lists of a Cluster that changed or began or stopped failing; a kind is the list's query key, such as "pods" or "nodes".
+// "reachability" is the check of whether the Cluster answers, named when its keepalive finds it dead or back.
 type ClusterChange struct {
 	ClusterID string   `json:"clusterId"`
 	Kinds     []string `json:"kinds"`
@@ -232,7 +233,8 @@ func unanswered(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) || errors.As(err, &t) && t.Timeout()
 }
 
-// setDown announces every watched kind when the Cluster stops answering, and every kind read meanwhile when it answers again.
+// setDown announces every watched kind when the Cluster stops answering, and every kind read meanwhile when it answers
+// again; the check of whether it is reachable is announced both times, so it never shows a Cluster as it last was.
 func (w *watchCache) setDown(err error) {
 	w.mu.Lock()
 	if (w.down == nil) == (err == nil) {
@@ -252,7 +254,14 @@ func (w *watchCache) setDown(err error) {
 		kinds, w.downKinds = w.downKinds, nil
 	}
 	w.mu.Unlock()
-	w.changed(w.ctx, kinds)
+	w.changed(w.ctx, append(kinds, "reachability"))
+}
+
+// downErr is why the keepalive found the Cluster dead, nil while it answers.
+func (w *watchCache) downErr() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.down
 }
 
 // changed queues kinds for the next coalesced ClusterChange; ctx is the informer's, so a stopped one announces nothing.
