@@ -3,7 +3,7 @@
 What changed in each release, as the release page and Kubereach's update window show it.
 Before tagging, rename "Unreleased" to the version, e.g. `## [0.8.0] - 2026-10-10`; a tag with no section here is not released.
 
-## [Unreleased]
+## [0.8.0] - 2026-10-08
 
 ### Added
 
