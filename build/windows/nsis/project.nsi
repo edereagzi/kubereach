@@ -31,6 +31,9 @@ Unicode true
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ## !define WAILS_INSTALL_SCOPE     "user"             # Default "machine" - set to "user" for per-user install ($LOCALAPPDATA) without UAC prompt
 ####
+## Installs per user, where install.ps1 does too, so the in-app updater can replace kubereach.exe without UAC.
+!define WAILS_INSTALL_SCOPE "user"
+####
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"

@@ -58,7 +58,6 @@ export type {
     PodOwner,
     PodUsage,
     PortForward,
-    Release,
     RemoteKubeconfig,
     ResourceUsage,
     Rollout,

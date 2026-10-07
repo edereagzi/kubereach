@@ -2,6 +2,7 @@ package bindings
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +13,7 @@ import (
 
 const repoURL = "https://github.com/edereagzi/kubereach"
 
-// AppService holds what the About dialog shows about Kubereach itself.
+// AppService holds what the About dialog shows about Kubereach itself, and its updates.
 // macOS shows the native dialog from its application menu; Windows and Linux draw it in the frontend from Info,
 // since the Windows message box has no buttons but OK.
 type AppService struct {
@@ -20,10 +21,23 @@ type AppService struct {
 	svc        *service.Service
 	version    string
 	configPath string
+	// updates is false for dev builds, which a release must never replace.
+	updates bool
 }
 
 func NewAppService(app *application.App, svc *service.Service, version string) *AppService {
-	return &AppService{app: app, svc: svc, version: version, configPath: svc.ConfigPath()}
+	a := &AppService{app: app, svc: svc, version: version, configPath: svc.ConfigPath()}
+	if version != "dev" {
+		cfg, err := updaterConfig(version, updateKey)
+		if err == nil {
+			err = app.Updater.Init(cfg)
+		}
+		if err != nil {
+			log.Print("updater: ", err)
+		}
+		a.updates = err == nil
+	}
+	return a
 }
 
 // AboutInfo is what the About dialog shows.
@@ -31,16 +45,13 @@ type AboutInfo struct {
 	Version    string `json:"version"`
 	ConfigPath string `json:"configPath"`
 	RepoURL    string `json:"repoURL"`
+	// Updates is whether Check for updates is offered; dev builds have no updater.
+	Updates bool `json:"updates"`
 }
 
 // Info is what the frontend's About dialog shows on Windows and Linux.
 func (a *AppService) Info() AboutInfo {
-	return AboutInfo{Version: a.version, ConfigPath: a.configPath, RepoURL: repoURL}
-}
-
-// NewerRelease is the latest release when it is newer than this build; nil otherwise.
-func (a *AppService) NewerRelease() *service.Release {
-	return a.svc.NewerRelease(a.version)
+	return AboutInfo{Version: a.version, ConfigPath: a.configPath, RepoURL: repoURL, Updates: a.updates}
 }
 
 // showAbout opens the native About dialog.
@@ -73,6 +84,9 @@ func InstallMenu(app *application.App, about *AppService) {
 	menu := app.Menu.New()
 	appMenu := menu.AddSubmenu("Kubereach")
 	appMenu.Add("About Kubereach").OnClick(func(*application.Context) { about.showAbout() })
+	if about.updates {
+		appMenu.Add("Check for Updates…").OnClick(func(*application.Context) { about.CheckForUpdates() })
+	}
 	appMenu.AddSeparator()
 	appMenu.AddRole(application.Hide)
 	appMenu.AddRole(application.HideOthers)

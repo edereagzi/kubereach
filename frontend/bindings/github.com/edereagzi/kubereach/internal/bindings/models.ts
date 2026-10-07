@@ -8,4 +8,9 @@ export interface AboutInfo {
     "version": string;
     "configPath": string;
     "repoURL": string;
+
+    /**
+     * Updates is whether Check for updates is offered; dev builds have no updater.
+     */
+    "updates": boolean;
 }

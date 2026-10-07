@@ -1,12 +1,14 @@
 name: Release
 
-# Pushing a v* tag builds all platforms and publishes a GitHub Release.
+# Pushing a v* tag builds all platforms and publishes a GitHub Release, with
+# the signed update.json that installed releases update themselves from.
 # Updating the Homebrew cask, Scoop manifest (both in edereagzi/homebrew-tap)
 # and winget is disabled until builds are signed.
 #
-# Secrets (only for the disabled steps):
-#   TAP_GITHUB_TOKEN  fine-grained PAT with contents:write on edereagzi/homebrew-tap
-#   WINGET_TOKEN      classic PAT with public_repo; wingetcreate forks microsoft/winget-pkgs and opens the PR
+# Secrets:
+#   UPDATE_SIGNING_KEY  Ed25519 private key (PEM) whose public half is built into Kubereach; signs update.json's files
+#   TAP_GITHUB_TOKEN    fine-grained PAT with contents:write on edereagzi/homebrew-tap (disabled step)
+#   WINGET_TOKEN        classic PAT with public_repo; wingetcreate forks microsoft/winget-pkgs and opens the PR (disabled step)
 
 on:
   push:
@@ -58,7 +60,8 @@ jobs:
       - if: runner.os == 'macOS'
         run: |
           mv bin/kubereach.app bin/Kubereach.app
-          ditto -c -k --keepParent bin/Kubereach.app dist/kubereach_darwin_universal.zip
+          # --norsrc: extended attributes would be stored as ._ files, which the updater's unzip writes into the bundle.
+          ditto -c -k --norsrc --keepParent bin/Kubereach.app dist/kubereach_darwin_universal.zip
 
       - name: Build Linux binary
         if: runner.os == 'Linux'
@@ -68,6 +71,8 @@ jobs:
           cp bin/kubereach build/release/kubereach.desktop stage/
           cp build/appicon.png stage/kubereach.png
           tar -czf "dist/kubereach_linux_$(dpkg --print-architecture).tar.gz" -C stage .
+          # The updater replaces the running binary with this one; the tarball is for install.sh.
+          cp bin/kubereach "dist/kubereach_linux_$(dpkg --print-architecture)"
 
       # windows-latest no longer ships NSIS, which builds the installer.
       - if: runner.os == 'Windows'
@@ -104,9 +109,19 @@ jobs:
       - run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           (cd dist && sha256sum -- * > checksums.txt)
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes
+      # A draft until update.json is attached, so latest/download/update.json never points at a release without one.
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes --draft
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Sign the update manifest and publish
+        run: |
+          gh release view "$GITHUB_REF_NAME" --json body -q .body > "$RUNNER_TEMP/notes.md"
+          build/release/update-manifest.sh "$VERSION" dist "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/update.json"
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/update.json"
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
       # Disabled until builds are signed: package managers would reject or flag unsigned builds.
       - name: Render package manifests (disabled)
         if: false

@@ -1,10 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
-import { ClusterService, ConfigService } from "@bindings/internal/bindings";
+import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { NodeMetrics, ObjectKind, PodMetrics, PodUsage, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
   queryFn: () => ConfigService.Load(),
+});
+
+export const aboutQuery = queryOptions({
+  queryKey: ["about"],
+  queryFn: () => AppService.Info(),
 });
 
 export const reachabilityQuery = (clusterId: string) =>

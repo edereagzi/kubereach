@@ -48,7 +48,7 @@ export interface Config {
     "forwards": PortForward[] | null;
 
     /**
-     * SkipUpdateCheck turns off the one request to GitHub at launch that looks for a newer release.
+     * SkipUpdateCheck turns off the requests to GitHub, at launch and once a day, that look for a newer release.
      */
     "skipUpdateCheck": boolean;
 }
@@ -725,14 +725,6 @@ export interface PortForward {
     "remotePort": number;
     "localPort": number;
     "enabled": boolean;
-}
-
-/**
- * Release is a published Kubereach release newer than the running one.
- */
-export interface Release {
-    "version": string;
-    "url": string;
 }
 
 /**
