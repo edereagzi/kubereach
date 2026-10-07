@@ -28,11 +28,7 @@ jobs:
           fetch-depth: 0
       - run: |
           version=${GITHUB_REF_NAME#v}
-          awk -v head="## [$version]" '/^## /{p = index($0, head) == 1; next} p' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error file=CHANGELOG.md::CHANGELOG.md has no section for $version"
-            exit 1
-          fi
+          scripts/changelog-section.sh "$version" > notes.md
           prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
           printf '\n[All changes since %s](https://github.com/%s/compare/%s...%s)\n' "${prev#v}" "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME" >> notes.md
       - uses: actions/upload-artifact@v4

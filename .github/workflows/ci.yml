@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Not tags: a tag points at a commit main already tested.
   push:
+    branches: ["**"]
   pull_request:
 
 jobs:
