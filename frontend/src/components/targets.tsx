@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { LogSourceKind, ObjectKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeHPA, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
@@ -106,6 +106,25 @@ function ownerValue(namespace: string, owner?: PodOwner | null) {
   return kind ? targetValue(kind, namespace, owner.name) : undefined;
 }
 
+// Each object's Target is built once: React Query keeps an unchanged object's identity across refetches, so does its
+// Target, and a row drawn from it renders again only when its own object changed.
+const built = new WeakMap<object, Target>();
+const once = (source: object, build: () => Target) => {
+  let t = built.get(source);
+  if (!t) built.set(source, (t = build()));
+  return t;
+};
+const make = (kind: Kind, { namespace, name, created }: { namespace: string; name: string; created: string }, ports: NamedPort[] = [], containers: string[] = []): Target => ({
+  value: targetValue(kind, namespace, name),
+  label: `${namespace}/${name}`,
+  kind,
+  namespace,
+  name,
+  ports,
+  containers,
+  created,
+});
+
 // overview adds Ingresses, Jobs, HorizontalPodAutoscalers, PersistentVolumeClaims, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
 export function useTargets(cluster: Cluster, overview = false) {
   const services = useQuery(servicesQuery(cluster.id));
@@ -116,36 +135,29 @@ export function useTargets(cluster: Cluster, overview = false) {
   const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: overview });
   const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
   const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
-  const make = (kind: Kind, { namespace, name, created }: { namespace: string; name: string; created: string }, ports: NamedPort[] = [], containers: string[] = []): Target => ({
-    value: targetValue(kind, namespace, name),
-    label: `${namespace}/${name}`,
-    kind,
-    namespace,
-    name,
-    ports,
-    containers,
-    created,
-  });
   // Listed the way a request travels and an incident is traced: in at the Ingress, out at the pod.
-  const groups: TargetGroup[] = [
-    { label: "Services", items: (services.data ?? []).map((s) => make("svc", s, s.ports ?? [])) },
-    { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => ({ ...make(workloadKind[w.kind] ?? "deploy", w), workload: w })) },
-    ...(overview
-      ? [
-          { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => ({ ...make("job", w), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined })) },
-          { label: "Autoscalers", items: (hpas.data ?? []).map((h) => ({ ...make("hpa", h), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) })), error: hpas.error },
-          { label: "Volume claims", items: (pvcs.data ?? []).map((c) => ({ ...make("pvc", c), pvc: c })), error: pvcs.error },
-        ]
-      : []),
-    { label: "Pods", items: (pods.data ?? []).map((p) => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, ready: p.ready, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) })) },
-  ];
-  if (overview) {
-    groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => ({ ...make("ing", i), ingress: i })), error: ingresses.error });
-    groups.push(
-      { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => ({ ...make("cm", c), config: c })), error: configMaps.error },
-      { label: "Secrets", items: (secrets.data ?? []).map((c) => ({ ...make("secret", c), config: c })), error: secrets.error },
-    );
-  }
+  const groups = useMemo(() => {
+    const groups: TargetGroup[] = [
+      { label: "Services", items: (services.data ?? []).map((s) => once(s, () => make("svc", s, s.ports ?? []))) },
+      { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => once(w, () => ({ ...make(workloadKind[w.kind] ?? "deploy", w), workload: w }))) },
+      ...(overview
+        ? [
+            { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => once(w, () => ({ ...make("job", w), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined }))) },
+            { label: "Autoscalers", items: (hpas.data ?? []).map((h) => once(h, () => ({ ...make("hpa", h), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) }))), error: hpas.error },
+            { label: "Volume claims", items: (pvcs.data ?? []).map((c) => once(c, () => ({ ...make("pvc", c), pvc: c }))), error: pvcs.error },
+          ]
+        : []),
+      { label: "Pods", items: (pods.data ?? []).map((p) => once(p, () => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, ready: p.ready, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) }))) },
+    ];
+    if (overview) {
+      groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => once(i, () => ({ ...make("ing", i), ingress: i }))), error: ingresses.error });
+      groups.push(
+        { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => once(c, () => ({ ...make("cm", c), config: c }))), error: configMaps.error },
+        { label: "Secrets", items: (secrets.data ?? []).map((c) => once(c, () => ({ ...make("secret", c), config: c }))), error: secrets.error },
+      );
+    }
+    return groups;
+  }, [overview, services.data, workloads.data, pods.data, ingresses.data, ingresses.error, hpas.data, hpas.error, pvcs.data, pvcs.error, configMaps.data, configMaps.error, secrets.data, secrets.error]);
   return {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
