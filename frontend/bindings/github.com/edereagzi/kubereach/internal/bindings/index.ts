@@ -23,5 +23,6 @@ export {
 };
 
 export type {
-    AboutInfo
+    AboutInfo,
+    Update
 } from "./models.js";

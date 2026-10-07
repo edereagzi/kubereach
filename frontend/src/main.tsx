@@ -3,8 +3,9 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
-import { ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
+import { AppService, ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
 import { restoreSession, writeSessionOutput } from "@/components/terminal";
+import { useUpdateStore } from "@/components/update";
 import { configQuery, reachabilityQuery } from "@/queries";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
@@ -56,6 +57,11 @@ Events.On("shell:state", ({ data }) => setShellStatus(data));
 Events.On("shell:output", ({ data }) => writeSessionOutput(data));
 Events.On("terminal:state", ({ data }) => setTerminalStatus(data));
 Events.On("terminal:output", ({ data }) => writeSessionOutput(data));
+Events.On("update:available", ({ data }) => useUpdateStore.getState().found(data));
+// A release found before this window loaded was announced to no one.
+AppService.AvailableUpdate().then((u) => u && useUpdateStore.getState().found(u));
+Events.On("update:check", () => void useUpdateStore.getState().check());
+Events.On("wails:updater:download-progress", ({ data }) => useUpdateStore.getState().setProgress(data.written, data.total));
 Events.On("tray:open-cluster", ({ data }) => {
   selectCluster(data);
   selectTab("overview");

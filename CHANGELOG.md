@@ -7,7 +7,7 @@ Before tagging, rename "Unreleased" to the version, e.g. `## [0.8.0] - 2026-10-1
 
 ### Added
 
-- Kubereach installs its own updates. "Check for updates" in Settings checks now; while "Check automatically" is on, it also checks at launch and once a day, and opens a window only when a new version is out.
+- Kubereach updates itself. It looks for a new version at launch and once a day, and marks Settings when one is out; "Check for updates…" looks right away. The update downloads and installs only when you choose to.
 - A Cluster reached directly that stops answering shows as unreachable within seconds, and comes back on its own once it answers again.
 - A container's resource requests and limits read as a small table.
 - A kubeconfig read from an SSH server can name certificate and key files on that server.

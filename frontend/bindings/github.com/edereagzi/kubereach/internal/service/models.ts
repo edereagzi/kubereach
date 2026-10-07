@@ -46,11 +46,6 @@ export interface Config {
      * Forwards are the Saved Forwards: Port Forward definitions kept across sessions.
      */
     "forwards": PortForward[] | null;
-
-    /**
-     * SkipUpdateCheck turns off the requests to GitHub, at launch and once a day, that look for a newer release.
-     */
-    "skipUpdateCheck": boolean;
 }
 
 export interface ContainerDiagnosis {

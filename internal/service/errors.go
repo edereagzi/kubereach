@@ -45,6 +45,11 @@ func (e *userError) Error() string {
 
 func (e *userError) Unwrap() error { return e.err }
 
+// UserError is an error worded for the user as msg; err is kept for the log only.
+func UserError(msg string, err error) error {
+	return &userError{msg: msg, err: err}
+}
+
 func userErrorf(format string, args ...any) error {
 	return &userError{msg: fmt.Sprintf(format, args...)}
 }

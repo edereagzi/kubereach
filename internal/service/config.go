@@ -19,8 +19,6 @@ type Config struct {
 	Clusters []Cluster `yaml:"clusters,omitempty" json:"clusters"`
 	// Forwards are the Saved Forwards: Port Forward definitions kept across sessions.
 	Forwards []PortForward `yaml:"forwards,omitempty" json:"forwards"`
-	// SkipUpdateCheck turns off the requests to GitHub, at launch and once a day, that look for a newer release.
-	SkipUpdateCheck bool `yaml:"skipUpdateCheck,omitempty" json:"skipUpdateCheck"`
 }
 
 // Route is the ordered list of SSH Servers through which a Cluster is reached.

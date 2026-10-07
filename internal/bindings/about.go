@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 
 	"github.com/edereagzi/kubereach/internal/service"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -23,6 +24,7 @@ type AppService struct {
 	configPath string
 	// updates is false for dev builds, which a release must never replace.
 	updates bool
+	found   atomic.Pointer[Update]
 }
 
 func NewAppService(app *application.App, svc *service.Service, version string) *AppService {
@@ -36,9 +38,6 @@ func NewAppService(app *application.App, svc *service.Service, version string) *
 			log.Print("updater: ", err)
 		}
 		a.updates = err == nil
-		if a.updates {
-			a.retryFailedChecks()
-		}
 	}
 	return a
 }
@@ -88,7 +87,8 @@ func InstallMenu(app *application.App, about *AppService) {
 	appMenu := menu.AddSubmenu("Kubereach")
 	appMenu.Add("About Kubereach").OnClick(func(*application.Context) { about.showAbout() })
 	if about.updates {
-		appMenu.Add("Check for Updates…").OnClick(func(*application.Context) { about.CheckForUpdates() })
+		// The frontend's update dialog runs the check, as from Settings.
+		appMenu.Add("Check for Updates…").OnClick(func(*application.Context) { app.Event.Emit(EventUpdateCheck) })
 	}
 	appMenu.AddSeparator()
 	appMenu.AddRole(application.Hide)

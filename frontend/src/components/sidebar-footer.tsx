@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, KeyboardIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import { ArrowCircleUpIcon, ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, KeyboardIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
 import { Browser, System } from "@wailsio/runtime";
 import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -26,7 +25,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShortcutsDialog } from "@/components/shortcuts";
-import { aboutQuery, configQuery, errorText } from "@/queries";
+import { UpdateDialog, useUpdateStore } from "@/components/update";
+import { aboutQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
 
@@ -56,14 +56,13 @@ export function SidebarFooter() {
     onSuccess: (p) => p && pushImportPreviews([p]),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
   });
-  // Dev builds have no updater, so neither update item is shown.
+  // Dev builds have no updater, so no update item is shown.
   const { data: info } = useQuery(aboutQuery);
-  const { data: config } = useQuery(configQuery);
-  const setUpdateCheck = useMutation({
-    mutationFn: (on: boolean) => ConfigService.SetUpdateCheck(on),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["config"] }),
-  });
-  const error = exportConfig.error ?? inspect.error ?? setUpdateCheck.error;
+  const release = useUpdateStore((s) => s.release);
+  const updatePhase = useUpdateStore((s) => s.phase);
+  const updateProgress = useUpdateStore((s) => s.progress);
+  const showUpdate = useUpdateStore((s) => s.show);
+  const error = exportConfig.error ?? inspect.error;
   const openRoutes = useUIStore((s) => s.openRoutes);
   const [about, setAbout] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
@@ -93,6 +92,7 @@ export function SidebarFooter() {
           <DropdownMenuTrigger className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
             <GearIcon />
             Settings
+            {info?.updates && release && <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label="Update available" />}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-56">
             <DropdownMenuItem onClick={openRoutes}>
@@ -107,28 +107,29 @@ export function SidebarFooter() {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <AppearanceMenu />
-            {info?.updates && (
-              <>
-                <DropdownMenuSeparator />
-                {/* Wails' update window reports what the check finds and installs it. */}
-                <DropdownMenuItem onClick={() => AppService.CheckForUpdates()}>
-                  <ArrowsClockwiseIcon /> Check for updates
-                </DropdownMenuItem>
-                <DropdownMenuCheckboxItem
-                  inset
-                  checked={!config?.skipUpdateCheck}
-                  disabled={!config || setUpdateCheck.isPending}
-                  onCheckedChange={(on) => setUpdateCheck.mutate(on)}
-                >
-                  Check automatically
-                </DropdownMenuCheckboxItem>
-              </>
-            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setShortcuts(true)}>
               <KeyboardIcon /> Keyboard shortcuts
               <DropdownMenuShortcut>?</DropdownMenuShortcut>
             </DropdownMenuItem>
+            {/* Once a release is found the item says where its update is, with the version or progress on the right,
+                as Appearance shows its theme. */}
+            {info?.updates &&
+              (release ? (
+                <DropdownMenuItem onClick={showUpdate}>
+                  <ArrowCircleUpIcon className="text-primary" />
+                  {updatePhase === "ready" ? "Restart to update" : updatePhase === "downloading" ? "Downloading update" : "Update available"}
+                  <span className="ml-auto pl-4 text-muted-foreground">
+                    {updatePhase === "downloading" && updateProgress?.total
+                      ? `${Math.floor((updateProgress.written / updateProgress.total) * 100)}%`
+                      : release.version}
+                  </span>
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={showUpdate}>
+                  <ArrowsClockwiseIcon /> Check for updates…
+                </DropdownMenuItem>
+              ))}
             {/* macOS has About in its application menu (InstallMenu); elsewhere there is no menu bar. */}
             {(System.IsWindows() || System.IsLinux()) && (
               <>
@@ -143,6 +144,7 @@ export function SidebarFooter() {
       {preview && <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
+      {info && <UpdateDialog version={info.version} />}
     </div>
   );
 }

@@ -7,7 +7,13 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as bindings$0 from "../../../../edereagzi/kubereach/internal/bindings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as service$0 from "../../../../edereagzi/kubereach/internal/service/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as updater$0 from "../pkg/updater/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -26,6 +32,9 @@ declare module "@wailsio/runtime" {
             "terminal:output": service$0.TerminalOutput;
             "terminal:state": service$0.TerminalStatus;
             "tray:open-cluster": string;
+            "update:available": bindings$0.Update;
+            "update:check": void;
+            "wails:updater:download-progress": updater$0.Progress;
         }
     }
 }

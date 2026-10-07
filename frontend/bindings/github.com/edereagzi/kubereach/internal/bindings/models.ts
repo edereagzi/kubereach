@@ -14,3 +14,20 @@ export interface AboutInfo {
      */
     "updates": boolean;
 }
+
+/**
+ * Update is a newer release than the running one.
+ */
+export interface Update {
+    "version": string;
+
+    /**
+     * Notes are the release's section of CHANGELOG.md, in Markdown.
+     */
+    "notes": string;
+
+    /**
+     * Size is the download's size in bytes.
+     */
+    "size": number;
+}

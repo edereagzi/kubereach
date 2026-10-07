@@ -20,10 +20,6 @@ func (c *ConfigService) Load() (service.Config, error) {
 	return c.svc.LoadConfig()
 }
 
-func (c *ConfigService) SetUpdateCheck(on bool) error {
-	return c.svc.SetUpdateCheck(on)
-}
-
 // Export asks where to save and writes the configuration there; "" when cancelled.
 func (c *ConfigService) Export() (string, error) {
 	path, err := promptSave("Export configuration", "kubereach-export.yaml")

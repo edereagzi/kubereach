@@ -17,10 +17,25 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * CheckForUpdates opens Wails' update window, which reports what it finds and installs it on the user's say.
+ * AvailableUpdate is the release the last check found, for a window that loads after it was announced.
  */
-export function CheckForUpdates(): $CancellablePromise<void> {
+export function AvailableUpdate(): $CancellablePromise<$models.Update | null> {
+    return $Call.ByID(3393234826);
+}
+
+/**
+ * CheckForUpdates asks GitHub for a newer release; nil when this one is the latest.
+ */
+export function CheckForUpdates(): $CancellablePromise<$models.Update | null> {
     return $Call.ByID(2705752831);
+}
+
+/**
+ * DownloadUpdate downloads the release the last check found and verifies it against updateKey. Its progress
+ * arrives as EventUpdateProgress.
+ */
+export function DownloadUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(3266387825);
 }
 
 /**
@@ -28,6 +43,13 @@ export function CheckForUpdates(): $CancellablePromise<void> {
  */
 export function Info(): $CancellablePromise<$models.AboutInfo> {
     return $Call.ByID(443785436);
+}
+
+/**
+ * RestartToUpdate quits Kubereach, puts the downloaded release in its place and starts it.
+ */
+export function RestartToUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(2761193519);
 }
 
 /**
