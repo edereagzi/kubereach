@@ -1,7 +1,8 @@
 name: Release
 
 # Pushing a v* tag builds all platforms and publishes a GitHub Release, with
-# the signed update.json that installed releases update themselves from.
+# the signed update.json that installed releases update themselves from. The
+# release notes are the tag's section of CHANGELOG.md; without one nothing is built.
 # Updating the Homebrew cask, Scoop manifest (both in edereagzi/homebrew-tap)
 # and winget is disabled until builds are signed.
 #
@@ -18,7 +19,29 @@ permissions:
   contents: write
 
 jobs:
+  # The tag's section of CHANGELOG.md, then a link to every change since the previous tag.
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          version=${GITHUB_REF_NAME#v}
+          awk -v head="## [$version]" '/^## /{p = index($0, head) == 1; next} p' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
+          printf '\n[All changes since %s](https://github.com/%s/compare/%s...%s)\n' "${prev#v}" "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME" >> notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes.md
+
   build:
+    needs: notes
     strategy:
       fail-fast: false
       matrix:
@@ -101,8 +124,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
+          name: notes
+          path: ${{ runner.temp }}
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
@@ -111,16 +136,6 @@ jobs:
       - run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           (cd dist && sha256sum -- * > checksums.txt)
-      # The release's feat and fix commits, as the release page and the update window show them.
-      - name: Write the release notes
-        run: |
-          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
-          {
-            git log --format=%s "$prev..$GITHUB_REF_NAME" |
-              awk 'match($0, /^(feat|fix)(\([^)]*\))?!?: /) { s = substr($0, RLENGTH + 1); print "- " toupper(substr(s, 1, 1)) substr(s, 2) }'
-            echo
-            echo "[All changes since ${prev#v}](https://github.com/$GITHUB_REPOSITORY/compare/$prev...$GITHUB_REF_NAME)"
-          } > "$RUNNER_TEMP/notes.md"
       # A draft until update.json is attached, so latest/download/update.json never points at a release without one.
       # A rerun starts over from scratch, replacing the draft a failed run left; a published release is never touched.
       - run: |
