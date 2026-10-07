@@ -101,6 +101,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
@@ -109,18 +111,27 @@ jobs:
       - run: |
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           (cd dist && sha256sum -- * > checksums.txt)
+      # The release's feat and fix commits, as the release page and the update window show them.
+      - name: Write the release notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^")
+          {
+            git log --format=%s "$prev..$GITHUB_REF_NAME" |
+              awk 'match($0, /^(feat|fix)(\([^)]*\))?!?: /) { s = substr($0, RLENGTH + 1); print "- " toupper(substr(s, 1, 1)) substr(s, 2) }'
+            echo
+            echo "[All changes since ${prev#v}](https://github.com/$GITHUB_REPOSITORY/compare/$prev...$GITHUB_REF_NAME)"
+          } > "$RUNNER_TEMP/notes.md"
       # A draft until update.json is attached, so latest/download/update.json never points at a release without one.
       # A rerun starts over from scratch, replacing the draft a failed run left; a published release is never touched.
       - run: |
           if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft 2>/dev/null)" = true ]; then
             gh release delete "$GITHUB_REF_NAME" --yes
           fi
-          gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes --draft
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --draft
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Sign the update manifest and publish
         run: |
-          gh release view "$GITHUB_REF_NAME" --json body -q .body > "$RUNNER_TEMP/notes.md"
           build/release/update-manifest.sh "$VERSION" dist "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/update.json"
           gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/update.json"
           gh release edit "$GITHUB_REF_NAME" --draft=false

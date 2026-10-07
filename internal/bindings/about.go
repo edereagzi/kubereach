@@ -36,6 +36,9 @@ func NewAppService(app *application.App, svc *service.Service, version string) *
 			log.Print("updater: ", err)
 		}
 		a.updates = err == nil
+		if a.updates {
+			a.retryFailedChecks()
+		}
 	}
 	return a
 }

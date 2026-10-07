@@ -1,0 +1,190 @@
+/* Kubereach's look for Wails' update window: the app's colours, icon, buttons and dialog footer.
+   Appended after Wails' own styles, so a rule here wins over one of the same specificity there. */
+:root {
+  --bg: oklch(1 0 0);
+  --surface: oklch(0.955 0.004 260);
+  --surface-2: oklch(0.955 0.004 260);
+  --fg: oklch(0.2 0.012 260);
+  --fg-dim: oklch(0.55 0.015 260);
+  --fg-faint: oklch(0.55 0.015 260);
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.88 0.006 260);
+  --accent: oklch(0.5 0.18 278);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-dim: oklch(0.5 0.18 278 / 20%);
+  --success: oklch(0.62 0.16 152);
+  --error: oklch(0.577 0.245 27.325);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(0.2 0.012 260);
+    --surface: oklch(0.28 0.012 260);
+    --surface-2: oklch(0.28 0.012 260);
+    --fg: oklch(0.93 0.005 260);
+    --fg-dim: oklch(0.68 0.012 260);
+    --fg-faint: oklch(0.68 0.012 260);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --accent: oklch(0.78 0.12 278);
+    --accent-fg: oklch(0.2 0.04 278);
+    --accent-dim: oklch(0.78 0.12 278 / 25%);
+    --success: oklch(0.72 0.15 152);
+    --error: oklch(0.704 0.191 22.216);
+  }
+}
+
+/* One grid for every state: the icon beside the title and a line under it, release notes below, then progress,
+   then the footer across the window's full width. Each window size the updater sets fits it, the compact one included. */
+.u {
+  display: grid;
+  grid-template-columns: 16px 40px 12px minmax(0, 1fr) 16px;
+  grid-template-rows: 16px auto auto minmax(0, 1fr) auto auto;
+  gap: 0;
+  padding: 0;
+}
+.u__hero { display: contents; }
+.u .u__icon {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
+  background: center / contain no-repeat;
+  font-size: 0;
+}
+/* A badge on the icon says how the update went. */
+.u--ready .u__icon::after,
+.u--up-to-date .u__icon::after,
+.u--error .u__icon::after {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  color: var(--bg);
+  font: 700 10px/1 var(--font);
+  content: "✓";
+  background: var(--success);
+}
+.u--error .u__icon::after { content: "!"; background: var(--error); }
+
+.u__head { grid-column: 4; grid-row: 2; align-self: center; min-height: 40px; justify-content: center; }
+.u__title { font-size: 15px; letter-spacing: 0; }
+.u__subtitle { gap: 6px; }
+.u__ver-from { text-decoration: none; }
+.u__ver-from::before { content: "v"; }
+
+/* The line under the title: what is being checked, or what went wrong. A long error scrolls rather than
+   pushing the buttons out of the compact window. */
+.u .u__spinner,
+.u .u__error {
+  grid-column: 4;
+  grid-row: 3;
+  flex: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.u .u__spinner { flex-direction: row; justify-content: flex-start; gap: 8px; color: var(--fg-dim); }
+.u .u__spinner::before { width: 12px; height: 12px; border-width: 2px; }
+.u .u__error { overflow-y: auto; color: var(--fg-dim); overflow-wrap: anywhere; user-select: text; }
+/* Wails' errors end with the cause ("…: no such host"), so the line opens scrolled to its end. */
+.u[data-state="error"] { grid-template-rows: 12px auto minmax(0, 1fr) 0 auto auto; }
+.u[data-state="error"] .u__error { display: flex; flex-direction: column-reverse; }
+.u[data-state="checking"] .u__head,
+.u[data-state="error"] .u__head { min-height: 0; align-self: start; }
+.u[data-state="checking"] .u__spinner,
+.u[data-state="error"] .u__error { margin-top: 2px; }
+
+/* Release notes stay on screen while the update downloads and installs, as plain text under a rule rather than
+   an empty box. */
+.u .u__notes {
+  grid-column: 2 / 5;
+  grid-row: 4;
+  margin-top: 16px;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.u[data-state="downloading"] .u__notes,
+.u[data-state="verifying"] .u__notes,
+.u[data-state="installing"] .u__notes { display: block; }
+.u .u__notes:empty { display: none; }
+.u__notes::-webkit-scrollbar-thumb { border-color: var(--bg); }
+.u__notes h1, .u__notes h2, .u__notes h3 { margin: 0 0 6px; font-size: 13px; }
+.u__notes ul, .u__notes ol { margin: 0 0 10px; padding-left: 18px; }
+.u__notes li { margin: 3px 0; }
+.u__notes li::marker { color: var(--fg-dim); }
+
+/* Progress, and the verifying and installing steps after it, sit above the footer. */
+.u .u__progress-box,
+.u[data-state="verifying"] .u__spinner,
+.u[data-state="installing"] .u__spinner {
+  grid-column: 2 / 5;
+  grid-row: 5;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.u__progress-state { font-weight: 400; color: var(--fg-dim); }
+.u__bar, .u__bar::-webkit-progress-bar { height: 6px; border-radius: 3px; }
+.u__bar::-webkit-progress-value { border-radius: 3px; }
+
+/* Kubereach's dialog footer; a state with no button to show has none. */
+.u .u__footer {
+  grid-column: 1 / -1;
+  grid-row: 6;
+  margin-top: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface) 50%, var(--bg));
+}
+/* The compact window, after its title bar, leaves about 130px: room for two lines under the title. */
+.u[data-state="checking"],
+.u[data-state="up-to-date"] { grid-template-rows: 12px auto auto minmax(0, 1fr) auto auto; }
+.u[data-state="up-to-date"] .u__footer,
+.u[data-state="error"] .u__footer { margin-top: 10px; }
+.u[data-state="checking"] .u__footer,
+.u[data-state="verifying"] .u__footer,
+.u[data-state="installing"] .u__footer { display: none; }
+.u__secondary-actions { gap: 2px; margin-left: -8px; }
+
+/* Kubereach's buttons. */
+.u .u__btn {
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border-color: var(--border);
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+.u .u__btn:hover:not(:disabled) { background: var(--surface); }
+.u .u__btn:active:not(:disabled) { transform: translateY(1px); }
+.u .u__btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-dim); border-color: var(--accent); }
+.u .u__btn--ghost { border-color: transparent; background: transparent; color: var(--fg-dim); padding: 0 8px; }
+.u .u__btn--ghost:hover:not(:disabled) { background: var(--surface); color: var(--fg); }
+.u .u__btn--primary { border-color: transparent; background: var(--accent); color: var(--accent-fg); }
+.u .u__btn--primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 80%, var(--bg)); filter: none; }
+@media (prefers-color-scheme: dark) {
+  .u .u__btn:not(.u__btn--ghost):not(.u__btn--primary) { border-color: var(--input); background: color-mix(in oklab, var(--input) 30%, var(--bg)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .u .u__spinner::before, .u__bar:indeterminate { animation-duration: 3s; }
+}
