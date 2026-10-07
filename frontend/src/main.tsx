@@ -5,7 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
 import { ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
 import { restoreSession, writeSessionOutput } from "@/components/terminal";
-import { configQuery } from "@/queries";
+import { configQuery, reachabilityQuery } from "@/queries";
 import { router } from "@/router";
 import { useUIStore } from "@/store";
 import "@/theme";
@@ -42,6 +42,9 @@ Events.On("cluster:changed", ({ data }) => {
     queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
     if (detailKey[kind]) queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, detailKey[kind]] });
   }
+  // A Cluster first found unreachable, say before a VPN came up, is asked again once its watches hear from it.
+  const reachability = reachabilityQuery(data.clusterId).queryKey;
+  if (queryClient.getQueryState(reachability)?.status === "error") queryClient.invalidateQueries({ queryKey: reachability });
 });
 Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));
