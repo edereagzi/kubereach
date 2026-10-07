@@ -1,13 +1,13 @@
 # Changelog
 
 What changed in each release, as the release page and Kubereach's update window show it.
-Before tagging, rename "Unreleased" to the version, e.g. `## [0.8.1] - 2026-10-08
+Before tagging, rename "Unreleased" to the version, e.g. `## [0.8.0] - 2026-10-10`; a tag with no section here is not released.
+
+## [0.8.1] - 2026-10-08
 
 ### Fixed
 
 - On Windows, the window recovers when its web view crashes, instead of staying blank.
-
-## [0.8.0] - 2026-10-10`; a tag with no section here is not released.
 
 ## [0.8.0] - 2026-10-08
 
