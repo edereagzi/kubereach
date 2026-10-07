@@ -27,7 +27,7 @@
 - Nothing is installed in the cluster.
 - Passwords, key passphrases, sudo passwords and kubeconfigs read from SSH servers are never written to disk; they are kept in memory for the session.
 - `~/.kube/config` is never changed. A Terminal gets its own kubeconfig with no secret in it; its token lives only in the Terminal's environment and Kubereach's memory, and ends with the Terminal.
-- At launch and once a day it asks GitHub whether a newer release is out. That is the only request it makes on its own, and it can be turned off in Settings with "Check automatically". A newer release is downloaded, verified against the key built into Kubereach, and installed when you restart.
+- It asks GitHub for a newer release at launch and once a day, and makes no other request on its own. "Check automatically" in Settings turns it off.
 
 ## Screenshots
 

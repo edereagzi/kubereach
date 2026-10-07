@@ -110,7 +110,12 @@ jobs:
           echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           (cd dist && sha256sum -- * > checksums.txt)
       # A draft until update.json is attached, so latest/download/update.json never points at a release without one.
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes --draft
+      # A rerun starts over from scratch, replacing the draft a failed run left; a published release is never touched.
+      - run: |
+          if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft 2>/dev/null)" = true ]; then
+            gh release delete "$GITHUB_REF_NAME" --yes
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Kubereach $VERSION" --generate-notes --draft
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Sign the update manifest and publish
