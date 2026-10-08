@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { commands, formatKey, groups, keysOf, useAvailable, type CommandId } from "@/lib/commands";
+import type { ReactNode } from "react";
+import { commands, formatKey, groups, keysOf, platform, useAvailable, type CommandId } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 
 const ids = Object.keys(commands) as CommandId[];
@@ -9,6 +10,10 @@ const shownKeys = (id: CommandId) => {
   const keys = keysOf(id);
   return keys.length > 2 ? [keys[0], "…" as const, keys.at(-1)!] : keys;
 };
+
+const Kbd = ({ children }: { children: ReactNode }) => (
+  <kbd className="min-w-5 rounded border border-b-2 px-1 text-center font-sans text-[11px] leading-4 text-muted-foreground">{children}</kbd>
+);
 
 // Made from the catalog, so every key that works is listed. A key that is not available here and now is dimmed.
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
@@ -34,14 +39,20 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                           k === "…" ? (
                             <span key={k} className="text-muted-foreground">…</span>
                           ) : (
-                            <kbd key={k} className="min-w-5 rounded border border-b-2 px-1 text-center font-sans text-[11px] leading-4 text-muted-foreground">
-                              {formatKey(k)}
-                            </kbd>
+                            <Kbd key={k}>{formatKey(k)}</Kbd>
                           ),
                         )}
                       </dd>
                     </div>
                   ))}
+                  {group === "terminal" && platform !== "mac" && (
+                    <div className="flex items-center justify-between gap-4">
+                      <dt>Run an app key: add Shift to it</dt>
+                      <dd>
+                        <Kbd>{formatKey("Mod+Shift+W")}</Kbd>
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               </section>
             )

@@ -53,10 +53,43 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["Esc in a Terminal", press("Escape"), "mac", "terminal", "detail", "focus"],
   ["⇧J in a Terminal", press("J", "shift"), "mac", "terminal", "detail", "focus"],
 
-  // A Terminal on Linux and Windows keeps every key.
+  ["⌘W in a Terminal on macOS", press("w", "meta"), "mac", "terminal", "panel", "app"],
+
+  // A Terminal on Linux and Windows keeps Ctrl+letter, Ctrl+punctuation and Alt+key for the shell.
   ["Ctrl+J in a Terminal on Linux", press("j", "ctrl"), "linux", "terminal", "panel", "focus"],
   ["Ctrl+K in a Terminal on Windows", press("k", "ctrl"), "windows", "terminal", "anywhere", "focus"],
+  ["Ctrl+W in a Terminal on Linux", press("w", "ctrl"), "linux", "terminal", "panel", "focus"],
+  ["Ctrl+R in a Terminal on Windows", press("r", "ctrl"), "windows", "terminal", "anywhere", "focus"],
+  ["Ctrl+, in a Terminal on Linux", press(",", "ctrl"), "linux", "terminal", "anywhere", "focus"],
+  ["Ctrl+[ in a Terminal on Linux", press("[", "ctrl"), "linux", "terminal", "anywhere", "focus"],
   ["Alt+← in a Terminal", press("ArrowLeft", "alt"), "linux", "terminal", "anywhere", "focus"],
+  ["Alt+F in a Terminal on Windows", press("f", "alt"), "windows", "terminal", "anywhere", "focus"],
+  ["Esc in a Terminal on Linux", press("Escape"), "linux", "terminal", "detail", "focus"],
+  ["F10 in a Terminal on Linux", press("F10"), "linux", "terminal", "anywhere", "focus"],
+  // AltGr is Ctrl+Alt on Windows, and types characters such as @ on a Turkish Q keyboard.
+  ["AltGr+Shift+key in a Terminal on Windows", press("Q", "ctrl alt shift"), "windows", "terminal", "anywhere", "focus"],
+
+  // Ctrl+Shift+key goes to the app, except copy, paste, clear and search.
+  ["Ctrl+Shift+W in a Terminal on Linux", press("W", "ctrl shift"), "linux", "terminal", "panel", "app"],
+  ["Ctrl+Shift+P in a Terminal on Windows", press("P", "ctrl shift"), "windows", "terminal", "anywhere", "app"],
+  ["Ctrl+Shift+C in a Terminal on Linux", press("C", "ctrl shift"), "linux", "terminal", "anywhere", "focus"],
+  ["Ctrl+Shift+V in a Terminal on Windows", press("V", "ctrl shift"), "windows", "terminal", "anywhere", "focus"],
+  ["Ctrl+Shift+K in a Terminal on Linux", press("K", "ctrl shift"), "linux", "terminal", "anywhere", "focus"],
+  ["Ctrl+Shift+F in a Terminal on Windows", press("F", "ctrl shift"), "windows", "terminal", "cluster", "focus"],
+  // Shells use Ctrl+_ (undo) and Ctrl+@ (set mark), which are Ctrl+Shift keys on many keyboards.
+  ["Ctrl+_ in a Terminal on Linux", press("_", "ctrl shift"), "linux", "terminal", "anywhere", "focus"],
+  ["Ctrl+@ in a Terminal on Windows", press("@", "ctrl shift"), "windows", "terminal", "anywhere", "focus"],
+
+  // Shells do not use these, so they reach the app.
+  ["Ctrl+1 in a Terminal on Linux", press("1", "ctrl"), "linux", "terminal", "anywhere", "app"],
+  ["Ctrl+9 in a Terminal on Windows", press("9", "ctrl"), "windows", "terminal", "anywhere", "app"],
+  ["Ctrl+PageUp in a Terminal on Linux", press("PageUp", "ctrl"), "linux", "terminal", "panel", "app"],
+  ["Ctrl+PageDown in a Terminal on Windows", press("PageDown", "ctrl"), "windows", "terminal", "panel", "app"],
+  ["Ctrl+= in a Terminal on Linux", press("=", "ctrl"), "linux", "terminal", "anywhere", "app"],
+  ["Ctrl+- in a Terminal on Windows", press("-", "ctrl"), "windows", "terminal", "anywhere", "app"],
+  ["Ctrl+0 in a Terminal on Linux", press("0", "ctrl"), "linux", "terminal", "anywhere", "app"],
+  ["F11 in a Terminal on Linux", press("F11"), "linux", "terminal", "anywhere", "app"],
+  ["Ctrl+F11 in a Terminal on Windows", press("F11", "ctrl"), "windows", "terminal", "anywhere", "app"],
 
   // An area's own Commands run in it.
   ["⌘K clears a Terminal", press("k", "meta"), "mac", "terminal", "terminal", "app"],

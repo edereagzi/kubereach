@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { TerminalIcon } from "@phosphor-icons/react";
+import { Clipboard } from "@wailsio/runtime";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -12,6 +13,7 @@ import { errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
 import { platform } from "@/lib/commands";
+import { keyOwner, pressOf } from "@/lib/key-owner";
 import { cn } from "@/lib/utils";
 
 // Surfaces follow the app background; the ANSI palette stays xterm's default in both modes.
@@ -26,7 +28,30 @@ void document.fonts.load(`12px ${fontFamily}`);
 // and Option moves a word back (Esc b) or forward (Esc f), where xterm would send an arrow the shell does not bind.
 const cmdKeys: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
 const optionKeys: Record<string, string> = { ArrowLeft: "\x1bb", ArrowRight: "\x1bf" };
-const isMac = platform === "mac";
+
+// The keys the Terminal acts on itself, not the shell or the browser.
+function terminalAction(t: Terminal, e: KeyboardEvent): (() => void) | undefined {
+  if (platform === "mac") {
+    if (e.metaKey && e.key === "k") return () => t.clear();
+    const send = e.metaKey ? cmdKeys[e.key] : e.altKey && !e.ctrlKey && !e.shiftKey ? optionKeys[e.key] : undefined;
+    return send ? () => t.input(send) : undefined;
+  }
+  if (!e.ctrlKey || !e.shiftKey || e.altKey) return;
+  const key = e.key.toLowerCase();
+  // ConPTY on Windows draws at the rows it remembers, so the shell also clears (Ctrl+L) and ConPTY forgets the old rows.
+  if (key === "k") {
+    return () => {
+      t.clear();
+      if (platform === "windows") t.input("\x0c");
+    };
+  }
+  if (key === "c") {
+    return () => {
+      if (t.hasSelection()) void Clipboard.SetText(t.getSelection());
+    };
+  }
+  if (key === "v") return () => void Clipboard.Text().then((text) => t.paste(text));
+}
 
 // Terminals live outside React so output arriving before the view mounts is kept; xterm buffers writes until open().
 const terminals = new Map<string, Terminal>();
@@ -35,18 +60,16 @@ const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
     term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
-    // Cmd+K clears the view, as in a macOS terminal; the shell is not told. Other Cmd keys, such as copy and paste, are
-    // left to the browser.
+    // Cmd+K (Ctrl+Shift+K elsewhere) clears the view, as in a macOS terminal; the shell is not told. On macOS the browser
+    // copies and pastes. The keys the Terminal keeps do not reach the app, and the app's keys do not reach the shell.
     const t = term;
     t.attachCustomKeyEventHandler((e) => {
-      if (!isMac) return true;
-      const clear = e.metaKey && e.key === "k";
-      const send = e.metaKey ? cmdKeys[e.key] : e.altKey && !e.ctrlKey && !e.shiftKey ? optionKeys[e.key] : undefined;
-      if (!clear && !send) return true;
-      if (e.type === "keydown") {
-        if (clear) t.clear();
-        else if (send) t.input(send);
-      }
+      if (keyOwner(pressOf(e), platform, "terminal", "anywhere") === "app") return false;
+      e.stopPropagation();
+      const action = terminalAction(t, e);
+      if (!action) return true;
+      e.preventDefault();
+      if (e.type === "keydown") action();
       return false;
     });
     terminals.set(id, term);

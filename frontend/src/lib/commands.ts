@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { detectPlatform, formatForDisplay, useHotkeyRegistrations, useHotkeys, type Hotkey } from "@tanstack/react-hotkeys";
-import { keyOwner, type Area, type Group } from "@/lib/key-owner";
+import { keyOwner, pressOf, type Area, type Group } from "@/lib/key-owner";
 
 declare module "@tanstack/react-hotkeys" {
   interface HotkeyMeta {
@@ -51,8 +51,10 @@ export const commands = {
   "previous-tab": { name: "Previous panel tab", group: "panel", keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] } },
   "next-tab": { name: "Next panel tab", group: "panel", keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] } },
   "select-log-lines": { name: "Select every line", group: "logs", keys: ["Mod+A"] },
-  // Only macOS terminals clear on Cmd+K; elsewhere Ctrl+K belongs to the shell.
-  "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: [] }, native: true },
+  // The xterm key handler runs these. On Linux and Windows the Ctrl keys belong to the shell, so these keys have Shift.
+  "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: ["Mod+Shift+K"] }, native: true },
+  "copy-terminal": { name: "Copy", group: "terminal", keys: { mac: ["Mod+C"], other: ["Mod+Shift+C"] }, native: true },
+  "paste-terminal": { name: "Paste", group: "terminal", keys: { mac: ["Mod+V"], other: ["Mod+Shift+V"] }, native: true },
   "clear-cluster-filter": { name: "Clear the cluster filter", group: "typing", keys: ["Escape"], native: true },
   "cancel-port-edit": { name: "Cancel a local port change", group: "typing", keys: ["Escape"], native: true },
 } satisfies Record<string, Command>;
@@ -84,15 +86,23 @@ function focusArea(e: KeyboardEvent): Area {
   return "other";
 }
 
+// On Linux and Windows Ctrl+Shift+key also runs the Command for Ctrl+key, when no Command has Ctrl+Shift+key. In a
+// Terminal, where Ctrl+key goes to the shell, this is how the user gets the app key.
+const catalogKeys = new Set((Object.keys(commands) as CommandId[]).flatMap(keysOf));
+const withShift = (keys: Hotkey[]) => {
+  if (platform === "mac") return keys;
+  const shifted = keys.filter((k) => k.startsWith("Mod+") && !k.includes("Shift")).map((k) => k.replace("Mod+", "Mod+Shift+") as Hotkey);
+  return [...keys, ...shifted.filter((k) => !catalogKeys.has(k))];
+};
+
 // Makes a Command available while the component is mounted. target limits it to keys pressed in that element.
 export function useCommand(id: CommandId, run: (e: KeyboardEvent) => void, { enabled = true, target }: { enabled?: boolean; target?: RefObject<HTMLElement | null> } = {}) {
   const { name, group } = commands[id];
   useHotkeys(
-    keysOf(id).map((hotkey) => ({
+    withShift(keysOf(id)).map((hotkey) => ({
       hotkey,
       callback: (e: KeyboardEvent) => {
-        const press = { key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, handled: e.defaultPrevented };
-        if (keyOwner(press, platform, focusArea(e), group) !== "app") return;
+        if (keyOwner(pressOf(e), platform, focusArea(e), group) !== "app") return;
         e.preventDefault();
         run(e);
       },
