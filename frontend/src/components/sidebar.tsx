@@ -22,7 +22,8 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { useUIStore } from "@/store";
-import { cn, modKey } from "@/lib/utils";
+import { keyLabel, useCommand } from "@/lib/commands";
+import { cn } from "@/lib/utils";
 
 export function Sidebar() {
   const queryClient = useQueryClient();
@@ -45,17 +46,7 @@ export function Sidebar() {
   const importError = importKubeconfig.error ?? importDropped.error;
   const [importingRemote, setImportingRemote] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // In a terminal the key is its own: Cmd+K clears it, and Ctrl+K reaches the shell.
-      if (e.key === "k" && (e.metaKey || e.ctrlKey) && !(e.target instanceof Element && e.target.closest(".xterm"))) {
-        e.preventDefault();
-        filter.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useCommand("focus-cluster-filter", () => filter.current?.focus());
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
@@ -88,7 +79,7 @@ export function Sidebar() {
             <MagnifyingGlassIcon />
           </InputGroupAddon>
           <InputGroupAddon align="inline-end">
-            <kbd className="font-sans text-[10px] text-muted-foreground">{modKey}K</kbd>
+            <kbd className="font-sans text-[10px] text-muted-foreground">{keyLabel("focus-cluster-filter")}</kbd>
           </InputGroupAddon>
         </InputGroup>
       </div>

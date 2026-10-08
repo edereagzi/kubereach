@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
-import { cn, modKey } from "@/lib/utils";
+import { platform } from "@/lib/commands";
+import { cn } from "@/lib/utils";
 
 // Surfaces follow the app background; the ANSI palette stays xterm's default in both modes.
 const xtermTheme = (dark: boolean) =>
@@ -25,7 +26,7 @@ void document.fonts.load(`12px ${fontFamily}`);
 // and Option moves a word back (Esc b) or forward (Esc f), where xterm would send an arrow the shell does not bind.
 const cmdKeys: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
 const optionKeys: Record<string, string> = { ArrowLeft: "\x1bb", ArrowRight: "\x1bf" };
-const isMac = modKey === "⌘";
+const isMac = platform === "mac";
 
 // Terminals live outside React so output arriving before the view mounts is kept; xterm buffers writes until open().
 const terminals = new Map<string, Terminal>();

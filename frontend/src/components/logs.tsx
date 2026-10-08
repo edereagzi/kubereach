@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenu
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { podsQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
+import { useCommand } from "@/lib/commands";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // One stable colour per pod name, so a pod keeps its colour while others join and leave.
@@ -315,6 +316,14 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
   };
   // Only the rows in view exist in the DOM, so Select All is remembered and Copy writes every line itself.
   const allSelected = useRef(false);
+  useCommand(
+    "select-log-lines",
+    () => {
+      if (parentRef.current) window.getSelection()?.selectAllChildren(parentRef.current);
+      allSelected.current = true;
+    },
+    { target: parentRef },
+  );
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => parentRef.current,
@@ -349,15 +358,6 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
           if (atBottom !== following) setFollowing(atBottom);
         }}
         onMouseDown={() => (allSelected.current = false)}
-        onKeyDown={(e) => {
-          // ↑ and ↓ scroll the lines rather than walk an open detail's rows.
-          if (e.key === "ArrowUp" || e.key === "ArrowDown") e.stopPropagation();
-          if ((e.metaKey || e.ctrlKey) && e.key === "a") {
-            e.preventDefault();
-            window.getSelection()?.selectAllChildren(e.currentTarget);
-            allSelected.current = true;
-          }
-        }}
         onCopy={(e) => {
           if (!allSelected.current) return;
           e.preventDefault();

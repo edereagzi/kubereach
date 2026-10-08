@@ -29,6 +29,7 @@ import { UpdateDialog, useUpdateStore } from "@/components/update";
 import { aboutQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { AppearanceMenu } from "@/theme";
+import { keyLabel, useCommand } from "@/lib/commands";
 
 // Settings is a menu rather than a screen: Kubereach itself, and the Routes that are set up once and then used from their Clusters.
 export function SidebarFooter() {
@@ -66,17 +67,7 @@ export function SidebarFooter() {
   const openRoutes = useUIStore((s) => s.openRoutes);
   const [about, setAbout] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
-  // "?" opens the shortcuts from anywhere that is not typing or already in a dialog or menu.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], [role=dialog], [role=alertdialog], [role=menu], [role=listbox]"))) {
-        e.preventDefault();
-        setShortcuts(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useCommand("show-shortcuts", () => setShortcuts(true));
 
   return (
     <div>
@@ -110,7 +101,7 @@ export function SidebarFooter() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setShortcuts(true)}>
               <KeyboardIcon /> Keyboard shortcuts
-              <DropdownMenuShortcut>?</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{keyLabel("show-shortcuts")}</DropdownMenuShortcut>
             </DropdownMenuItem>
             {/* Once a release is found the item says where its update is, with the version or progress on the right,
                 as Appearance shows its theme. */}

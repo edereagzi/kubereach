@@ -223,9 +223,8 @@ function CodeEditor({ label, value, onChange }: { label: string; value: string; 
     view.focus();
     return () => view.destroy();
   }, []);
-  // Escape would close the panel and drop the edit. isolate keeps CodeMirror's own z-indexes (its search panel is at
-  // 300) under the confirm dialog.
-  return <div ref={parent} onKeyDown={(e) => e.key === "Escape" && e.preventDefault()} className="isolate min-h-0 flex-1 overflow-hidden rounded-md bg-muted/50 py-1" />;
+  // isolate keeps CodeMirror's own z-indexes (its search panel is at 300) under the confirm dialog.
+  return <div ref={parent} className="isolate min-h-0 flex-1 overflow-hidden rounded-md bg-muted/50 py-1" />;
 }
 
 // diffLines colours a unified diff; a hunk header becomes a break between the changed places.

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
+import { useCommand } from "@/lib/commands";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // Every search word must be in the row's name; the kind is picked from the menu beside it, which lists that kind alone,
@@ -236,17 +237,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     requestInspect(null);
   }, [inspectRequest, pending, liveGroups, cluster.id, requestInspect]);
 
-  // "/" jumps to the filter from anywhere on the tab that is not already typing.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !(e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], [role=dialog]"))) {
-        e.preventDefault();
-        search.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useCommand("filter-view", () => search.current?.focus());
 
   const words = useMemo(() => needle.toLowerCase().split(/\s+/).filter(Boolean), [needle]);
   // A kind the scope no longer has lets go, rather than leave the list empty with no way to see why.

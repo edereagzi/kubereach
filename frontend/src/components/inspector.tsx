@@ -1,9 +1,10 @@
-import { createContext, Fragment, useContext, useEffect, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { CopyButton } from "@/components/copy-button";
 import { KindBadge, kindName, type Kind } from "@/components/targets";
 import { Button } from "@/components/ui/button";
+import { keyLabel, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 
 // The element beside the view that an Inspector opens into.
@@ -13,14 +14,7 @@ export const InspectorSlot = createContext<HTMLElement | null>(null);
 // It is a plain panel, not a dialog, so a confirmation opened from it is a dialog of its own with its own backdrop.
 export function Inspector({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const slot = useContext(InspectorSlot);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Escape belongs to an open menu, list or dialog before it reaches the panel.
-      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useCommand("close-detail", onClose);
   if (!slot) return null;
   // Close belongs to the panel, not to what it shows, so it sits on the panel's edge, across the rule between list and
   // detail, level with the title: in the title's row of icons it read as one more thing done to the object.
@@ -30,7 +24,7 @@ export function Inspector({ onClose, children }: { onClose: () => void; children
         variant="outline"
         size="icon-xs"
         className="absolute top-[18px] -left-3 z-20 rounded-full bg-background text-muted-foreground dark:bg-background"
-        title="Close (Esc)"
+        title={`Close (${keyLabel("close-detail")})`}
         onClick={onClose}
       >
         <CaretRightIcon />
@@ -102,17 +96,12 @@ export function InspectorFacts({ facts }: { facts: [string, ReactNode][] }) {
 
 // While a detail is open, ↑ and ↓ walk the rows as they are shown; each row carries its key in data-row to be scrolled to.
 export function useInspectorWalk<T>(rows: RefObject<T[]>, current: T | null, key: (row: T) => string, select: (row: T) => void) {
-  useEffect(() => {
-    if (!current) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || (e.target instanceof HTMLElement && e.target.closest("input, textarea, [contenteditable], [role=tablist], [role=menu], [role=listbox]"))) return;
-      const next = rows.current[rows.current.findIndex((r) => key(r) === key(current)) + (e.key === "ArrowDown" ? 1 : -1)];
-      if (!next) return;
-      e.preventDefault();
-      select(next);
-      document.querySelector(`[data-row="${CSS.escape(key(next))}"]`)?.scrollIntoView({ block: "nearest" });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [current]);
+  const walk = (step: number) => () => {
+    const next = current && rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step];
+    if (!next) return;
+    select(next);
+    document.querySelector(`[data-row="${CSS.escape(key(next))}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+  useCommand("next-row", walk(1), { enabled: !!current });
+  useCommand("previous-row", walk(-1), { enabled: !!current });
 }

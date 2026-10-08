@@ -32,7 +32,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { sessionEnded, useUIStore, type MainTab } from "@/store";
-import { cn, modKey } from "@/lib/utils";
+import { keyLabel, useCommand } from "@/lib/commands";
+import { cn } from "@/lib/utils";
 
 export function Shell() {
   const routesOpen = useUIStore((s) => s.routesOpen);
@@ -239,17 +240,10 @@ function Dock({ cluster }: { cluster: Cluster }) {
   // An empty panel has nothing to show, so the key opens a Terminal there, as an editor's terminal key does.
   const empty = tabs.length === 0;
   const { mutate: startTerminal, isPending: starting } = newTerminal;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "j" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        if (!empty) setDockOpen(!useUIStore.getState().dockOpen);
-        else if (!starting && !e.repeat) startTerminal();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setDockOpen, empty, starting, startTerminal]);
+  useCommand("toggle-panel", (e) => {
+    if (!empty) setDockOpen(!useUIStore.getState().dockOpen);
+    else if (!starting && !e.repeat) startTerminal();
+  });
 
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -264,9 +258,10 @@ function Dock({ cluster }: { cluster: Cluster }) {
   };
 
   // An empty dock has nothing to show, so it stays a bar.
+  // data-panel tells the key Commands that the focus is in the panel (see focusArea).
   const expanded = open && !!active;
   return (
-    <section className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
+    <section data-panel className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
       {expanded && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
       <div className="flex h-9 shrink-0 items-stretch gap-2 pr-2 pl-4">
         {tabs.length > 0 && (
@@ -296,7 +291,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
         {tabs.length > 0 && (
           <>
             <span className="my-auto h-4 w-px shrink-0 bg-border" />
-            <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${modKey}J)`} onClick={() => setDockOpen(!open)}>
+            <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${keyLabel("toggle-panel")})`} onClick={() => setDockOpen(!open)}>
               {open ? <CaretDownIcon /> : <CaretUpIcon />}
             </Button>
           </>
