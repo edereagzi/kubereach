@@ -1,9 +1,10 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { TerminalIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, CaretUpIcon, TerminalIcon, XIcon } from "@phosphor-icons/react";
 import { Clipboard } from "@wailsio/runtime";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions, type ISearchResultChangeEvent } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { ShellService, TerminalService } from "@bindings/internal/bindings";
 import { State, type Cluster, type ShellOutput, type ShellStatus, type SessionTail, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
@@ -12,13 +13,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
-import { platform } from "@/lib/commands";
+import { keyLabel, platform } from "@/lib/commands";
 import { keyOwner, pressOf } from "@/lib/key-owner";
 import { cn } from "@/lib/utils";
 
-// Surfaces follow the app background; the ANSI palette stays xterm's default in both modes.
+// Surfaces follow the app background; the ANSI palette stays xterm's default in both modes. The selection is a tint of
+// the theme's primary color, as the active search match is the selection.
 const xtermTheme = (dark: boolean) =>
-  dark ? { background: "#13161c" } : { background: "#ffffff", foreground: "#0a0a0a", cursor: "#0a0a0a", selectionBackground: "#0a0a0a33" };
+  dark
+    ? { background: "#13161c", selectionBackground: "#504fc6" }
+    : { background: "#ffffff", foreground: "#0a0a0a", cursor: "#0a0a0a", selectionBackground: "#b0b0e5" };
+
+// Matches in tints of the theme's primary color; xterm takes only #RRGGBB.
+const searchDecorations = (dark: boolean): ISearchOptions["decorations"] =>
+  dark
+    ? { matchBackground: "#2b2d60", activeMatchBackground: "#504fc6", activeMatchBorder: "#a5afff", matchOverviewRuler: "#504fc6", activeMatchColorOverviewRuler: "#a5afff" }
+    : { matchBackground: "#dcdcf4", activeMatchBackground: "#b0b0e5", activeMatchBorder: "#504fc6", matchOverviewRuler: "#b0b0e5", activeMatchColorOverviewRuler: "#504fc6" };
+
+// ⌘F on macOS and Ctrl+Shift+F elsewhere, as in iTerm and Windows Terminal.
+const isSearchKey = (e: KeyboardEvent) => e.key.toLowerCase() === "f" && !e.altKey && (platform === "mac" ? e.metaKey : e.ctrlKey && e.shiftKey);
+const searchOpeners = new Map<string, () => void>();
 
 // xterm measures its cell once on open, so the app's mono face must already be loaded by then.
 const fontFamily = "'Geist Mono Variable', monospace";
@@ -30,7 +44,8 @@ const cmdKeys: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", 
 const optionKeys: Record<string, string> = { ArrowLeft: "\x1bb", ArrowRight: "\x1bf" };
 
 // The keys the Terminal acts on itself, not the shell or the browser.
-function terminalAction(t: Terminal, e: KeyboardEvent): (() => void) | undefined {
+function terminalAction(t: Terminal, id: string, e: KeyboardEvent): (() => void) | undefined {
+  if (isSearchKey(e)) return () => searchOpeners.get(id)?.();
   if (platform === "mac") {
     if (e.metaKey && e.key === "k") return () => t.clear();
     const send = e.metaKey ? cmdKeys[e.key] : e.altKey && !e.ctrlKey && !e.shiftKey ? optionKeys[e.key] : undefined;
@@ -59,14 +74,15 @@ useTheme.subscribe((s) => terminals.forEach((t) => (t.options.theme = xtermTheme
 const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
-    term = new Terminal({ fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
+    // The search addon draws its highlights with xterm's proposed decoration API.
+    term = new Terminal({ allowProposedApi: true, fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
     // Cmd+K (Ctrl+Shift+K elsewhere) clears the view, as in a macOS terminal; the shell is not told. On macOS the browser
     // copies and pastes. The keys the Terminal keeps do not reach the app, and the app's keys do not reach the shell.
     const t = term;
     t.attachCustomKeyEventHandler((e) => {
       if (keyOwner(pressOf(e), platform, "terminal", "anywhere") === "app") return false;
       e.stopPropagation();
-      const action = terminalAction(t, e);
+      const action = terminalAction(t, id, e);
       if (!action) return true;
       e.preventDefault();
       if (e.type === "keydown") action();
@@ -284,11 +300,22 @@ function XtermView({ id, done, io, children }: { id: string; done: boolean; io: 
   const ref = useRef<HTMLDivElement>(null);
   const doneRef = useRef(done);
   doneRef.current = done;
+  const [searchAddon, setSearchAddon] = useState<SearchAddon>();
+  const [searching, setSearching] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const term = terminalFor(id);
     const fit = new FitAddon();
     term.loadAddon(fit);
+    const search = new SearchAddon();
+    term.loadAddon(search);
+    setSearchAddon(search);
+    searchOpeners.set(id, () => {
+      setSearching(true);
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
     // A terminal opens once; on a later mount its element is moved under the new host.
     if (term.element) ref.current!.appendChild(term.element);
     else term.open(ref.current!);
@@ -305,13 +332,84 @@ function XtermView({ id, done, io, children }: { id: string; done: boolean; io: 
       data.dispose();
       resize.dispose();
       fit.dispose();
+      searchOpeners.delete(id);
+      search.dispose();
     };
   }, [id, io]);
+
+  const closeSearch = () => {
+    const term = terminalFor(id);
+    searchAddon?.clearDecorations();
+    term.clearSelection();
+    setSearching(false);
+    term.focus();
+  };
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden py-2 pl-4 pr-1">
       <div ref={ref} className="h-full" />
+      {searching && searchAddon && <SearchBar search={searchAddon} inputRef={inputRef} close={closeSearch} />}
       {children}
+    </div>
+  );
+}
+
+function SearchBar({ search, inputRef, close }: { search: SearchAddon; inputRef: RefObject<HTMLInputElement | null>; close: () => void }) {
+  const dark = useTheme((s) => s.dark);
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState<ISearchResultChangeEvent>();
+  useEffect(() => {
+    const changed = search.onDidChangeResults(setResult);
+    return () => changed.dispose();
+  }, [search]);
+
+  const find = (text: string, back = false, incremental = false) => {
+    if (!text) {
+      search.clearDecorations();
+      setResult(undefined);
+      return;
+    }
+    const options = { incremental, decorations: searchDecorations(dark) };
+    if (back) search.findPrevious(text, options);
+    else search.findNext(text, options);
+  };
+  // Past xterm's highlight limit there is no index to show.
+  const count = !query || !result ? "" : result.resultCount === 0 ? "No results" : result.resultIndex < 0 ? `${result.resultCount}+` : `${result.resultIndex + 1}/${result.resultCount}`;
+
+  // It floats over the output, as in VS Code and Windows Terminal, so the Terminal keeps its size.
+  return (
+    <div className="absolute top-2 right-4 z-10 flex h-8 w-72 max-w-[calc(100%-2rem)] items-center gap-0.5 rounded-md border bg-popover pr-1 shadow-md focus-within:border-ring">
+      <input
+        ref={inputRef}
+        autoFocus
+        placeholder="Find"
+        aria-label="Find in the output"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          find(e.target.value, false, true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") find(query, e.shiftKey);
+          else if (e.key === "Escape") close();
+          else if (isSearchKey(e.nativeEvent)) e.currentTarget.select();
+          else return;
+          e.preventDefault();
+        }}
+        className="h-full min-w-0 flex-1 bg-transparent pl-2.5 font-mono text-xs outline-none placeholder:font-sans placeholder:text-muted-foreground"
+      />
+      <span className={cn("shrink-0 px-1 text-[11px] tabular-nums", result?.resultCount === 0 ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+        {count}
+      </span>
+      <Button variant="ghost" size="icon-xs" title={`Previous match (${keyLabel("previous-match")})`} disabled={!result?.resultCount} onClick={() => find(query, true)}>
+        <CaretUpIcon />
+      </Button>
+      <Button variant="ghost" size="icon-xs" title={`Next match (${keyLabel("next-match")})`} disabled={!result?.resultCount} onClick={() => find(query)}>
+        <CaretDownIcon />
+      </Button>
+      <Button variant="ghost" size="icon-xs" title={`Close (${keyLabel("close-search")})`} onClick={close}>
+        <XIcon />
+      </Button>
     </div>
   );
 }

@@ -48,6 +48,7 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["⌘K in a Terminal on macOS", press("k", "meta"), "mac", "terminal", "anywhere", "focus"],
   ["⌘C in a Terminal on macOS", press("c", "meta"), "mac", "terminal", "detail", "focus"],
   ["⌘⌫ in a Terminal on macOS", press("Backspace", "meta"), "mac", "terminal", "detail", "focus"],
+  ["⌘F in a Terminal on macOS", press("f", "meta"), "mac", "terminal", "cluster", "focus"],
   ["⌥← in a Terminal on macOS", press("ArrowLeft", "alt"), "mac", "terminal", "anywhere", "focus"],
   ["⌘J in a Terminal on macOS", press("j", "meta"), "mac", "terminal", "panel", "app"],
   ["Esc in a Terminal", press("Escape"), "mac", "terminal", "detail", "focus"],

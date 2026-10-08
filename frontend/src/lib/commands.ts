@@ -15,6 +15,7 @@ export const groups: Record<Group, string> = {
   panel: "Panel",
   logs: "In logs",
   terminal: "In a Terminal or Shell",
+  search: "In the search bar",
   typing: "While typing",
 };
 
@@ -55,6 +56,11 @@ export const commands = {
   "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: ["Mod+Shift+K"] }, native: true },
   "copy-terminal": { name: "Copy", group: "terminal", keys: { mac: ["Mod+C"], other: ["Mod+Shift+C"] }, native: true },
   "paste-terminal": { name: "Paste", group: "terminal", keys: { mac: ["Mod+V"], other: ["Mod+Shift+V"] }, native: true },
+  "search-terminal": { name: "Find", group: "terminal", keys: { mac: ["Mod+F"], other: ["Mod+Shift+F"] }, native: true },
+  // The search bar's input handles these.
+  "next-match": { name: "Next match", group: "search", keys: ["Enter"], native: true },
+  "previous-match": { name: "Previous match", group: "search", keys: ["Shift+Enter"], native: true },
+  "close-search": { name: "Close the search bar", group: "search", keys: ["Escape"], native: true },
   "clear-cluster-filter": { name: "Clear the cluster filter", group: "typing", keys: ["Escape"], native: true },
   "cancel-port-edit": { name: "Cancel a local port change", group: "typing", keys: ["Escape"], native: true },
 } satisfies Record<string, Command>;

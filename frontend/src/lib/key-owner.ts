@@ -3,15 +3,15 @@
 
 export type Platform = "mac" | "windows" | "linux";
 export type Area = "terminal" | "text" | "dialog" | "panel" | "other";
-export type Group = "anywhere" | "cluster" | "detail" | "panel" | "logs" | "terminal" | "typing";
+export type Group = "anywhere" | "cluster" | "detail" | "panel" | "logs" | "terminal" | "search" | "typing";
 // handled: an element already acted on the key (defaultPrevented), for example a menu that closed on Esc.
 export type Press = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; handled: boolean };
 export type Owner = "focus" | "app";
 
 export const pressOf = (e: KeyboardEvent): Press => ({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, handled: e.defaultPrevented });
 
-// On macOS a Terminal keeps these Cmd keys: clear, copy, paste, select all, and line editing.
-const macTerminalKeys = new Set(["k", "c", "v", "a", "ArrowLeft", "ArrowRight", "Backspace"]);
+// On macOS a Terminal keeps these Cmd keys: clear, copy, paste, select all, search, and line editing.
+const macTerminalKeys = new Set(["k", "c", "v", "a", "f", "ArrowLeft", "ArrowRight", "Backspace"]);
 // On Linux and Windows a Terminal keeps these Ctrl+Shift keys: copy, paste, clear, search, and the shell's Ctrl+_ (undo)
 // and Ctrl+@ (set mark).
 const otherTerminalKeys = new Set(["c", "v", "k", "f", "_", "@"]);
