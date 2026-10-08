@@ -20,7 +20,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const available = useAvailable();
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
