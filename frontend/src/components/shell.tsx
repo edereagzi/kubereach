@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CaretDownIcon, CaretUpIcon, CubeIcon, DotsThreeIcon, PlusIcon, ScrollIcon, TerminalWindowIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import { Window } from "@wailsio/runtime";
 import { ClusterService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
 import { State, type Cluster, type LogStatus, type ShellStatus, type TerminalStatus } from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -32,11 +33,22 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { sessionEnded, useUIStore, type MainTab } from "@/store";
-import { keyLabel, useCommand } from "@/lib/commands";
+import { keyLabel, platform, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
+
+// The Dock sets closeDockTab while the panel shows a tab. Then ⌘W closes that tab, not the window.
+let closeDockTab: (() => void) | undefined;
 
 export function Shell() {
   const routesOpen = useUIStore((s) => s.routesOpen);
+  // Window.Close hides the window to the tray. A held key does not close every tab and then the window.
+  useCommand("close-tab", (e) => !e.repeat && (closeDockTab ? closeDockTab() : void Window.Close()));
+  // macOS zooms and goes full screen from its View menu.
+  const other = platform !== "mac";
+  useCommand("zoom-in", () => void Window.ZoomIn(), { enabled: other });
+  useCommand("zoom-out", () => void Window.ZoomOut(), { enabled: other });
+  useCommand("zoom-reset", () => void Window.ZoomReset(), { enabled: other });
+  useCommand("full-screen", () => void Window.ToggleFullscreen(), { enabled: other });
   return (
     <div className="flex h-screen bg-background text-foreground">
       <Sidebar />
@@ -240,10 +252,29 @@ function Dock({ cluster }: { cluster: Cluster }) {
   // An empty panel has nothing to show, so the key opens a Terminal there, as an editor's terminal key does.
   const empty = tabs.length === 0;
   const { mutate: startTerminal, isPending: starting } = newTerminal;
-  useCommand("toggle-panel", (e) => {
-    if (!empty) setDockOpen(!useUIStore.getState().dockOpen);
-    else if (!starting && !e.repeat) startTerminal();
+  const start = (e: KeyboardEvent) => !starting && !e.repeat && startTerminal();
+  useCommand("toggle-panel", (e) => (empty ? start(e) : setDockOpen(!useUIStore.getState().dockOpen)));
+  useCommand("new-terminal", start);
+
+  const closeActive = open ? active?.close : undefined;
+  useEffect(() => {
+    closeDockTab = closeActive;
+    return () => (closeDockTab = undefined);
   });
+
+  // The tab keys wrap at the ends. They act only while the focus is in the panel.
+  const sectionRef = useRef<HTMLElement>(null);
+  const step = (by: number) => () => {
+    const next = tabs[(tabs.findIndex((t) => t.id === active?.id) + by + tabs.length) % tabs.length];
+    if (!next) return;
+    useUIStore.getState().openDock(cluster.id, next.id);
+    // The old tab's view takes the focus with it. A Terminal takes it again; other views leave it on their tab.
+    requestAnimationFrame(() => {
+      if (!sectionRef.current?.contains(document.activeElement)) listRef.current?.querySelector<HTMLElement>("[aria-selected=true]")?.focus();
+    });
+  };
+  useCommand("previous-tab", step(-1), { target: sectionRef });
+  useCommand("next-tab", step(1), { target: sectionRef });
 
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -261,7 +292,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
   // data-panel tells the key Commands that the focus is in the panel (see focusArea).
   const expanded = open && !!active;
   return (
-    <section data-panel className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
+    <section ref={sectionRef} data-panel className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
       {expanded && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
       <div className="flex h-9 shrink-0 items-stretch gap-2 pr-2 pl-4">
         {tabs.length > 0 && (
@@ -278,7 +309,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
           </div>
         )}
         {/* Beside tabs it adds one; alone on the bar, with no tab to be taken for, it shows what it opens, 8px in like the bar's other end. */}
-        <Button variant="ghost" size="icon-xs" className={cn("my-auto", tabs.length === 0 && "-ml-2")} title={`Open a Terminal on ${cluster.name}`} disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
+        <Button variant="ghost" size="icon-xs" className={cn("my-auto", tabs.length === 0 && "-ml-2")} title={`Open a Terminal on ${cluster.name} (${keyLabel("new-terminal")})`} disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
           {tabs.length > 0 ? <PlusIcon /> : <TerminalWindowIcon className="size-4" />}
         </Button>
         {newTerminal.error && (

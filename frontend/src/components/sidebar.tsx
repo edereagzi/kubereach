@@ -47,15 +47,26 @@ export function Sidebar() {
   const [importingRemote, setImportingRemote] = useState(false);
 
   useCommand("focus-cluster-filter", () => filter.current?.focus());
+  // Log streams, Shells and Terminals are not queries, so they stay open.
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["cluster"] });
+  useCommand("refresh", refresh);
+  // In the order of the list without its filter; 9 is the last, as in browser tabs.
+  const selectCluster = useUIStore((s) => s.selectCluster);
+  const clusters = useQuery(configQuery).data?.clusters ?? [];
+  useCommand("select-cluster", (e) => {
+    const n = Number(e.code.at(-1));
+    const cluster = n === 9 ? clusters.at(-1) : clusters[n - 1];
+    if (cluster) selectCluster(cluster.id);
+  });
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div data-drag className="flex h-13 shrink-0 items-center justify-end gap-0.5 px-2 select-none">
         {/* One slow Cluster must not hold the button; each row's dot pulses while its own check runs. */}
         <RefreshButton
-          title="Refresh clusters"
+          title={`Refresh clusters (${keyLabel("refresh")})`}
           fetching={false}
-          onRefresh={() => queryClient.invalidateQueries({ queryKey: ["cluster"] })}
+          onRefresh={refresh}
         />
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="Add clusters" disabled={importKubeconfig.isPending} />}>

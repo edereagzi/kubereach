@@ -29,6 +29,8 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["Esc in the YAML editor", press("Escape"), "mac", "text", "detail", "focus"],
   ["⌘K in a text field", press("k", "meta"), "mac", "text", "anywhere", "app"],
   ["Ctrl+J in a text field", press("j", "ctrl"), "linux", "text", "panel", "app"],
+  // A text field has no use for a function key.
+  ["F11 in a text field", press("F11"), "linux", "text", "anywhere", "app"],
 
   // Elsewhere the app gets the key.
   ["Esc on the list", press("Escape"), "mac", "other", "detail", "app"],

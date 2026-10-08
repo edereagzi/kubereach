@@ -4,6 +4,12 @@ import { cn } from "@/lib/utils";
 
 const ids = Object.keys(commands) as CommandId[];
 
+// A row of keys, such as ⌘1 to ⌘9, shows its first and last key.
+const shownKeys = (id: CommandId) => {
+  const keys = keysOf(id);
+  return keys.length > 2 ? [keys[0], "…" as const, keys.at(-1)!] : keys;
+};
+
 // Made from the catalog, so every key that works is listed. A key that is not available here and now is dimmed.
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const available = useAvailable();
@@ -24,11 +30,15 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                     <div key={id} className={cn("flex items-center justify-between gap-4", !available(id) && "opacity-50")}>
                       <dt>{commands[id].name}</dt>
                       <dd className="flex gap-1">
-                        {keysOf(id).map((k) => (
-                          <kbd key={k} className="min-w-5 rounded border border-b-2 px-1 text-center font-sans text-[11px] leading-4 text-muted-foreground">
-                            {formatKey(k)}
-                          </kbd>
-                        ))}
+                        {shownKeys(id).map((k) =>
+                          k === "…" ? (
+                            <span key={k} className="text-muted-foreground">…</span>
+                          ) : (
+                            <kbd key={k} className="min-w-5 rounded border border-b-2 px-1 text-center font-sans text-[11px] leading-4 text-muted-foreground">
+                              {formatKey(k)}
+                            </kbd>
+                          ),
+                        )}
                       </dd>
                     </div>
                   ))}

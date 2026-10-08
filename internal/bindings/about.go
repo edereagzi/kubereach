@@ -74,6 +74,8 @@ func (a *AppService) Reveal() {
 	_ = a.app.Env.OpenFileManager(a.configPath, true)
 }
 
+var devBuild bool
+
 // InstallMenu installs the macOS application menu. Windows and Linux show no menu bar, so Ctrl+Q quits there;
 // without a tray it is the only way to.
 // The About role would open Cocoa's own panel, so About is a plain item wired to showAbout.
@@ -96,9 +98,21 @@ func InstallMenu(app *application.App, about *AppService) {
 	appMenu.AddRole(application.UnHide)
 	appMenu.AddSeparator()
 	appMenu.AddRole(application.Quit)
-	menu.AddRole(application.FileMenu)
+	// No File menu: its Close item takes Cmd+W before the frontend can close a panel tab with it.
 	menu.AddRole(application.EditMenu)
-	menu.AddRole(application.ViewMenu)
+	// The View role puts Reload on Cmd+R. Reload ends every Terminal, Shell and log stream, and the frontend uses
+	// Cmd+R to refresh data. Thus the View menu is built by hand.
+	view := menu.AddSubmenu("View")
+	if devBuild {
+		view.AddRole(application.ForceReload)
+		view.AddRole(application.OpenDevTools)
+		view.AddSeparator()
+	}
+	view.AddRole(application.ResetZoom)
+	view.AddRole(application.ZoomIn)
+	view.AddRole(application.ZoomOut)
+	view.AddSeparator()
+	view.AddRole(application.ToggleFullscreen)
 	menu.AddRole(application.WindowMenu)
 	app.Menu.Set(menu)
 }

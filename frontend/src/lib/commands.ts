@@ -23,7 +23,7 @@ type Command = {
   group: Group;
   // The same keys on every platform (Mod is ⌘ on macOS and Ctrl elsewhere), or different ones. A platform with no key does not have the Command.
   keys: Hotkey[] | { mac: Hotkey[]; other: Hotkey[] };
-  // Wails, Base UI, xterm or one element handles the key. The shortcuts list shows it, and it is always available.
+  // Wails, Base UI, xterm or one element handles the key, at least on macOS. The shortcuts list shows it, and it is always available.
   native?: true;
 };
 
@@ -33,15 +33,23 @@ export const commands = {
   "show-shortcuts": { name: "Show shortcuts", group: "anywhere", keys: ["?"] },
   "close-dialog": { name: "Close a dialog or menu", group: "anywhere", keys: ["Escape"], native: true },
   quit: { name: "Quit Kubereach", group: "anywhere", keys: ["Mod+Q"], native: true },
-  "zoom-in": { name: "Zoom in", group: "anywhere", keys: { mac: ["Mod++"], other: [] }, native: true },
-  "zoom-out": { name: "Zoom out", group: "anywhere", keys: { mac: ["Mod+-"], other: [] }, native: true },
-  "zoom-reset": { name: "Actual size", group: "anywhere", keys: { mac: ["Mod+0"], other: [] }, native: true },
-  "full-screen": { name: "Full screen", group: "anywhere", keys: { mac: ["Control+Meta+F"], other: [] }, native: true },
+  "select-cluster": { name: "Select a cluster (9 is the last)", group: "anywhere", keys: ["Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8", "Mod+9"] },
+  refresh: { name: "Refresh data", group: "anywhere", keys: ["Mod+R"] },
+  "open-settings": { name: "Open Settings", group: "anywhere", keys: ["Mod+,"] },
+  // The macOS View menu handles these; elsewhere the frontend calls the Wails runtime.
+  "zoom-in": { name: "Zoom in", group: "anywhere", keys: { mac: ["Mod++"], other: ["Mod+="] }, native: true },
+  "zoom-out": { name: "Zoom out", group: "anywhere", keys: ["Mod+-"], native: true },
+  "zoom-reset": { name: "Actual size", group: "anywhere", keys: ["Mod+0"], native: true },
+  "full-screen": { name: "Full screen", group: "anywhere", keys: { mac: ["Control+Meta+F"], other: ["F11"] }, native: true },
   "filter-view": { name: "Filter the overview", group: "cluster", keys: ["/"] },
   "next-row": { name: "Next row", group: "detail", keys: ["ArrowDown"] },
   "previous-row": { name: "Previous row", group: "detail", keys: ["ArrowUp"] },
   "close-detail": { name: "Close the detail", group: "detail", keys: ["Escape"] },
   "toggle-panel": { name: "Show or hide the panel", group: "panel", keys: ["Mod+J"] },
+  "new-terminal": { name: "New Terminal", group: "panel", keys: ["Mod+T"] },
+  "close-tab": { name: "Close the panel tab, or hide the window", group: "panel", keys: ["Mod+W"] },
+  "previous-tab": { name: "Previous panel tab", group: "panel", keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] } },
+  "next-tab": { name: "Next panel tab", group: "panel", keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] } },
   "select-log-lines": { name: "Select every line", group: "logs", keys: ["Mod+A"] },
   // Only macOS terminals clear on Cmd+K; elsewhere Ctrl+K belongs to the shell.
   "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: [] }, native: true },

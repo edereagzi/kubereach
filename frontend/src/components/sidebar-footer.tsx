@@ -68,6 +68,8 @@ export function SidebarFooter() {
   const [about, setAbout] = useState(false);
   const [shortcuts, setShortcuts] = useState(false);
   useCommand("show-shortcuts", () => setShortcuts(true));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useCommand("open-settings", () => setSettingsOpen(true));
 
   return (
     <div>
@@ -79,8 +81,8 @@ export function SidebarFooter() {
       )}
       {/* As tall as the dock's tab bar, so their top borders meet in one line while the dock is closed. */}
       <div className="box-content flex h-9 items-center border-t px-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
+        <DropdownMenu open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <DropdownMenuTrigger title={`Settings (${keyLabel("open-settings")})`} className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
             <GearIcon />
             Settings
             {info?.updates && release && <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label="Update available" />}

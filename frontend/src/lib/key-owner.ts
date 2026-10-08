@@ -21,7 +21,7 @@ export function keyOwner(p: Press, platform: Platform, area: Area, group: Group)
   // The shell gets every key, except the Cmd keys that macOS terminals do not keep.
   // ponytail: Linux and Windows send no key from a Terminal to the app; ticket 03 adds their Ctrl+Shift rules.
   if (area === "terminal") return platform === "mac" && p.meta && !macTerminalKeys.has(key) ? "app" : "focus";
-  if (platform === "mac" ? p.meta : p.ctrl) return "app";
+  if ((platform === "mac" ? p.meta : p.ctrl) || /^F\d+$/.test(key)) return "app";
   if (area === "text") return "focus";
   // The panel's lines and a tab list scroll and move with the arrows.
   if (area === "panel" && key.startsWith("Arrow")) return "focus";
