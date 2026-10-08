@@ -3,7 +3,7 @@
 
 export type Platform = "mac" | "windows" | "linux";
 export type Area = "terminal" | "text" | "dialog" | "panel" | "other";
-export type Group = "anywhere" | "cluster" | "detail" | "panel" | "logs" | "terminal" | "search" | "typing";
+export type Group = "anywhere" | "cluster" | "list" | "detail" | "panel" | "logs" | "terminal" | "search" | "typing";
 // handled: an element already acted on the key (defaultPrevented), for example a menu that closed on Esc.
 export type Press = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; handled: boolean };
 export type Owner = "focus" | "app";

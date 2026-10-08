@@ -94,14 +94,15 @@ export function InspectorFacts({ facts }: { facts: [string, ReactNode][] }) {
   );
 }
 
-// While a detail is open, ↑ and ↓ walk the rows as they are shown; each row carries its key in data-row to be scrolled to.
+// ↑/↓ and K/J walk the rows as they are shown. With no detail open, the next-row key opens the first row.
+// Each row carries its key in data-row to be scrolled to.
 export function useInspectorWalk<T>(rows: RefObject<T[]>, current: T | null, key: (row: T) => string, select: (row: T) => void) {
   const walk = (step: number) => () => {
-    const next = current && rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step];
+    const next = current ? rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step] : step > 0 && rows.current[0];
     if (!next) return;
     select(next);
     document.querySelector(`[data-row="${CSS.escape(key(next))}"]`)?.scrollIntoView({ block: "nearest" });
   };
-  useCommand("next-row", walk(1), { enabled: !!current });
+  useCommand("next-row", walk(1));
   useCommand("previous-row", walk(-1), { enabled: !!current });
 }

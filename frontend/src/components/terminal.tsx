@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 import { useTheme } from "@/theme";
-import { keyLabel, platform } from "@/lib/commands";
+import { keyLabel, platform, useCommand } from "@/lib/commands";
 import { keyOwner, pressOf } from "@/lib/key-owner";
 import { cn } from "@/lib/utils";
 
@@ -180,6 +180,7 @@ export function OpenShell({
   size = "sm",
   className,
   onStarted,
+  keyed,
 }: {
   cluster: Cluster;
   pods: ShellPod[];
@@ -187,8 +188,11 @@ export function OpenShell({
   size?: "sm" | "xs";
   className?: string;
   onStarted?: () => void;
+  // keyed: the Shell key of the detail starts the shell, or opens the container choice.
+  keyed?: boolean;
 }) {
   const start = useStartShell(cluster.id);
+  const [choosing, setChoosing] = useState(false);
   const items = pods.flatMap((p) =>
     (p.containers.length > 1 ? p.containers : [""]).map((container) => ({
       value: `${p.namespace}/${p.name}/${container}`,
@@ -197,6 +201,10 @@ export function OpenShell({
       target: { namespace: p.namespace, pod: p.name, container },
     })),
   );
+  const hint = keyed ? ` (${keyLabel("shell")})` : "";
+  useCommand("shell", () => (items.length === 1 ? start.mutate(items[0]!.target, { onSuccess: onStarted }) : setChoosing(true)), {
+    enabled: !!keyed && items.length > 0 && !start.isPending,
+  });
   const error = start.error && (
     <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(start.error)}>
       {errorText(start.error)}
@@ -205,7 +213,7 @@ export function OpenShell({
   if (items.length === 1) {
     return (
       <>
-        <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
+        <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}${hint}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
           {variant === "outline" && <TerminalIcon />}
           Shell
         </Button>
@@ -218,6 +226,8 @@ export function OpenShell({
       <Select
         value=""
         items={items}
+        open={choosing}
+        onOpenChange={setChoosing}
         onValueChange={(key) => {
           const item = items.find((i) => i.value === key);
           if (item) start.mutate(item.target, { onSuccess: onStarted });
@@ -231,7 +241,7 @@ export function OpenShell({
             variant === "ghost" && "border-transparent bg-transparent dark:bg-transparent",
             className,
           )}
-          title="Open a shell into a pod"
+          title={`Open a shell into a pod${hint}`}
           disabled={items.length === 0 || start.isPending}
         >
           {variant === "outline" && <TerminalIcon />}

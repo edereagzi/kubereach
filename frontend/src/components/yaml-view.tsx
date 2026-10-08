@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Inspector, InspectorActions, InspectorHeader, InspectorName, InspectorTitle } from "@/components/inspector";
 import { TargetVerbs } from "@/components/target-verbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { keyLabel, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { yamlQuery, errorText, isConflict } from "@/queries";
 
@@ -27,8 +28,27 @@ let lastTab = "details";
 
 // DetailTabs puts a detail's own content and its YAML behind two tabs; the YAML is fetched when its tab opens.
 export function DetailTabs({ children, ...props }: YamlProps & { children: ReactNode }) {
+  const [tab, setTab] = useState(lastTab);
+  // E from the Details tab opens the YAML tab in the editor.
+  const [edit, setEdit] = useState(false);
+  const show = (v: string) => {
+    lastTab = v;
+    setTab(v);
+    setEdit(false);
+  };
+  useCommand("details-tab", () => show("details"));
+  useCommand("yaml-tab", () => show("yaml"));
+  // A Secret's values must be revealed before the edit, and that is done on the YAML tab.
+  useCommand(
+    "edit-yaml",
+    () => {
+      show("yaml");
+      setEdit(true);
+    },
+    { enabled: tab !== "yaml" && props.kind !== "secret" },
+  );
   return (
-    <Tabs defaultValue={lastTab} onValueChange={(v) => (lastTab = v)} className="min-h-0 flex-1 gap-0">
+    <Tabs value={tab} onValueChange={show} className="min-h-0 flex-1 gap-0">
       <TabsList variant="line" className="h-8 w-full justify-start gap-4 border-b">
         <TabsTrigger value="details" className="flex-none px-0">
           Details
@@ -41,19 +61,22 @@ export function DetailTabs({ children, ...props }: YamlProps & { children: React
         {children}
       </TabsContent>
       <TabsContent value="yaml" className="flex min-h-0 flex-col pt-3">
-        <YamlView {...props} />
+        <YamlView {...props} edit={edit} />
       </TabsContent>
     </Tabs>
   );
 }
 
-export function YamlView(props: YamlProps) {
+export function YamlView({ edit = false, ...props }: YamlProps & { edit?: boolean }) {
   const { cluster, kind, namespace, name } = props;
   const secret = kind === "secret";
   // The whole document is revealed at once: a YAML with one value shown and the rest masked is not the object.
   const [reveal, setReveal] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(edit);
   const q = useQuery(yamlQuery(cluster.id, objectKind[kind], namespace, name, reveal));
+  // The editor shows a Secret's values, so they are revealed first.
+  const editable = !!q.data && (!secret || reveal);
+  useCommand("edit-yaml", () => setEditing(true), { enabled: editable && !editing });
   if (editing) return <YamlEditor {...props} onDone={() => setEditing(false)} />;
   return (
     <div className="min-h-0 flex-1 overflow-auto rounded-md bg-muted/50 px-3 py-2">
@@ -65,9 +88,8 @@ export function YamlView(props: YamlProps) {
             </Button>
           )}
           <CopyButton text={q.data} title="Copy YAML" className="opacity-100" />
-          {/* The editor shows a Secret's values, so they are revealed first. */}
-          {(!secret || reveal) && (
-            <Button variant="ghost" size="icon-xs" title="Edit" onClick={() => setEditing(true)}>
+          {editable && (
+            <Button variant="ghost" size="icon-xs" title={`Edit (${keyLabel("edit-yaml")})`} onClick={() => setEditing(true)}>
               <PencilSimpleIcon />
             </Button>
           )}

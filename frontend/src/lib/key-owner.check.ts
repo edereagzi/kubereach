@@ -92,6 +92,20 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["F11 in a Terminal on Linux", press("F11"), "linux", "terminal", "anywhere", "app"],
   ["Ctrl+F11 in a Terminal on Windows", press("F11", "ctrl"), "windows", "terminal", "anywhere", "app"],
 
+  // The letter keys of a list and a detail run only where the user does not type.
+  ["J on the list", press("j"), "mac", "other", "list", "app"],
+  ["L with a detail open", press("l"), "linux", "other", "detail", "app"],
+  ["⇧F with a detail open", press("F", "shift"), "windows", "other", "detail", "app"],
+  ["J in the logs", press("j"), "mac", "panel", "list", "app"],
+  ["J in a text field", press("j"), "mac", "text", "list", "focus"],
+  ["S in the log filter", press("s"), "linux", "text", "detail", "focus"],
+  ["E in the YAML editor", press("e"), "mac", "text", "detail", "focus"],
+  ["⇧F in the YAML editor", press("F", "shift"), "windows", "text", "detail", "focus"],
+  ["L in a Terminal on macOS", press("l"), "mac", "terminal", "detail", "focus"],
+  ["S in a Terminal on Linux", press("s"), "linux", "terminal", "detail", "focus"],
+  ["Y with a confirmation open", press("y"), "mac", "dialog", "detail", "focus"],
+  ["K with the container choice open", press("k"), "windows", "dialog", "list", "focus"],
+
   // An area's own Commands run in it.
   ["⌘K clears a Terminal", press("k", "meta"), "mac", "terminal", "terminal", "app"],
 ];

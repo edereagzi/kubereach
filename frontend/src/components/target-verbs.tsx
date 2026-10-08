@@ -7,6 +7,7 @@ import { useStartLogs } from "@/components/logs";
 import { logKind, targetValue, type Kind, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
+import { keyLabel, useCommand } from "@/lib/commands";
 import { configQuery, errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 
@@ -19,10 +20,15 @@ export function TargetVerbs({ cluster, target, onForward, onLeave }: { cluster: 
   const { forwarded, stream, shell } = useRowFacts(cluster).get(target.value) ?? {};
   const startLogs = useStartLogs(cluster);
   const active = "text-primary hover:text-primary";
+  const hasLogs = !!logKind[target.kind];
+  const forwardable = target.kind === "svc" || target.kind === "pod";
+  useCommand("logs", () => (stream ? openDock(cluster.id, stream) : startLogs.mutate(target)), { enabled: hasLogs && !startLogs.isPending });
+  useCommand("shell", () => shell && openDock(cluster.id, shell), { enabled: !!shell });
+  useCommand("forward", () => onForward?.(), { enabled: !!onForward && forwardable });
 
   return (
     <>
-      {(target.kind === "svc" || target.kind === "pod") &&
+      {forwardable &&
         (forwarded ? (
           <Button
             variant="outline"
@@ -38,20 +44,20 @@ export function TargetVerbs({ cluster, target, onForward, onLeave }: { cluster: 
             Forward
           </Button>
         ) : (
-          <Button variant="outline" size="xs" onClick={onForward}>
+          <Button variant="outline" size="xs" title={`Add forward (${keyLabel("forward")})`} onClick={onForward}>
             <ArrowsLeftRightIcon />
             Forward
           </Button>
         ))}
-      {logKind[target.kind] &&
+      {hasLogs &&
         (stream ? (
-          <Button variant="outline" size="xs" className={active} title="Following logs" onClick={() => openDock(cluster.id, stream)}>
+          <Button variant="outline" size="xs" className={active} title={`Following logs (${keyLabel("logs")})`} onClick={() => openDock(cluster.id, stream)}>
             <ScrollIcon />
             Logs
           </Button>
         ) : (
           <>
-            <Button variant="outline" size="xs" disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
+            <Button variant="outline" size="xs" title={`Logs (${keyLabel("logs")})`} disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
               <ScrollIcon />
               Logs
             </Button>
@@ -64,12 +70,12 @@ export function TargetVerbs({ cluster, target, onForward, onLeave }: { cluster: 
         ))}
       {target.kind === "pod" &&
         (shell ? (
-          <Button variant="outline" size="xs" className={active} title="Shell open" onClick={() => openDock(cluster.id, shell)}>
+          <Button variant="outline" size="xs" className={active} title={`Shell open (${keyLabel("shell")})`} onClick={() => openDock(cluster.id, shell)}>
             <TerminalIcon />
             Shell
           </Button>
         ) : (
-          <OpenShell cluster={cluster} pods={[target]} variant="outline" size="xs" />
+          <OpenShell cluster={cluster} pods={[target]} variant="outline" size="xs" keyed />
         ))}
     </>
   );
