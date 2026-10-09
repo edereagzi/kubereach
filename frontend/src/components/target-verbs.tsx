@@ -12,9 +12,9 @@ import { configQuery, errorText } from "@/queries";
 import { sessionEnded, useUIStore } from "@/store";
 
 // TargetVerbs is Forward, Logs and Shell for one object in its detail, each turning into a link to its tab once running,
-// as its row's RowVerbs say. onLeave closes the detail when one of them moves to another view.
+// as its row's RowVerbs say. Another view has no detail, so moving to it closes the detail.
 // Logs and shells open in the dock under the view, so the detail stays open beside them.
-export function TargetVerbs({ cluster, target, onForward, onLeave }: { cluster: Cluster; target: Target; onForward?: () => void; onLeave?: () => void }) {
+export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; target: Target; onForward?: () => void }) {
   const selectTab = useUIStore((s) => s.selectTab);
   const openDock = useUIStore((s) => s.openDock);
   const { forwarded, stream, shell } = useRowFacts(cluster).get(target.value) ?? {};
@@ -35,10 +35,7 @@ export function TargetVerbs({ cluster, target, onForward, onLeave }: { cluster: 
             size="xs"
             className={active}
             title="Forwarding"
-            onClick={() => {
-              selectTab("forwards");
-              onLeave?.();
-            }}
+            onClick={() => selectTab("forwards")}
           >
             <ArrowsLeftRightIcon />
             Forward

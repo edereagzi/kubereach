@@ -34,7 +34,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { mainTabs, sessionEnded, useUIStore, type MainTab } from "@/store";
-import { inPanel, keyLabel, platform, useCommand } from "@/lib/commands";
+import { dialogOpen, inPanel, keyLabel, platform, useCommand } from "@/lib/commands";
+import { go } from "@/lib/history";
 import { cn } from "@/lib/utils";
 
 // The Dock sets closeDockTab while the panel shows a tab. Then ⌘W closes that tab, not the window.
@@ -42,6 +43,10 @@ let closeDockTab: (() => void) | undefined;
 
 export function Shell() {
   const routesOpen = useUIStore((s) => s.routesOpen);
+  const clusters = useQuery(configQuery).data?.clusters;
+  const exists = (id: string) => !!clusters?.some((c) => c.id === id);
+  useCommand("go-back", () => go(-1, exists));
+  useCommand("go-forward", () => go(1, exists));
   // Window.Close hides the window to the tray. A held key does not close every tab and then the window.
   useCommand("close-tab", (e) => !e.repeat && (closeDockTab ? closeDockTab() : void Window.Close()));
   // macOS zooms and goes full screen from its View menu.
@@ -56,6 +61,16 @@ export function Shell() {
     window.addEventListener("keydown", stop);
     return () => window.removeEventListener("keydown", stop);
   }, []);
+  // The mouse's back (3) and forward (4) buttons. As with the keys, an open dialog or menu stops them.
+  useEffect(() => {
+    const navigate = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (!dialogOpen()) go(e.button === 3 ? -1 : 1, exists);
+    };
+    window.addEventListener("mouseup", navigate);
+    return () => window.removeEventListener("mouseup", navigate);
+  }, [clusters]);
   return (
     <div className="flex h-screen bg-background text-foreground">
       <Sidebar />

@@ -41,6 +41,9 @@ export const commands = {
   "select-cluster": { name: "Select a cluster (9 is the last)", group: "anywhere", keys: ["Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8", "Mod+9"] },
   refresh: { name: "Refresh data", group: "anywhere", keys: ["Mod+R"] },
   "open-settings": { name: "Open Settings", group: "anywhere", keys: ["Mod+,"] },
+  // The mouse's back and forward buttons also run these.
+  "go-back": { name: "Back", group: "anywhere", keys: { mac: ["Mod+["], other: ["Alt+ArrowLeft"] } },
+  "go-forward": { name: "Forward", group: "anywhere", keys: { mac: ["Mod+]"], other: ["Alt+ArrowRight"] } },
   // The macOS View menu handles these; elsewhere the frontend calls the Wails runtime.
   "zoom-in": { name: "Zoom in", group: "anywhere", keys: { mac: ["Mod++"], other: ["Mod+="] }, native: true },
   "zoom-out": { name: "Zoom out", group: "anywhere", keys: ["Mod+-"], native: true },
@@ -98,14 +101,17 @@ export const keyLabel = (id: CommandId) => {
   return key ? formatKey(key) : "";
 };
 
+// Tells whether a dialog, menu or list is open. A Base UI Select keeps its closed list in the page, marked data-closed.
+export const dialogOpen = () => [...document.querySelectorAll("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")].some((el) => !el.closest("[data-closed]"));
+
 function focusArea(e: KeyboardEvent): Area {
-  // A Base UI Select keeps its closed list in the page, marked data-closed.
-  if ([...document.querySelectorAll("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")].some((el) => !el.closest("[data-closed]"))) return "dialog";
+  if (dialogOpen()) return "dialog";
   const el = e.target instanceof HTMLElement ? e.target : null;
   if (el?.closest(".xterm")) return "terminal";
   if (el?.closest(".cm-editor")) return "editor";
   if (el?.closest("input, textarea, select") || el?.isContentEditable) return "text";
-  if (el?.closest("[data-panel], [role=tablist]")) return "panel";
+  if (el?.closest("[data-panel]")) return "panel";
+  if (el?.closest("[role=tablist]")) return "tabs";
   return "other";
 }
 

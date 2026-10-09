@@ -8,7 +8,7 @@ import { ConfigDetail } from "@/components/config-detail";
 import { AddForward, forwardsFor } from "@/components/forwards";
 import { HPADetail, metricsLabel, metricsTitle } from "@/components/hpa-detail";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
-import { useInspectorWalk } from "@/components/inspector";
+import { useDetailRow, useInspectorWalk } from "@/components/inspector";
 import { ago, PodDetail, ReasonBadge, restartsLabel, since, usagePressure } from "@/components/pod-detail";
 import { PVCDetail, pvcLabel, pvcReason } from "@/components/pvc-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
@@ -198,7 +198,7 @@ function measure(sizes: Map<string, number>, text: string, font: string) {
 export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const namespaces = useQuery(namespacesQuery(cluster.id));
   const { data: config } = useQuery(configQuery);
-  const { groups: liveGroups, error: listError, pending, fetching } = useTargets(cluster, true);
+  const { groups: liveGroups, error: listError, fetching } = useTargets(cluster, true);
   const rescoping = useIsMutating({ mutationKey: scopeKey(cluster.id) }) > 0;
   const explicit = cluster.namespaces ?? noNamespaces;
   // Each kind is its own list and lands on its own; the rows change once all have, so a namespace fills in one step.
@@ -220,20 +220,15 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const [needle, setNeedle] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [forwarding, setForwarding] = useState<Target | null>(null);
-  const [inspecting, setInspecting] = useState<Target | null>(null);
+  // A node's detail is on the Nodes view.
+  const detail = useUIStore((s) => (s.detail?.clusterId === cluster.id && s.detail.kind !== "node" ? targetValue(s.detail.kind, s.detail.namespace, s.detail.name) : null));
+  const openDetail = useUIStore((s) => s.openDetail);
+  const inspecting = useDetailRow(useMemo(() => liveGroups.flatMap((g) => g.items), [liveGroups]), (t) => t.value, detail);
+  const setInspecting = useCallback((t: Target | null) => openDetail(t && { clusterId: cluster.id, kind: t.kind, namespace: t.namespace, name: t.name }), [openDetail, cluster.id]);
   const forwardFrom = (t: Target) => {
     setInspecting(null);
     setForwarding(t);
   };
-  const inspectRequest = useUIStore((s) => s.inspectRequest);
-  const requestInspect = useUIStore((s) => s.requestInspect);
-
-  // Another tab asked for an object's detail (a node's is the Nodes tab's); it opens once the lists have it, and a request for nothing listed is dropped.
-  useEffect(() => {
-    if (!inspectRequest || inspectRequest.clusterId !== cluster.id || inspectRequest.kind === "node" || pending) return;
-    setInspecting(liveGroups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
-    requestInspect(null);
-  }, [inspectRequest, pending, liveGroups, cluster.id, requestInspect]);
 
   const words = useMemo(() => needle.toLowerCase().split(/\s+/).filter(Boolean), [needle]);
   // A kind the scope no longer has lets go, rather than leave the list empty with no way to see why.
@@ -310,7 +305,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     virtualizer.scrollToIndex(i);
   }, [inspecting, lines]);
 
-  const inspect = useCallback((t: Target) => setInspecting((cur) => (cur?.value === t.value ? null : t)), []);
+  const shown = useRef(inspecting);
+  shown.current = inspecting;
+  const inspect = useCallback((t: Target) => setInspecting(shown.current?.value === t.value ? null : t), [setInspecting]);
   const toggleChildren = useCallback((value: string) => setHiddenChildren((h) => ({ ...h, [value]: !h[value] })), []);
   const selectTab = useUIStore((s) => s.selectTab);
   const openDock = useUIStore((s) => s.openDock);

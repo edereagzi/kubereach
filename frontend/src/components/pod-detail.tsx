@@ -111,18 +111,13 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
   const metrics = useQuery(podMetricsQuery(cluster.id));
   const usage = metrics.data?.get(podUsageKey(target.namespace, target.name));
   const startLogs = useStartLogs(cluster);
-  const requestInspect = useUIStore((s) => s.requestInspect);
-  const selectTab = useUIStore((s) => s.selectTab);
+  const openDetail = useUIStore((s) => s.openDetail);
   const d = pod.data;
   // WorkloadKind values are the lowercased Kubernetes kinds, so an owner the Overview lists has a Kind here; a bare ReplicaSet does not.
   const owner = d?.owner;
   const ownerKind = owner && workloadKind[owner.kind.toLowerCase() as WorkloadKind];
-  // The node's detail lives on the Nodes tab and shares this panel, so leaving for it closes the pod.
-  const openNode = (node: string) => {
-    requestInspect({ clusterId: cluster.id, kind: "node", namespace: "", name: node });
-    selectTab("nodes");
-    onClose();
-  };
+  // The node's detail is on the Nodes view.
+  const openNode = (node: string) => openDetail({ clusterId: cluster.id, kind: "node", namespace: "", name: node });
   const facts: [string, ReactNode][] = d
     ? [
         ["Status", d.phase],
@@ -130,7 +125,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
           "Owner",
           owner &&
             (ownerKind ? (
-              <Link title={`Open the ${owner.kind}`} onClick={() => requestInspect({ clusterId: cluster.id, kind: ownerKind, namespace: target.namespace, name: owner.name })}>
+              <Link title={`Open the ${owner.kind}`} onClick={() => openDetail({ clusterId: cluster.id, kind: ownerKind, namespace: target.namespace, name: owner.name })}>
                 {owner.kind} {owner.name}
               </Link>
             ) : (
@@ -162,7 +157,7 @@ export function PodDetail({ cluster, target, onForward, onClose }: { cluster: Cl
           <RefreshButton fetching={pod.isFetching} onRefresh={() => pod.refetch()} />
           <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />} />
+        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} onForward={onForward} />} />
         {d && <InspectorFacts facts={facts} />}
       </InspectorHeader>
       {pod.error && <p className="text-xs text-destructive">{errorText(pod.error)}</p>}
@@ -361,7 +356,7 @@ export function Events({ events }: { events: KubeEvent[] }) {
 
 // PodList is a detail's pods by name, each opening its own detail, with what is wrong and how often it restarted.
 export function PodList({ cluster, pods }: { cluster: Cluster; pods: KubePod[] }) {
-  const requestInspect = useUIStore((s) => s.requestInspect);
+  const openDetail = useUIStore((s) => s.openDetail);
   return (
     <ul className="flex flex-col gap-0.5 text-xs">
       {pods.map((p) => (
@@ -370,7 +365,7 @@ export function PodList({ cluster, pods }: { cluster: Cluster; pods: KubePod[] }
             type="button"
             className="truncate text-left hover:underline"
             title={`Why is ${p.name} in this state?`}
-            onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: p.namespace, name: p.name })}
+            onClick={() => openDetail({ clusterId: cluster.id, kind: "pod", namespace: p.namespace, name: p.name })}
           >
             {p.name}
           </button>

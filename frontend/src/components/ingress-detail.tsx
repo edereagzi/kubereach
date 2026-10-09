@@ -43,7 +43,7 @@ function byHost(paths: IngressPath[]) {
 
 export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; target: Target; onClose: () => void }) {
   const q = useQuery(ingressQuery(cluster.id, target.namespace, target.name));
-  const requestInspect = useUIStore((s) => s.requestInspect);
+  const openDetail = useUIStore((s) => s.openDetail);
   const paths = q.data?.paths ?? [];
   return (
     <Inspector onClose={onClose}>
@@ -89,7 +89,7 @@ export function IngressDetail({ cluster, target, onClose }: { cluster: Cluster; 
                         type="button"
                         className="flex max-w-full min-w-0 items-center gap-1.5 text-left font-mono hover:underline underline-offset-2"
                         title={`Why is ${pod.name} in this state?`}
-                        onClick={() => requestInspect({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name })}
+                        onClick={() => openDetail({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name })}
                       >
                         <span className={cn("size-1.5 shrink-0 rounded-full", pod.ready ? "bg-green-500" : "bg-destructive")} />
                         <span className="truncate">{pod.name}</span>

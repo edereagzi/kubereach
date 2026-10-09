@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { InfoIcon } from "@phosphor-icons/react";
 import type { Cluster, KubeNode, NodePod, ResourceUsage } from "@bindings/internal/service";
 import { NodeActions } from "@/components/actions";
 import { cpuLabel, Events, memoryLabel, ReasonBadge, Section } from "@/components/pod-detail";
 import { RefreshButton } from "@/components/refresh-button";
-import { Inspector, InspectorActions, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle, useInspectorWalk } from "@/components/inspector";
+import { Inspector, InspectorActions, InspectorFacts, InspectorHeader, InspectorName, InspectorTitle, useDetailRow, useInspectorWalk } from "@/components/inspector";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DetailTabs } from "@/components/yaml-view";
@@ -75,19 +75,13 @@ export function ClusterNodes({ cluster }: { cluster: Cluster }) {
   const nodes = useQuery(nodesQuery(cluster.id));
   const usage = useQuery(nodeMetricsQuery(cluster.id)).data;
   const unmeasured = usage?.size === 0;
-  const [inspecting, setInspecting] = useState<KubeNode | null>(null);
+  const detail = useUIStore((s) => (s.detail?.clusterId === cluster.id && s.detail.kind === "node" ? s.detail.name : null));
+  const openDetail = useUIStore((s) => s.openDetail);
+  const inspecting = useDetailRow(nodes.data, (n) => n.name, detail);
+  const setInspecting = (n: KubeNode | null) => openDetail(n && { clusterId: cluster.id, kind: "node", namespace: "", name: n.name });
   const rows = useRef<KubeNode[]>([]);
   rows.current = nodes.data ?? [];
   useInspectorWalk(rows, inspecting, (n) => n.name, setInspecting);
-  const inspectRequest = useUIStore((s) => s.inspectRequest);
-  const requestInspect = useUIStore((s) => s.requestInspect);
-
-  // A pod's detail asked for its node; it opens once the list has it, and a node not listed is dropped.
-  useEffect(() => {
-    if (inspectRequest?.kind !== "node" || inspectRequest.clusterId !== cluster.id || nodes.isPending) return;
-    setInspecting(nodes.data?.find((n) => n.name === inspectRequest.name) ?? null);
-    requestInspect(null);
-  }, [inspectRequest, nodes.data, nodes.isPending, cluster.id, requestInspect]);
 
   if (nodes.error) {
     return (
@@ -214,7 +208,7 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
                 <p className="text-xs text-destructive">{d.podsError}</p>
               ) : d.pods?.length ? (
                 d.pods.map((p) => (
-                  <NodePodRow key={`${p.namespace}/${p.name}`} cluster={cluster} pod={p} allocatable={n.allocatable} measured={d.usageAvailable} onClose={onClose} />
+                  <NodePodRow key={`${p.namespace}/${p.name}`} cluster={cluster} pod={p} allocatable={n.allocatable} measured={d.usageAvailable} />
                 ))
               ) : (
                 <p className="text-xs text-muted-foreground">This node runs no pods.</p>
@@ -247,15 +241,10 @@ function NodeDetail({ cluster, node, onClose }: { cluster: Cluster; node: KubeNo
 
 // A pod's share of the node is what ranked it, so the row shows that share and the absolute numbers behind it.
 // Without metrics-server nothing measured the pod, so the row says what it reserved instead of claiming it uses nothing.
-function NodePodRow({ cluster, pod, allocatable, measured, onClose }: { cluster: Cluster; pod: NodePod; allocatable: ResourceUsage; measured: boolean; onClose: () => void }) {
-  const requestInspect = useUIStore((s) => s.requestInspect);
-  const selectTab = useUIStore((s) => s.selectTab);
+function NodePodRow({ cluster, pod, allocatable, measured }: { cluster: Cluster; pod: NodePod; allocatable: ResourceUsage; measured: boolean }) {
+  const openDetail = useUIStore((s) => s.openDetail);
   const share = Math.max(percent(pod.usage.cpu, allocatable.cpu), percent(pod.usage.memory, allocatable.memory));
-  const open = () => {
-    requestInspect({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name });
-    selectTab("overview");
-    onClose();
-  };
+  const open = () => openDetail({ clusterId: cluster.id, kind: "pod", namespace: pod.namespace, name: pod.name });
   return (
     <div className="grid grid-cols-[1fr_max-content_max-content] items-center gap-3 rounded-md border px-3 py-1.5 text-xs">
       <span className="flex min-w-0 items-center gap-2">

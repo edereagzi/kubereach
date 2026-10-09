@@ -1,10 +1,11 @@
-import { createContext, Fragment, useContext, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, useRef, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { CopyButton } from "@/components/copy-button";
 import { KindBadge, kindName, type Kind } from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { keyLabel, useCommand } from "@/lib/commands";
+import { replacePlace } from "@/lib/history";
 import { cn } from "@/lib/utils";
 
 // The element beside the view that an Inspector opens into.
@@ -100,9 +101,19 @@ export function useInspectorWalk<T>(rows: RefObject<T[]>, current: T | null, key
   const walk = (step: number) => () => {
     const next = current ? rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step] : step > 0 && rows.current[0];
     if (!next) return;
-    select(next);
+    // The first row opens a detail, a new place. The next rows replace it.
+    if (current) replacePlace(() => select(next));
+    else select(next);
     document.querySelector(`[data-row="${CSS.escape(key(next))}"]`)?.scrollIntoView({ block: "nearest" });
   };
   useCommand("next-row", walk(1));
   useCommand("previous-row", walk(-1), { enabled: !!current });
+}
+
+// The row of the open detail, found by its key. A row that leaves the list keeps its detail open until it is closed.
+export function useDetailRow<T>(rows: T[] | undefined, key: (row: T) => string, detail: string | null): T | null {
+  const last = useRef<T | null>(null);
+  const row = detail === null ? null : (rows?.find((r) => key(r) === detail) ?? (last.current && key(last.current) === detail ? last.current : null));
+  last.current = row;
+  return row;
 }

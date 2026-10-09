@@ -319,7 +319,7 @@ export function YamlDetail({ cluster, target, onForward, onClose }: { cluster: C
           <InspectorName kind={target.kind} namespace={target.namespace} name={target.name} />
           <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorActions open={onForward && <TargetVerbs cluster={cluster} target={target} onForward={onForward} onLeave={onClose} />} />
+        <InspectorActions open={onForward && <TargetVerbs cluster={cluster} target={target} onForward={onForward} />} />
       </InspectorHeader>
       <YamlView cluster={cluster} kind={target.kind} namespace={target.namespace} name={target.name} />
     </Inspector>

@@ -42,6 +42,10 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   // The panel keeps the arrows for its lines; Esc still closes the detail.
   ["↓ in the logs", press("ArrowDown"), "mac", "panel", "detail", "focus"],
   ["Esc in the logs", press("Escape"), "mac", "panel", "detail", "app"],
+  // A view's tab list keeps ← and →; ↓ opens the first row, as on the list.
+  ["→ on the view tabs", press("ArrowRight"), "mac", "tabs", "list", "focus"],
+  ["↓ on the view tabs", press("ArrowDown"), "linux", "tabs", "list", "app"],
+  ["Alt+← on the view tabs", press("ArrowLeft", "alt"), "windows", "tabs", "anywhere", "app"],
   ["⌘A in the logs", press("a", "meta"), "mac", "panel", "logs", "app"],
 
   // A Terminal on macOS keeps its own Cmd keys and every key without Cmd.
@@ -120,6 +124,18 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["⌘↓ in the logs", press("ArrowDown", "meta"), "mac", "panel", "logs", "app"],
   ["Ctrl+End in the logs", press("End", "ctrl"), "linux", "panel", "logs", "app"],
   ["Ctrl+End in the log filter", press("End", "ctrl"), "windows", "text", "logs", "app"],
+
+  // Back and forward. A text field and the YAML editor keep ⌘[ and ⌘] (CodeMirror indents with them), and a Terminal
+  // on Linux and Windows keeps Alt+arrows.
+  ["⌘[ on the list", press("[", "meta"), "mac", "other", "anywhere", "app"],
+  ["⌘] in a Terminal on macOS", press("]", "meta"), "mac", "terminal", "anywhere", "app"],
+  ["⌘[ in a text field", press("[", "meta"), "mac", "text", "anywhere", "focus"],
+  ["⌘] in the YAML editor", press("]", "meta"), "mac", "editor", "anywhere", "focus"],
+  ["⌘⇧[ in a text field", press("[", "meta shift"), "mac", "text", "cluster", "app"],
+  ["Alt+← on the list", press("ArrowLeft", "alt"), "windows", "other", "anywhere", "app"],
+  ["Alt+→ in the logs", press("ArrowRight", "alt"), "linux", "panel", "anywhere", "app"],
+  ["Alt+← in a text field", press("ArrowLeft", "alt"), "linux", "text", "anywhere", "focus"],
+  ["Alt+→ in the YAML editor", press("ArrowRight", "alt"), "windows", "editor", "anywhere", "focus"],
 ];
 
 for (const [name, p, platform, area, group, owner] of cases) assert.equal(keyOwner(p, platform, area, group), owner, name);

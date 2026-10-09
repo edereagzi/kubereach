@@ -34,8 +34,8 @@ export const mainTabs = ["overview", "nodes", "events", "forwards"] as const;
 export type MainTab = (typeof mainTabs)[number];
 const dockHeightKey = "dockHeight";
 
-// An object another tab asks the Overview to open the detail of.
-export type InspectRequest = { clusterId: string; kind: Kind; namespace: string; name: string };
+// The object whose detail is open. Overview or Nodes shows it when its list has it.
+export type Detail = { clusterId: string; kind: Kind; namespace: string; name: string };
 
 interface UIState {
   selectedClusterId: string | null;
@@ -79,8 +79,9 @@ interface UIState {
   setEventStatus: (status: EventStatus) => void;
   eventBuffers: Record<string, EventBuffer>;
   appendEvents: (batch: EventBatch) => void;
-  inspectRequest: InspectRequest | null;
-  requestInspect: (request: InspectRequest | null) => void;
+  detail: Detail | null;
+  // Also selects the Cluster and the view of the detail: Nodes for a node, else Overview.
+  openDetail: (detail: Detail | null) => void;
   shellSessions: Record<string, ShellStatus>;
   setShellStatus: (status: ShellStatus) => void;
   // An ended session stays on screen until closed, so its last output can be read.
@@ -100,11 +101,11 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedClusterId: null,
-  selectCluster: (id) => set({ selectedClusterId: id, routesOpen: false }),
+  selectCluster: (id) => set((s) => ({ selectedClusterId: id, routesOpen: false, detail: id === s.selectedClusterId ? s.detail : null })),
   routesOpen: false,
   openRoutes: () => set({ routesOpen: true }),
   activeTab: "overview",
-  selectTab: (tab) => set({ activeTab: tab }),
+  selectTab: (tab) => set((s) => (tab === s.activeTab ? {} : { activeTab: tab, detail: null })),
   dockOrder: [],
   dockPicks: {},
   openDock: (clusterId, sessionId) => set((s) => ({ dockPicks: { ...s.dockPicks, [clusterId]: sessionId }, dockOpen: true })),
@@ -200,8 +201,9 @@ export const useUIStore = create<UIState>((set) => ({
       const merged = [...byId.values()].sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, maxEvents);
       return { eventBuffers: { ...s.eventBuffers, [streamId]: { events: merged, version: buffer.version + 1 } } };
     }),
-  inspectRequest: null,
-  requestInspect: (request) => set({ inspectRequest: request }),
+  detail: null,
+  openDetail: (detail) =>
+    set(detail ? { detail, selectedClusterId: detail.clusterId, routesOpen: false, activeTab: detail.kind === "node" ? "nodes" : "overview" } : { detail: null }),
   shellSessions: {},
   setShellStatus: (status) =>
     set((s) => {

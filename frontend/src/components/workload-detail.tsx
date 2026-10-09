@@ -58,7 +58,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
   const r = w.rollout;
   const cronJob = w.job?.cronJob;
   const kind = workloadKind[w.kind] ?? "deploy";
-  const requestInspect = useUIStore((s) => s.requestInspect);
+  const openDetail = useUIStore((s) => s.openDetail);
   // The autoscaler, if one scales it, is why it runs the replicas it does.
   const hpa = useQuery(hpasQuery(cluster.id)).data?.find((h) => h.namespace === w.namespace && h.targetName === w.name && rowKind(h.targetKind) === kind);
   return (
@@ -70,7 +70,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
           <RefreshButton fetching={q.isFetching} onRefresh={() => q.refetch()} />
           <DeleteAction cluster={cluster} target={target} onDone={onClose} />
         </InspectorTitle>
-        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} onLeave={onClose} />} change={<WorkloadActions cluster={cluster} workload={w} />} />
+        <InspectorActions open={<TargetVerbs cluster={cluster} target={target} />} change={<WorkloadActions cluster={cluster} workload={w} />} />
         <InspectorFacts
           facts={[
             ["Ready", r && `${r.ready}/${r.desired}`],
@@ -103,7 +103,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
                       type="button"
                       className="hover:underline"
                       title="Open the HorizontalPodAutoscaler"
-                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "hpa", namespace: hpa.namespace, name: hpa.name })}
+                      onClick={() => openDetail({ clusterId: cluster.id, kind: "hpa", namespace: hpa.namespace, name: hpa.name })}
                     >
                       {hpa.name}
                     </button>
@@ -139,7 +139,7 @@ export function WorkloadDetail({ cluster, target, workload, onClose }: { cluster
                       type="button"
                       className="hover:underline"
                       title="Open the CronJob"
-                      onClick={() => requestInspect({ clusterId: cluster.id, kind: "cron", namespace: w.namespace, name: cronJob })}
+                      onClick={() => openDetail({ clusterId: cluster.id, kind: "cron", namespace: w.namespace, name: cronJob })}
                     >
                       {cronJob}
                     </button>

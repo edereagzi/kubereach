@@ -112,10 +112,7 @@ function WithObjects({ cluster, groups, ...props }: ListProps & { cluster: Clust
   const { groups: targets } = useTargets(cluster, true, true);
   const nodes = useQuery({ ...nodesQuery(cluster.id), enabled: false }).data ?? [];
   if (!props.query.trim()) return <List {...props} groups={groups} />;
-  const inspect = (kind: Kind, namespace: string, name: string) => () => {
-    useUIStore.getState().requestInspect({ clusterId: cluster.id, kind, namespace, name });
-    goTo(cluster.id, kind === "node" ? "nodes" : "overview");
-  };
+  const inspect = (kind: Kind, namespace: string, name: string) => () => useUIStore.getState().openDetail({ clusterId: cluster.id, kind, namespace, name });
   const objects: Item[] = [
     // Workloads come first: they are what the user looks for most, also when a Service or Ingress has the same name.
     ...[...targets].sort((a, b) => +(b.label === "Workloads") - +(a.label === "Workloads")).flatMap((g) => g.items).map((t) => ({ value: t.value, label: t.name, kind: t.kind, namespace: t.namespace, run: inspect(t.kind, t.namespace, t.name) })),

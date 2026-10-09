@@ -27,7 +27,7 @@ export const metricsTitle = (h: KubeHPA) => [hpaLabel(h), ...(h.metrics ?? []).m
 
 export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster; target: Target; hpa: KubeHPA; onClose: () => void }) {
   const q = useQuery(hpaQuery(cluster.id, target.namespace, target.name));
-  const requestInspect = useUIStore((s) => s.requestInspect);
+  const openDetail = useUIStore((s) => s.openDetail);
   const d = q.data;
   const h = d?.hpa ?? hpa;
   const kind = rowKind(h.targetKind);
@@ -51,7 +51,7 @@ export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster;
                   type="button"
                   className="hover:underline"
                   title={`Open the ${h.targetKind}`}
-                  onClick={() => requestInspect({ clusterId: cluster.id, kind, namespace: h.namespace, name: h.targetName })}
+                  onClick={() => openDetail({ clusterId: cluster.id, kind, namespace: h.namespace, name: h.targetName })}
                 >
                   {h.targetKind}/{h.targetName}
                 </button>

@@ -118,8 +118,7 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
 // Rows carry the whole message, so they are measured rather than fixed.
 function EventList({ cluster, events }: { cluster: Cluster; events: KubeEvent[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const requestInspect = useUIStore((s) => s.requestInspect);
-  const selectTab = useUIStore((s) => s.selectTab);
+  const openDetail = useUIStore((s) => s.openDetail);
   const virtualizer = useVirtualizer({
     count: events.length,
     getScrollElement: () => parentRef.current,
@@ -153,10 +152,7 @@ function EventList({ cluster, events }: { cluster: Cluster; events: KubeEvent[] 
                   type="button"
                   className="truncate text-left hover:underline"
                   title={`Open ${object} in the Overview`}
-                  onClick={() => {
-                    requestInspect({ clusterId: cluster.id, kind, namespace: e.namespace, name: e.name });
-                    selectTab("overview");
-                  }}
+                  onClick={() => openDetail({ clusterId: cluster.id, kind, namespace: e.namespace, name: e.name })}
                 >
                   {object}
                 </button>
