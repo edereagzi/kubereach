@@ -5,6 +5,8 @@ import { keyOwner, pressOf, type Area, type Group } from "@/lib/key-owner";
 declare module "@tanstack/react-hotkeys" {
   interface HotkeyMeta {
     command?: CommandId;
+    // Runs the Command without a key, as the palette does. The handler gets an event on the focused element.
+    run?: () => void;
   }
 }
 
@@ -32,7 +34,7 @@ type Command = {
 
 // Every key that the frontend handles through a Command is written here only.
 export const commands = {
-  "focus-cluster-filter": { name: "Filter clusters", group: "anywhere", keys: ["Mod+K"] },
+  palette: { name: "Command palette", group: "anywhere", keys: ["Mod+K", "Mod+Shift+P"] },
   "show-shortcuts": { name: "Show shortcuts", group: "anywhere", keys: ["?"] },
   "close-dialog": { name: "Close a dialog or menu", group: "anywhere", keys: ["Escape"], native: true },
   quit: { name: "Quit Kubereach", group: "anywhere", keys: ["Mod+Q"], native: true },
@@ -116,6 +118,13 @@ const withShift = (keys: Hotkey[]) => {
   return [...keys, ...shifted.filter((k) => !catalogKeys.has(k))];
 };
 
+// An event that was not dispatched has no target, so it gets the focused element, as a key press would.
+const focusedEvent = () => {
+  const e = new KeyboardEvent("keydown");
+  Object.defineProperty(e, "target", { value: document.activeElement });
+  return e;
+};
+
 export const inPanel = (e: KeyboardEvent) => e.target instanceof Element && !!e.target.closest("[data-panel]");
 
 // Makes a Command available while the component is mounted. target limits it to keys pressed in that element. panel
@@ -135,12 +144,22 @@ export function useCommand(
         run(e);
       },
     })),
-    { enabled, target, meta: { name, command: id }, preventDefault: false, stopPropagation: false, ignoreInputs: false, conflictBehavior: "allow" },
+    { enabled, target, meta: { name, command: id, run: () => run(focusedEvent()) }, preventDefault: false, stopPropagation: false, ignoreInputs: false, conflictBehavior: "allow" },
   );
 }
 
-// Tells whether a Command can run now: it is native, or a mounted component made it available and enabled it.
+// The Commands that a mounted component made available and enabled, with the function that runs each one.
+export function useRunnable() {
+  const runs = new Map<CommandId, () => void>();
+  for (const { options } of useHotkeyRegistrations().hotkeys) {
+    const { command, run } = options.meta ?? {};
+    if (options.enabled && command && run && !runs.has(command)) runs.set(command, run);
+  }
+  return runs;
+}
+
+// Tells whether a Command can run now: it is native, or it is runnable.
 export function useAvailable() {
-  const on = new Set(useHotkeyRegistrations().hotkeys.flatMap((h) => (h.options.enabled ? [h.options.meta?.command] : [])));
-  return (id: CommandId) => "native" in commands[id] || on.has(id);
+  const runs = useRunnable();
+  return (id: CommandId) => "native" in commands[id] || runs.has(id);
 }

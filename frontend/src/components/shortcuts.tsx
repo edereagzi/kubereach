@@ -15,6 +15,15 @@ const Kbd = ({ children }: { children: ReactNode }) => (
   <kbd className="min-w-5 rounded border border-b-2 px-1 text-center font-sans text-[11px] leading-4 text-muted-foreground">{children}</kbd>
 );
 
+export const Keys = ({ id }: { id: CommandId }) =>
+  shownKeys(id).map((k) =>
+    k === "…" ? (
+      <span key={k} className="text-muted-foreground">…</span>
+    ) : (
+      <Kbd key={k}>{formatKey(k)}</Kbd>
+    ),
+  );
+
 // Made from the catalog, so every key that works is listed. A key that is not available here and now is dimmed.
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const available = useAvailable();
@@ -35,13 +44,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
                     <div key={id} className={cn("flex items-center justify-between gap-4", !available(id) && "opacity-50")}>
                       <dt>{commands[id].name}</dt>
                       <dd className="flex gap-1">
-                        {shownKeys(id).map((k) =>
-                          k === "…" ? (
-                            <span key={k} className="text-muted-foreground">…</span>
-                          ) : (
-                            <Kbd key={k}>{formatKey(k)}</Kbd>
-                          ),
-                        )}
+                        <Keys id={id} />
                       </dd>
                     </div>
                   ))}

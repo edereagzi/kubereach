@@ -126,15 +126,18 @@ const make = (kind: Kind, { namespace, name, created }: { namespace: string; nam
 });
 
 // overview adds Ingresses, Jobs, HorizontalPodAutoscalers, PersistentVolumeClaims, ConfigMaps and Secrets, which only the Overview lists; a role that cannot read one still gets the rest.
-export function useTargets(cluster: Cluster, overview = false) {
-  const services = useQuery(servicesQuery(cluster.id));
-  const workloads = useQuery(workloadsQuery(cluster.id));
-  const pods = useQuery(podsQuery(cluster.id));
-  const ingresses = useQuery({ ...ingressesQuery(cluster.id), enabled: overview });
-  const hpas = useQuery({ ...hpasQuery(cluster.id), enabled: overview });
-  const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: overview });
-  const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: overview });
-  const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: overview });
+// cached gives only the lists already fetched, and asks the cluster for nothing.
+export function useTargets(cluster: Cluster, overview = false, cached = false) {
+  const fetch = !cached;
+  const fetchOverview = overview && fetch;
+  const services = useQuery({ ...servicesQuery(cluster.id), enabled: fetch });
+  const workloads = useQuery({ ...workloadsQuery(cluster.id), enabled: fetch });
+  const pods = useQuery({ ...podsQuery(cluster.id), enabled: fetch });
+  const ingresses = useQuery({ ...ingressesQuery(cluster.id), enabled: fetchOverview });
+  const hpas = useQuery({ ...hpasQuery(cluster.id), enabled: fetchOverview });
+  const pvcs = useQuery({ ...pvcsQuery(cluster.id), enabled: fetchOverview });
+  const configMaps = useQuery({ ...configMapsQuery(cluster.id), enabled: fetchOverview });
+  const secrets = useQuery({ ...secretsQuery(cluster.id), enabled: fetchOverview });
   // Listed the way a request travels and an incident is traced: in at the Ingress, out at the pod.
   const groups = useMemo(() => {
     const groups: TargetGroup[] = [

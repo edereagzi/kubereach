@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FileIcon,
@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 export function Sidebar() {
   const queryClient = useQueryClient();
   const [needle, setNeedle] = useState("");
-  const filter = useRef<HTMLInputElement>(null);
   const invalidateConfig = () => queryClient.invalidateQueries({ queryKey: ["config"] });
   const importKubeconfig = useMutation({ mutationFn: () => ClusterService.Import(), onSettled: invalidateConfig });
   // Dropped export files queue up for the import dialog; everything else is imported as a kubeconfig in one go.
@@ -46,7 +45,6 @@ export function Sidebar() {
   const importError = importKubeconfig.error ?? importDropped.error;
   const [importingRemote, setImportingRemote] = useState(false);
 
-  useCommand("focus-cluster-filter", () => filter.current?.focus());
   // Log streams, Shells and Terminals are not queries, so they stay open.
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["cluster"] });
   useCommand("refresh", refresh);
@@ -85,12 +83,9 @@ export function Sidebar() {
       {importingRemote && <RemoteImportDialog onClose={() => setImportingRemote(false)} />}
       <div className="px-3 pb-2">
         <InputGroup className="h-7 bg-background/60">
-          <InputGroupInput ref={filter} placeholder="Filter clusters" value={needle} onChange={(e) => setNeedle(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setNeedle("")} />
+          <InputGroupInput placeholder="Filter clusters" value={needle} onChange={(e) => setNeedle(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setNeedle("")} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
-          </InputGroupAddon>
-          <InputGroupAddon align="inline-end">
-            <kbd className="font-sans text-[10px] text-muted-foreground">{keyLabel("focus-cluster-filter")}</kbd>
           </InputGroupAddon>
         </InputGroup>
       </div>
@@ -373,7 +368,7 @@ function ClusterRow({ cluster }: { cluster: Cluster }) {
 }
 
 // Unreachable is the normal state of a cluster whose Route is down, so it is a hollow ring rather than an error colour.
-function ReachabilityDot({ cluster }: { cluster: Cluster }) {
+export function ReachabilityDot({ cluster }: { cluster: Cluster }) {
   const { status, fetchStatus, error, data } = useQuery(reachabilityQuery(cluster.id));
   return (
     <span

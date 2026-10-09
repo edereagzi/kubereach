@@ -10,6 +10,7 @@ import { ClusterNodes, NodeProblems } from "@/components/nodes";
 import { ClusterEvents, eventStreamFor } from "@/components/events";
 import { forwardsFor, PortForwards } from "@/components/forwards";
 import { InspectorSlot } from "@/components/inspector";
+import { Palette } from "@/components/palette";
 import { logDetail, LogTab } from "@/components/logs";
 import { openTerminal, ShellView, TerminalView } from "@/components/terminal";
 import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, statusLabel, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
@@ -60,6 +61,7 @@ export function Shell() {
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">{routesOpen ? <RoutesPage /> : <ClusterTabs />}</main>
       <RouteConnector />
+      <Palette />
     </div>
   );
 }
