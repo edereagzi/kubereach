@@ -15,3 +15,6 @@ const TailSize = tailSize
 func (s *Service) ServeForwardListener(pf PortForward, ln net.Listener) {
 	s.acceptForward(context.Background(), &forwardConn{ln: ln, status: ForwardStatus{Forward: pf}})
 }
+
+// BareUser gives the user name without the Windows domain or machine part.
+var BareUser = bareUser

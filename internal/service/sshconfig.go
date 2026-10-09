@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -182,6 +183,9 @@ func (h sshHost) server() SSHServer {
 	if srv.User == "" {
 		if u, err := user.Current(); err == nil {
 			srv.User = u.Username
+			if runtime.GOOS == "windows" {
+				srv.User = bareUser(srv.User)
+			}
 		}
 	}
 	if h.keyFile != "" {
@@ -193,6 +197,11 @@ func (h sshHost) server() SSHServer {
 		}
 	}
 	return srv
+}
+
+// bareUser removes the DOMAIN\ or MACHINE\ part that Windows puts before the user name.
+func bareUser(name string) string {
+	return name[strings.LastIndexByte(name, '\\')+1:]
 }
 
 func sameServers(a, b []SSHServer) bool {

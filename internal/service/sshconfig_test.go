@@ -89,3 +89,11 @@ func TestImportSSHConfig_MapsHostsAndProxyJumpChains(t *testing.T) {
 		t.Errorf("config has %d routes, want %d", len(cfg.Routes), len(want))
 	}
 }
+
+func TestBareUser_DropsTheWindowsDomain(t *testing.T) {
+	for in, want := range map[string]string{`DOMAIN\eray`: "eray", `MACHINE\eray`: "eray", `A\B\eray`: "eray", "eray": "eray"} {
+		if got := service.BareUser(in); got != want {
+			t.Errorf("BareUser(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
