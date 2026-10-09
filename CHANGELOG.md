@@ -1,9 +1,36 @@
 # Changelog
 
-What changed in each release, as the release page and Kubereach's update window show it.
-Add each change under Unreleased; `scripts/release.sh X.Y.Z` turns it into the version's section, then commits, tags and pushes.
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- ⌘K (Ctrl+K on Linux and Windows) opens a Command palette. It finds Clusters, views, objects and Commands.
+- ⌘[ and ⌘] (Alt+← and Alt+→ on Linux and Windows) and the mouse's back and forward buttons go back and forward through the Clusters, views and details that you opened.
+- ⌘F (Ctrl+Shift+F on Linux and Windows) finds text in a Terminal or Shell.
+- New keys for views, rows, the open detail, the panel, the YAML editor and logs. Press ? to see all of them.
+
+### Changed
+
+- ⌘K opens the Command palette. It no longer goes to the Cluster filter.
+- ⌘R refreshes the data and keeps every Terminal, Shell and log stream open. It no longer reloads the window.
+- On Linux and Windows, a Terminal or Shell gets the Ctrl keys. Add Shift to use an app key, for example Ctrl+Shift+C to copy and Ctrl+Shift+W to close the tab.
+- The keyboard shortcuts list shows the keys of your platform.
+
+### Fixed
+
+- Keys no longer act behind an open dialog or menu.
+- Keys keep working after a select box was used.
+- The keyboard shortcuts list scrolls when it is taller than the window.
+- Esc in the Cluster filter or the log filter no longer closes the open detail.
+
+### Security
+
+- Kubereach is built with Go 1.26.9 and golang.org/x/net v0.61.0, which fix known vulnerabilities.
 
 ## [0.8.1] - 2026-10-08
 
