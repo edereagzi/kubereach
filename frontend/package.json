@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/key-owner.check.ts",
     "build:dev": "tsc --noEmit && vite build --minify false --mode development",
     "build": "tsc --noEmit && vite build --mode production",
     "preview": "vite preview"

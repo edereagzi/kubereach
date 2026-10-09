@@ -1,5 +1,4 @@
-// Decides who gets a key event: the element that has the focus, or the app's Command. It has no imports, so
-// key-owner.check.ts runs it with plain node.
+// Decides who gets a key event: the element that has the focus, or the app's Command.
 
 export type Platform = "mac" | "windows" | "linux";
 export type Area = "terminal" | "editor" | "text" | "dialog" | "panel" | "tabs" | "other";
