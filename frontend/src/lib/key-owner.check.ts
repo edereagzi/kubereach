@@ -25,8 +25,8 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["? in a text field", press("?", "shift"), "windows", "text", "anywhere", "focus"],
   ["↓ in a text field", press("ArrowDown"), "mac", "text", "detail", "focus"],
   ["Esc in the log filter", press("Escape"), "mac", "text", "detail", "focus"],
-  // The YAML editor is contenteditable, so it is a text field.
-  ["Esc in the YAML editor", press("Escape"), "mac", "text", "detail", "focus"],
+  // The YAML editor keeps plain keys as a text field does. Esc there cancels the edit, not the detail.
+  ["Esc in the YAML editor", press("Escape"), "mac", "editor", "detail", "focus"],
   ["⌘K in a text field", press("k", "meta"), "mac", "text", "anywhere", "app"],
   ["Ctrl+J in a text field", press("j", "ctrl"), "linux", "text", "panel", "app"],
   // A text field has no use for a function key.
@@ -99,8 +99,8 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
   ["J in the logs", press("j"), "mac", "panel", "list", "app"],
   ["J in a text field", press("j"), "mac", "text", "list", "focus"],
   ["S in the log filter", press("s"), "linux", "text", "detail", "focus"],
-  ["E in the YAML editor", press("e"), "mac", "text", "detail", "focus"],
-  ["⇧F in the YAML editor", press("F", "shift"), "windows", "text", "detail", "focus"],
+  ["E in the YAML editor", press("e"), "mac", "editor", "detail", "focus"],
+  ["⇧F in the YAML editor", press("F", "shift"), "windows", "editor", "detail", "focus"],
   ["L in a Terminal on macOS", press("l"), "mac", "terminal", "detail", "focus"],
   ["S in a Terminal on Linux", press("s"), "linux", "terminal", "detail", "focus"],
   ["Y with a confirmation open", press("y"), "mac", "dialog", "detail", "focus"],
@@ -108,6 +108,18 @@ const cases: [string, Press, Platform, Area, Group, Owner][] = [
 
   // An area's own Commands run in it.
   ["⌘K clears a Terminal", press("k", "meta"), "mac", "terminal", "terminal", "app"],
+  ["Esc cancels the YAML edit", press("Escape"), "linux", "editor", "yaml", "app"],
+  ["⌘S reviews the YAML edit", press("s", "meta"), "mac", "editor", "yaml", "app"],
+  ["Ctrl+S reviews the YAML edit", press("s", "ctrl"), "windows", "editor", "yaml", "app"],
+  ["⌘J in the YAML editor", press("j", "meta"), "mac", "editor", "panel", "app"],
+  // CodeMirror's search closes on Esc first.
+  ["Esc that closed the editor's search", press("Escape", "handled"), "mac", "editor", "yaml", "focus"],
+
+  // The logs keys.
+  ["⌘S in the logs", press("s", "meta"), "mac", "panel", "logs", "app"],
+  ["⌘↓ in the logs", press("ArrowDown", "meta"), "mac", "panel", "logs", "app"],
+  ["Ctrl+End in the logs", press("End", "ctrl"), "linux", "panel", "logs", "app"],
+  ["Ctrl+End in the log filter", press("End", "ctrl"), "windows", "text", "logs", "app"],
 ];
 
 for (const [name, p, platform, area, group, owner] of cases) assert.equal(keyOwner(p, platform, area, group), owner, name);

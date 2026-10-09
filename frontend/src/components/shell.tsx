@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
 import { mainTabs, sessionEnded, useUIStore, type MainTab } from "@/store";
-import { keyLabel, platform, useCommand } from "@/lib/commands";
+import { inPanel, keyLabel, platform, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 
 // The Dock sets closeDockTab while the panel shows a tab. Then ⌘W closes that tab, not the window.
@@ -49,6 +49,12 @@ export function Shell() {
   useCommand("zoom-out", () => void Window.ZoomOut(), { enabled: other });
   useCommand("zoom-reset", () => void Window.ZoomReset(), { enabled: other });
   useCommand("full-screen", () => void Window.ToggleFullscreen(), { enabled: other });
+  // When no Command took ⌘S, the webview must not open its own save dialog.
+  useEffect(() => {
+    const stop = (e: KeyboardEvent) => (platform === "mac" ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "s" && e.preventDefault();
+    window.addEventListener("keydown", stop);
+    return () => window.removeEventListener("keydown", stop);
+  }, []);
   return (
     <div className="flex h-screen bg-background text-foreground">
       <Sidebar />
@@ -57,8 +63,6 @@ export function Shell() {
     </div>
   );
 }
-
-const inPanel = (e: KeyboardEvent) => e.target instanceof Element && !!e.target.closest("[data-panel]");
 
 function ClusterTabs() {
   const selectedClusterId = useUIStore((s) => s.selectedClusterId);
@@ -69,9 +73,9 @@ function ClusterTabs() {
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
   const routeState = useUIStore((s) => (cluster?.route ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle) : State.StateConnected));
   // The view keys wrap at the ends. In the panel the same keys change the panel tab.
-  const stepView = (by: number) => (e: KeyboardEvent) => !inPanel(e) && selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
-  useCommand("previous-view", stepView(-1), { enabled: !!cluster });
-  useCommand("next-view", stepView(1), { enabled: !!cluster });
+  const stepView = (by: number) => () => selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
+  useCommand("previous-view", stepView(-1), { enabled: !!cluster, panel: false });
+  useCommand("next-view", stepView(1), { enabled: !!cluster, panel: false });
   // The filter of the focused area: the panel's, or the active view's (an old view is inert while it goes). The key
   // also runs where there is no filter, so that WebView2 does not open its own find bar.
   useCommand("filter-view", (e) => document.querySelector<HTMLElement>(inPanel(e) ? "[data-panel] [data-filter]" : "[role=tabpanel]:not([inert]) [data-filter]")?.focus(), { enabled: !!cluster });

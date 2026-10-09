@@ -139,9 +139,13 @@ function YamlEditor({ cluster, kind, namespace, name, onDone }: YamlProps & { on
     onError: (e) => isConflict(e) && setDiff(null),
   });
   useEffect(() => load.mutate(), []);
+  const root = useRef<HTMLDivElement>(null);
+  useCommand("cancel-yaml", onDone, { target: root });
+  // ⌘S in the panel saves the logs.
+  useCommand("review-yaml", () => review.mutate(), { enabled: draft !== null && !review.isPending, panel: false });
   const failure = load.error ?? review.error ?? (isConflict(apply.error) ? apply.error : null);
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-2">
       {draft === null ? (
         <p className={cn("rounded-md bg-muted/50 px-3 py-2 text-xs", load.error ? "text-destructive" : "text-muted-foreground")}>
           {load.error ? errorText(load.error) : "Loading…"}
@@ -172,10 +176,10 @@ function YamlEditor({ cluster, kind, namespace, name, onDone }: YamlProps & { on
       )}
       {diff === "" && <p className="text-xs text-muted-foreground">Nothing would change.</p>}
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onDone}>
+        <Button variant="ghost" size="sm" title={`Cancel (${keyLabel("cancel-yaml")})`} onClick={onDone}>
           Cancel
         </Button>
-        <Button size="sm" disabled={draft === null || review.isPending} onClick={() => review.mutate()}>
+        <Button size="sm" title={`Review changes (${keyLabel("review-yaml")})`} disabled={draft === null || review.isPending} onClick={() => review.mutate()}>
           Review changes
         </Button>
       </div>
@@ -223,7 +227,8 @@ const editorTheme = EditorView.theme({
   ".cm-button": { backgroundImage: "none", backgroundColor: "var(--muted)", border: "1px solid var(--border)", borderRadius: "4px" },
 });
 
-// CodeEditor reads value once; edits flow out through onChange. Tab indents; Escape then Tab leaves the editor.
+// CodeEditor reads value once; edits flow out through onChange. Tab indents; Esc cancels the edit (see YamlEditor), and
+// Ctrl+M (⇧⌥M on macOS) lets Tab leave the editor.
 function CodeEditor({ label, value, onChange }: { label: string; value: string; onChange: (text: string) => void }) {
   const parent = useRef<HTMLDivElement>(null);
   const changed = useRef(onChange);

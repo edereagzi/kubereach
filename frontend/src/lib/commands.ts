@@ -13,6 +13,7 @@ export const groups: Record<Group, string> = {
   cluster: "In a cluster",
   list: "In a list",
   detail: "With a detail open",
+  yaml: "In the YAML editor",
   panel: "Panel",
   logs: "In logs",
   terminal: "In a Terminal or Shell",
@@ -55,12 +56,16 @@ export const commands = {
   "details-tab": { name: "Details tab", group: "detail", keys: ["D"] },
   "yaml-tab": { name: "YAML tab", group: "detail", keys: ["Y"] },
   "edit-yaml": { name: "Edit the YAML", group: "detail", keys: ["E"] },
+  "review-yaml": { name: "Review and apply the change", group: "yaml", keys: ["Mod+S"] },
+  "cancel-yaml": { name: "Cancel the edit", group: "yaml", keys: ["Escape"] },
   "toggle-panel": { name: "Show or hide the panel", group: "panel", keys: ["Mod+J"] },
   "new-terminal": { name: "New Terminal", group: "panel", keys: ["Mod+T"] },
   "close-tab": { name: "Close the panel tab, or hide the window", group: "panel", keys: ["Mod+W"] },
   "previous-tab": { name: "Previous panel tab", group: "panel", keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] } },
   "next-tab": { name: "Next panel tab", group: "panel", keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] } },
   "select-log-lines": { name: "Select every line", group: "logs", keys: ["Mod+A"] },
+  "save-logs": { name: "Save the lines shown", group: "logs", keys: ["Mod+S"] },
+  "follow-logs": { name: "Go to the last line and follow", group: "logs", keys: { mac: ["Mod+ArrowDown"], other: ["Mod+End"] } },
   // The xterm key handler runs these. On Linux and Windows the Ctrl keys belong to the shell, so these keys have Shift.
   "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: ["Mod+Shift+K"] }, native: true },
   "copy-terminal": { name: "Copy", group: "terminal", keys: { mac: ["Mod+C"], other: ["Mod+Shift+C"] }, native: true },
@@ -96,6 +101,7 @@ function focusArea(e: KeyboardEvent): Area {
   if ([...document.querySelectorAll("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")].some((el) => !el.closest("[data-closed]"))) return "dialog";
   const el = e.target instanceof HTMLElement ? e.target : null;
   if (el?.closest(".xterm")) return "terminal";
+  if (el?.closest(".cm-editor")) return "editor";
   if (el?.closest("input, textarea, select") || el?.isContentEditable) return "text";
   if (el?.closest("[data-panel], [role=tablist]")) return "panel";
   return "other";
@@ -110,14 +116,21 @@ const withShift = (keys: Hotkey[]) => {
   return [...keys, ...shifted.filter((k) => !catalogKeys.has(k))];
 };
 
-// Makes a Command available while the component is mounted. target limits it to keys pressed in that element.
-export function useCommand(id: CommandId, run: (e: KeyboardEvent) => void, { enabled = true, target }: { enabled?: boolean; target?: RefObject<HTMLElement | null> } = {}) {
+export const inPanel = (e: KeyboardEvent) => e.target instanceof Element && !!e.target.closest("[data-panel]");
+
+// Makes a Command available while the component is mounted. target limits it to keys pressed in that element. panel
+// limits it to keys pressed in the panel (true) or outside it (false). A Command that does not apply leaves the key to the next one.
+export function useCommand(
+  id: CommandId,
+  run: (e: KeyboardEvent) => void,
+  { enabled = true, target, panel }: { enabled?: boolean; target?: RefObject<HTMLElement | null>; panel?: boolean } = {},
+) {
   const { name, group } = commands[id];
   useHotkeys(
     withShift(keysOf(id)).map((hotkey) => ({
       hotkey,
       callback: (e: KeyboardEvent) => {
-        if (keyOwner(pressOf(e), platform, focusArea(e), group) !== "app") return;
+        if ((panel !== undefined && inPanel(e) !== panel) || keyOwner(pressOf(e), platform, focusArea(e), group) !== "app") return;
         e.preventDefault();
         run(e);
       },

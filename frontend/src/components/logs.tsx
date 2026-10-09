@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenu
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { podsQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
-import { useCommand } from "@/lib/commands";
+import { keyLabel, useCommand } from "@/lib/commands";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // One stable colour per pod name, so a pod keeps its colour while others join and leave.
@@ -189,6 +189,7 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
       return LogService.Save(stream.source.name, (matcher ? lines.filter(matcher) : lines).map((l) => `${lineText(l, cols)}\n`).join(""));
     },
   });
+  useCommand("save-logs", () => save.mutate(), { enabled: !save.isPending, panel: true });
   const containers = stream.allContainers ?? [];
   return (
     <>
@@ -241,7 +242,7 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
       <Button variant={wrap ? "secondary" : "ghost"} size="icon-sm" title="Wrap long lines" aria-pressed={wrap} onClick={toggleWrap}>
         <TextAlignLeftIcon />
       </Button>
-      <Button variant="ghost" size="sm" className="text-muted-foreground" title="Save the lines shown to a file" disabled={save.isPending} onClick={() => save.mutate()}>
+      <Button variant="ghost" size="sm" className="text-muted-foreground" title={`Save the lines shown to a file (${keyLabel("save-logs")})`} disabled={save.isPending} onClick={() => save.mutate()}>
         Save
       </Button>
       <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => clearLogs(stream.id)}>
@@ -325,6 +326,7 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
     },
     { target: parentRef },
   );
+  useCommand("follow-logs", () => setFollowing(true), { enabled: !following, panel: true });
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => parentRef.current,
@@ -450,7 +452,7 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
           </span>
         )}
         {!following && (
-          <Button size="sm" className="pointer-events-auto rounded-full shadow-md" onClick={() => setFollowing(true)}>
+          <Button size="sm" className="pointer-events-auto rounded-full shadow-md" title={`Follow (${keyLabel("follow-logs")})`} onClick={() => setFollowing(true)}>
             <ArrowDownIcon />
             {behind > 0 ? `${behind} new lines` : "Follow"}
           </Button>

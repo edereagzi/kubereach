@@ -2,8 +2,8 @@
 // key-owner.check.ts runs it with plain node.
 
 export type Platform = "mac" | "windows" | "linux";
-export type Area = "terminal" | "text" | "dialog" | "panel" | "other";
-export type Group = "anywhere" | "cluster" | "list" | "detail" | "panel" | "logs" | "terminal" | "search" | "typing";
+export type Area = "terminal" | "editor" | "text" | "dialog" | "panel" | "other";
+export type Group = "anywhere" | "cluster" | "list" | "detail" | "yaml" | "panel" | "logs" | "terminal" | "search" | "typing";
 // handled: an element already acted on the key (defaultPrevented), for example a menu that closed on Esc.
 export type Press = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; handled: boolean };
 export type Owner = "focus" | "app";
@@ -21,13 +21,13 @@ const otherAppKeys = /^([0-9=-]|PageUp|PageDown)$/;
 export function keyOwner(p: Press, platform: Platform, area: Area, group: Group): Owner {
   const key = p.key.length === 1 ? p.key.toLowerCase() : p.key;
   if (p.handled) return "focus";
-  // A Terminal's own Commands run in it.
-  if (area === "terminal" && group === "terminal") return "app";
+  // A Terminal's and the YAML editor's own Commands run in them.
+  if ((area === "terminal" && group === "terminal") || (area === "editor" && group === "yaml")) return "app";
   // An open dialog or menu takes every key first.
   if (area === "dialog") return "focus";
   if (area === "terminal") return terminalKeyOwner(p, key, platform);
   if ((platform === "mac" ? p.meta : p.ctrl) || /^F\d+$/.test(key)) return "app";
-  if (area === "text") return "focus";
+  if (area === "text" || area === "editor") return "focus";
   // The panel's lines and a tab list scroll and move with the arrows.
   if (area === "panel" && key.startsWith("Arrow")) return "focus";
   return "app";
