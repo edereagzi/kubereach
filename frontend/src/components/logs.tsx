@@ -213,6 +213,7 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
       )}
       <InputGroup className="h-7 w-auto min-w-40 flex-1">
         <InputGroupInput
+          data-filter
           placeholder="Filter lines, or field=value"
           value={view.query}
           onChange={(e) => patch({ query: e.target.value })}

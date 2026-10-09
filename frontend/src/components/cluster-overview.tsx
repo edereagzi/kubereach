@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
 import { useUIStore } from "@/store";
-import { useCommand } from "@/lib/commands";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // Every search word must be in the row's name; the kind is picked from the menu beside it, which lists that kind alone,
@@ -222,7 +221,6 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [forwarding, setForwarding] = useState<Target | null>(null);
   const [inspecting, setInspecting] = useState<Target | null>(null);
-  const search = useRef<HTMLInputElement>(null);
   const forwardFrom = (t: Target) => {
     setInspecting(null);
     setForwarding(t);
@@ -236,8 +234,6 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     setInspecting(liveGroups.flatMap((g) => g.items).find((t) => t.value === targetValue(inspectRequest.kind, inspectRequest.namespace, inspectRequest.name)) ?? null);
     requestInspect(null);
   }, [inspectRequest, pending, liveGroups, cluster.id, requestInspect]);
-
-  useCommand("filter-view", () => search.current?.focus());
 
   const words = useMemo(() => needle.toLowerCase().split(/\s+/).filter(Boolean), [needle]);
   // A kind the scope no longer has lets go, rather than leave the list empty with no way to see why.
@@ -405,7 +401,7 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {inspecting?.kind === "svc" && <YamlDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="h-7 w-72">
-          <InputGroupInput ref={search} placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput data-filter placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>

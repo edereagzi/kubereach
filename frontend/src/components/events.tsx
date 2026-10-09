@@ -81,7 +81,7 @@ export function ClusterEvents({ cluster }: { cluster: Cluster }) {
           {plural(events.length, "event")} · {plural(warnings.length, "warning")}
         </span>
         <InputGroup className="h-7 w-72">
-          <InputGroupInput placeholder="Filter by kind, object, reason or message" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput data-filter placeholder="Filter by kind, object, reason or message" value={needle} onChange={(e) => setNeedle(e.target.value)} />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>

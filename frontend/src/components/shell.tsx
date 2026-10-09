@@ -32,7 +32,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
-import { sessionEnded, useUIStore, type MainTab } from "@/store";
+import { mainTabs, sessionEnded, useUIStore, type MainTab } from "@/store";
 import { keyLabel, platform, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +58,8 @@ export function Shell() {
   );
 }
 
+const inPanel = (e: KeyboardEvent) => e.target instanceof Element && !!e.target.closest("[data-panel]");
+
 function ClusterTabs() {
   const selectedClusterId = useUIStore((s) => s.selectedClusterId);
   const activeTab = useUIStore((s) => s.activeTab);
@@ -66,6 +68,13 @@ function ClusterTabs() {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
   const routeState = useUIStore((s) => (cluster?.route ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle) : State.StateConnected));
+  // The view keys wrap at the ends. In the panel the same keys change the panel tab.
+  const stepView = (by: number) => (e: KeyboardEvent) => !inPanel(e) && selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
+  useCommand("previous-view", stepView(-1), { enabled: !!cluster });
+  useCommand("next-view", stepView(1), { enabled: !!cluster });
+  // The filter of the focused area: the panel's, or the active view's (an old view is inert while it goes). The key
+  // also runs where there is no filter, so that WebView2 does not open its own find bar.
+  useCommand("filter-view", (e) => document.querySelector<HTMLElement>(inPanel(e) ? "[data-panel] [data-filter]" : "[role=tabpanel]:not([inert]) [data-filter]")?.focus(), { enabled: !!cluster });
   // Behind a Route that is down every view would only repeat the RouteBanner, so they stay empty until it connects;
   // mounted while connecting, they would list before the SSH link is up and fail. Reconnecting keeps them, so a blip
   // does not throw away a filter or an open detail.
@@ -289,7 +298,7 @@ function Dock({ cluster }: { cluster: Cluster }) {
   };
 
   // An empty dock has nothing to show, so it stays a bar.
-  // data-panel tells the key Commands that the focus is in the panel (see focusArea).
+  // data-panel tells the key Commands that the focus is in the panel (see focusArea and inPanel).
   const expanded = open && !!active;
   return (
     <section ref={sectionRef} data-panel className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>

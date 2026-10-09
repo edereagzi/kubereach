@@ -30,7 +30,8 @@ type EventBuffer = { events: KubeEvent[]; version: number };
 // A closed session's stop is still on its way, so its last transitions arrive after it left the store.
 const closedSessions = new Set<string>();
 
-export type MainTab = "overview" | "nodes" | "events" | "forwards";
+export const mainTabs = ["overview", "nodes", "events", "forwards"] as const;
+export type MainTab = (typeof mainTabs)[number];
 const dockHeightKey = "dockHeight";
 
 // An object another tab asks the Overview to open the detail of.
