@@ -24,7 +24,7 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
   const forwardable = target.kind === "svc" || target.kind === "pod";
   useCommand("logs", () => (stream ? openDock(cluster.id, stream) : startLogs.mutate(target)), { enabled: hasLogs && !startLogs.isPending });
   useCommand("shell", () => shell && openDock(cluster.id, shell), { enabled: !!shell });
-  useCommand("forward", () => onForward?.(), { enabled: !!onForward && forwardable });
+  useCommand("forward", () => (forwarded ? selectTab("forwards") : onForward?.()), { enabled: forwardable && (forwarded || !!onForward) });
 
   return (
     <>
@@ -34,7 +34,7 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
             variant="outline"
             size="xs"
             className={active}
-            title="Forwarding"
+            title={`Forwarding (${keyLabel("forward")})`}
             onClick={() => selectTab("forwards")}
           >
             <ArrowsLeftRightIcon />
