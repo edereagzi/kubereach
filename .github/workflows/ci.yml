@@ -21,6 +21,7 @@ jobs:
         with:
           version: v2.13
       - run: go test ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   kind:
     runs-on: ubuntu-latest
