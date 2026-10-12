@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowCircleUpIcon, ArrowsClockwiseIcon, DownloadSimpleIcon, FolderOpenIcon, GearIcon, InfoIcon, KeyboardIcon, PathIcon, UploadSimpleIcon } from "@phosphor-icons/react";
+import {
+  ArrowCircleUpIcon,
+  ArrowsClockwiseIcon,
+  DownloadSimpleIcon,
+  FolderOpenIcon,
+  GearIcon,
+  InfoIcon,
+  KeyboardIcon,
+  PathIcon,
+  UploadSimpleIcon,
+} from "@phosphor-icons/react";
 import { Browser, System } from "@wailsio/runtime";
 import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
 import type { ImportPreview } from "@bindings/internal/service";
@@ -82,17 +92,28 @@ export function SidebarFooter() {
       {/* As tall as the dock's tab bar, so their top borders meet in one line while the dock is closed. */}
       <div className="box-content flex h-9 items-center border-t px-2">
         <DropdownMenu open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <DropdownMenuTrigger title={`Settings (${keyLabel("open-settings")})`} className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4">
+          <DropdownMenuTrigger
+            title={`Settings (${keyLabel("open-settings")})`}
+            className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-sidebar-accent aria-expanded:text-foreground [&_svg]:size-4"
+          >
             <GearIcon />
             Settings
-            {info?.updates && release && <span className="ml-auto size-1.5 rounded-full bg-primary" aria-label="Update available" />}
+            {info?.updates && release && (
+              <span
+                className="ml-auto size-1.5 rounded-full bg-primary"
+                aria-label="Update available"
+              />
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-56">
             <DropdownMenuItem onClick={openRoutes}>
               <PathIcon /> Routes
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={exportConfig.isPending} onClick={() => exportConfig.mutate()}>
+            <DropdownMenuItem
+              disabled={exportConfig.isPending}
+              onClick={() => exportConfig.mutate()}
+            >
               <UploadSimpleIcon /> Export configuration…
             </DropdownMenuItem>
             <DropdownMenuItem disabled={inspect.isPending} onClick={() => inspect.mutate()}>
@@ -111,7 +132,11 @@ export function SidebarFooter() {
               (release ? (
                 <DropdownMenuItem onClick={showUpdate}>
                   <ArrowCircleUpIcon className="text-primary" />
-                  {updatePhase === "ready" ? "Restart to update" : updatePhase === "downloading" ? "Downloading update" : "Update available"}
+                  {updatePhase === "ready"
+                    ? "Restart to update"
+                    : updatePhase === "downloading"
+                      ? "Downloading update"
+                      : "Update available"}
                   <span className="ml-auto pl-4 text-muted-foreground">
                     {updatePhase === "downloading" && updateProgress?.total
                       ? `${Math.floor((updateProgress.written / updateProgress.total) * 100)}%`
@@ -134,7 +159,9 @@ export function SidebarFooter() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {preview && <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />}
+      {preview && (
+        <ImportDialog key={preview.path} preview={preview} onClose={shiftImportPreview} />
+      )}
       {about && <AboutDialog onClose={() => setAbout(false)} />}
       {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
       {info && <UpdateDialog version={info.version} />}
@@ -158,7 +185,11 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
           <Button variant="outline" onClick={() => AppService.Reveal()}>
             Reveal
           </Button>
-          <Button variant="outline" disabled={!info} onClick={() => info && Browser.OpenURL(info.repoURL)}>
+          <Button
+            variant="outline"
+            disabled={!info}
+            onClick={() => info && Browser.OpenURL(info.repoURL)}
+          >
             GitHub
           </Button>
           <Button ref={ok} onClick={onClose}>
@@ -189,7 +220,8 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
     },
   });
   const pick = useMutation({
-    mutationFn: async (from: string) => [from, await ConfigService.PickPath(`Replace ${from}`)] as const,
+    mutationFn: async (from: string) =>
+      [from, await ConfigService.PickPath(`Replace ${from}`)] as const,
     onSuccess: ([from, to]) => to && setRemap((r) => ({ ...r, [from]: to })),
   });
   const summary = [
@@ -211,7 +243,8 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
         {missing.length > 0 && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              These files do not exist on this machine. Pick a local replacement or skip what references them.
+              These files do not exist on this machine. Pick a local replacement or skip what
+              references them.
             </p>
             {missing.map((from) => (
               <div key={from} className="flex flex-col gap-1">
@@ -225,11 +258,20 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
                     disabled={skipped[from]}
                     onChange={(e) => setRemap((r) => ({ ...r, [from]: e.target.value }))}
                   />
-                  <Button variant="outline" size="icon-sm" title="Browse" disabled={skipped[from]} onClick={() => pick.mutate(from)}>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    title="Browse"
+                    disabled={skipped[from]}
+                    onClick={() => pick.mutate(from)}
+                  >
                     <FolderOpenIcon />
                   </Button>
                   <Label className="gap-1.5 text-xs">
-                    <Checkbox checked={!!skipped[from]} onCheckedChange={(v) => setSkipped((s) => ({ ...s, [from]: !!v }))} />
+                    <Checkbox
+                      checked={!!skipped[from]}
+                      onCheckedChange={(v) => setSkipped((s) => ({ ...s, [from]: !!v }))}
+                    />
                     Skip
                   </Label>
                 </div>
@@ -237,12 +279,17 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
             ))}
           </div>
         )}
-        {importConfig.error && <p className="text-xs text-destructive">{errorText(importConfig.error)}</p>}
+        {importConfig.error && (
+          <p className="text-xs text-destructive">{errorText(importConfig.error)}</p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!resolved || importConfig.isPending} onClick={() => importConfig.mutate()}>
+          <Button
+            disabled={!resolved || importConfig.isPending}
+            onClick={() => importConfig.mutate()}
+          >
             Import
           </Button>
         </DialogFooter>

@@ -4,7 +4,14 @@ import { Browser } from "@wailsio/runtime";
 import { CircleNotchIcon } from "@phosphor-icons/react";
 import { AppService, type Update } from "@bindings/internal/bindings";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { errorText } from "@/queries";
 
 // Checking, downloading and installing are each the user's step: a release found in the background only puts a
@@ -12,7 +19,14 @@ import { errorText } from "@/queries";
 // A skipped release gets no badge; a check the user asks for still offers it.
 const skippedKey = "skippedUpdate";
 
-type Phase = "checking" | "latest" | "available" | "downloading" | "ready" | "check-failed" | "download-failed";
+type Phase =
+  | "checking"
+  | "latest"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "check-failed"
+  | "download-failed";
 
 interface UpdateState {
   // The newest release found, by the background check or the dialog's; the badge shows while it is set.
@@ -47,7 +61,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   setProgress: (written, total) => set({ progress: { written, total } }),
   show: () => {
     const { release, phase } = get();
-    if (release && (phase === "available" || phase === "downloading" || phase === "ready" || phase === "download-failed")) {
+    if (
+      release &&
+      (phase === "available" ||
+        phase === "downloading" ||
+        phase === "ready" ||
+        phase === "download-failed")
+    ) {
       set({ open: true });
     } else {
       void get().check();
@@ -86,14 +106,19 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   close: () => {
     const { phase } = get();
     // A result nobody acted on is not kept; a release found stays for the badge.
-    set(phase === "latest" || phase === "check-failed" || phase === "checking" ? { open: false, phase: null } : { open: false });
+    set(
+      phase === "latest" || phase === "check-failed" || phase === "checking"
+        ? { open: false, phase: null }
+        : { open: false },
+    );
   },
 }));
 
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 export function UpdateDialog({ version }: { version: string }) {
-  const { release, phase, open, progress, error, check, skip, download, restart, close } = useUpdateStore();
+  const { release, phase, open, progress, error, check, skip, download, restart, close } =
+    useUpdateStore();
   const primary = useRef<HTMLButtonElement>(null);
   if (!open || !phase) return null;
 
@@ -145,7 +170,10 @@ export function UpdateDialog({ version }: { version: string }) {
     case "available":
     case "download-failed":
       title = `Kubereach ${release?.version} is available`;
-      description = phase === "download-failed" ? error : `You have ${version}. The download is ${megabytes(release?.size ?? 0)}.`;
+      description =
+        phase === "download-failed"
+          ? error
+          : `You have ${version}. The download is ${megabytes(release?.size ?? 0)}.`;
       actions = (
         <>
           {phase === "available" && (
@@ -165,11 +193,21 @@ export function UpdateDialog({ version }: { version: string }) {
       const written = progress?.written ?? 0;
       title = `Downloading Kubereach ${release?.version}…`;
       description =
-        total > 0 && written >= total ? "Checking the download's signature…" : `${megabytes(written)} of ${megabytes(total)}`;
+        total > 0 && written >= total
+          ? "Checking the download's signature…"
+          : `${megabytes(written)} of ${megabytes(total)}`;
       actions = (
         <>
-          <div className="mr-auto h-1.5 w-40 self-center overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemax={total} aria-valuenow={written}>
-            <div className="h-full bg-primary transition-[width]" style={{ width: total > 0 ? `${Math.min(100, (written / total) * 100)}%` : "0%" }} />
+          <div
+            className="mr-auto h-1.5 w-40 self-center overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemax={total}
+            aria-valuenow={written}
+          >
+            <div
+              className="h-full bg-primary transition-[width]"
+              style={{ width: total > 0 ? `${Math.min(100, (written / total) * 100)}%` : "0%" }}
+            />
           </div>
           <Button variant="outline" onClick={close}>
             Hide
@@ -180,7 +218,8 @@ export function UpdateDialog({ version }: { version: string }) {
     }
     case "ready":
       title = `Kubereach ${release?.version} is ready to install`;
-      description = "Kubereach restarts to finish. Open Shells and Terminals close; Saved Forwards come back on their own.";
+      description =
+        "Kubereach restarts to finish. Open Shells and Terminals close; Saved Forwards come back on their own.";
       actions = (
         <>
           {later}
@@ -192,7 +231,12 @@ export function UpdateDialog({ version }: { version: string }) {
       break;
   }
 
-  const notes = release && (phase === "available" || phase === "downloading" || phase === "ready" || phase === "download-failed");
+  const notes =
+    release &&
+    (phase === "available" ||
+      phase === "downloading" ||
+      phase === "ready" ||
+      phase === "download-failed");
   return (
     <Dialog open onOpenChange={(o) => !o && close()}>
       <DialogContent initialFocus={primary} className={notes ? "sm:max-w-lg" : undefined}>
@@ -214,7 +258,10 @@ function ReleaseNotes({ markdown }: { markdown: string }) {
   const flush = () => {
     if (items.length) {
       blocks.push(
-        <ul key={blocks.length} className="mb-3 list-disc space-y-1 pl-5 marker:text-muted-foreground">
+        <ul
+          key={blocks.length}
+          className="mb-3 list-disc space-y-1 pl-5 marker:text-muted-foreground"
+        >
           {items.map((item, i) => (
             <li key={i}>{inline(item)}</li>
           ))}
@@ -246,7 +293,11 @@ function ReleaseNotes({ markdown }: { markdown: string }) {
     }
   }
   flush();
-  return <div className="-mx-4 max-h-72 overflow-y-auto border-t px-4 pt-3 text-sm [&>:last-child]:mb-0">{blocks}</div>;
+  return (
+    <div className="-mx-4 max-h-72 overflow-y-auto border-t px-4 pt-3 text-sm [&>:last-child]:mb-0">
+      {blocks}
+    </div>
+  );
 }
 
 // inline turns [text](https://…) into links that open in the browser; the rest stays text.
@@ -254,7 +305,12 @@ function inline(text: string): ReactNode[] {
   return text.split(/(\[[^\]]+\]\(https?:[^)]+\))/).map((part, i) => {
     const link = /^\[([^\]]+)\]\((https?:[^)]+)\)$/.exec(part);
     return link ? (
-      <button key={i} type="button" className="text-primary underline-offset-4 hover:underline" onClick={() => Browser.OpenURL(link[2])}>
+      <button
+        key={i}
+        type="button"
+        className="text-primary underline-offset-4 hover:underline"
+        onClick={() => Browser.OpenURL(link[2])}
+      >
         {link[1]}
       </button>
     ) : (

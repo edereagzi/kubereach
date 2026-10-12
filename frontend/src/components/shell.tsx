@@ -1,9 +1,31 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretUpIcon, CubeIcon, DotsThreeIcon, PlusIcon, ScrollIcon, TerminalWindowIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
+import {
+  CaretDownIcon,
+  CaretUpIcon,
+  CubeIcon,
+  DotsThreeIcon,
+  PlusIcon,
+  ScrollIcon,
+  TerminalWindowIcon,
+  WarningIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import { Window } from "@wailsio/runtime";
-import { ClusterService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
-import { State, type Cluster, type LogStatus, type ShellStatus, type TerminalStatus } from "@bindings/internal/service";
+import {
+  ClusterService,
+  LogService,
+  RouteService,
+  ShellService,
+  TerminalService,
+} from "@bindings/internal/bindings";
+import {
+  State,
+  type Cluster,
+  type LogStatus,
+  type ShellStatus,
+  type TerminalStatus,
+} from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ClusterOverview, NamespaceScope } from "@/components/cluster-overview";
 import { ClusterNodes, NodeProblems } from "@/components/nodes";
@@ -13,7 +35,16 @@ import { InspectorSlot } from "@/components/inspector";
 import { Palette } from "@/components/palette";
 import { logDetail, LogTab } from "@/components/logs";
 import { openTerminal, ShellView, TerminalView } from "@/components/terminal";
-import { RouteChip, RouteConnector, RouteDialog, RoutesPage, StateDot, statusLabel, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
+import {
+  RouteChip,
+  RouteConnector,
+  RouteDialog,
+  RoutesPage,
+  StateDot,
+  statusLabel,
+  SudoPasswordDialog,
+  useRouteProblem,
+} from "@/components/routes";
 import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,11 +59,24 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
+import {
+  configQuery,
+  errorText,
+  isSudoRequired,
+  reachabilityLabel,
+  reachabilityQuery,
+} from "@/queries";
 import { mainTabs, sessionEnded, useUIStore, type MainTab } from "@/store";
 import { dialogOpen, inPanel, keyLabel, platform, useCommand } from "@/lib/commands";
 import { go } from "@/lib/history";
@@ -48,7 +92,10 @@ export function Shell() {
   useCommand("go-back", () => go(-1, exists));
   useCommand("go-forward", () => go(1, exists));
   // Window.Close hides the window to the tray. A held key does not close every tab and then the window.
-  useCommand("close-tab", (e) => !e.repeat && (closeDockTab ? closeDockTab() : void Window.Close()));
+  useCommand(
+    "close-tab",
+    (e) => !e.repeat && (closeDockTab ? closeDockTab() : void Window.Close()),
+  );
   // macOS zooms and goes full screen from its View menu.
   const other = platform !== "mac";
   useCommand("zoom-in", () => void Window.ZoomIn(), { enabled: other });
@@ -57,7 +104,10 @@ export function Shell() {
   useCommand("full-screen", () => void Window.ToggleFullscreen(), { enabled: other });
   // When no Command took ⌘S, the webview must not open its own save dialog.
   useEffect(() => {
-    const stop = (e: KeyboardEvent) => (platform === "mac" ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === "s" && e.preventDefault();
+    const stop = (e: KeyboardEvent) =>
+      (platform === "mac" ? e.metaKey : e.ctrlKey) &&
+      e.key.toLowerCase() === "s" &&
+      e.preventDefault();
     window.addEventListener("keydown", stop);
     return () => window.removeEventListener("keydown", stop);
   }, []);
@@ -74,7 +124,9 @@ export function Shell() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">{routesOpen ? <RoutesPage /> : <ClusterTabs />}</main>
+      <main className="flex min-w-0 flex-1 flex-col">
+        {routesOpen ? <RoutesPage /> : <ClusterTabs />}
+      </main>
       <RouteConnector />
       <Palette />
     </div>
@@ -88,19 +140,37 @@ function ClusterTabs() {
   const { data } = useQuery(configQuery);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const cluster = data?.clusters?.find((c) => c.id === selectedClusterId);
-  const routeState = useUIStore((s) => (cluster?.route ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle) : State.StateConnected));
+  const routeState = useUIStore((s) =>
+    cluster?.route
+      ? (s.routeStatuses[cluster.route]?.state ?? State.StateIdle)
+      : State.StateConnected,
+  );
   // The view keys wrap at the ends. In the panel the same keys change the panel tab.
-  const stepView = (by: number) => () => selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
+  const stepView = (by: number) => () =>
+    selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
   useCommand("previous-view", stepView(-1), { enabled: !!cluster, panel: false });
   useCommand("next-view", stepView(1), { enabled: !!cluster, panel: false });
   // The filter of the focused area: the panel's, or the active view's (an old view is inert while it goes). The key
   // also runs where there is no filter, so that WebView2 does not open its own find bar.
-  useCommand("filter-view", (e) => document.querySelector<HTMLElement>(inPanel(e) ? "[data-panel] [data-filter]" : "[role=tabpanel]:not([inert]) [data-filter]")?.focus(), { enabled: !!cluster });
+  useCommand(
+    "filter-view",
+    (e) =>
+      document
+        .querySelector<HTMLElement>(
+          inPanel(e) ? "[data-panel] [data-filter]" : "[role=tabpanel]:not([inert]) [data-filter]",
+        )
+        ?.focus(),
+    { enabled: !!cluster },
+  );
   // Behind a Route that is down every view would only repeat the RouteBanner, so they stay empty until it connects;
   // mounted while connecting, they would list before the SSH link is up and fail. Reconnecting keeps them, so a blip
   // does not throw away a filter or an open detail.
   const unreachable =
-    routeState === State.StateIdle || routeState === State.StateConnecting || routeState === State.StateStopped || routeState === State.StateError || routeState === State.$zero;
+    routeState === State.StateIdle ||
+    routeState === State.StateConnecting ||
+    routeState === State.StateStopped ||
+    routeState === State.StateError ||
+    routeState === State.$zero;
 
   if (!cluster) {
     return (
@@ -109,7 +179,9 @@ function ClusterTabs() {
         <Empty className="border-0">
           <EmptyHeader>
             <EmptyTitle>Select a cluster</EmptyTitle>
-            <EmptyDescription>Its workloads, port forwards, logs, shells and Terminals open here.</EmptyDescription>
+            <EmptyDescription>
+              Its workloads, port forwards, logs, shells and Terminals open here.
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       </>
@@ -120,7 +192,11 @@ function ClusterTabs() {
     <>
       <ClusterHeader key={`header-${cluster.id}`} cluster={cluster} />
       <RouteBanner key={`banner-${cluster.id}`} cluster={cluster} />
-      <Tabs value={activeTab} onValueChange={(tab) => selectTab(tab as MainTab)} className="min-h-0 flex-1 gap-0">
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => selectTab(tab as MainTab)}
+        className="min-h-0 flex-1 gap-0"
+      >
         <TabsList variant="line" className="h-9 w-full shrink-0 justify-start gap-5 border-b px-4">
           <TabsTrigger value="overview" className="flex-none px-0">
             Overview
@@ -167,7 +243,9 @@ function ClusterTabs() {
 // Counts and the live dot let a tab say what is running on it before it is opened.
 function TabCount({ value }: { value: number }) {
   return value > 0 ? (
-    <span className="rounded-full bg-muted px-1.5 text-[11px] leading-4 text-muted-foreground tabular-nums">{value}</span>
+    <span className="rounded-full bg-muted px-1.5 text-[11px] leading-4 text-muted-foreground tabular-nums">
+      {value}
+    </span>
   ) : null;
 }
 
@@ -235,7 +313,9 @@ function Dock({ cluster }: { cluster: Cluster }) {
           icon: <TerminalWindowIcon />,
           label: "Terminal",
           // The namespace kubectl opens on, else the shell running.
-          detail: done ? "ended" : terminal.namespace || (terminal.shell.split(/[\\/]/).pop() ?? ""),
+          detail: done
+            ? "ended"
+            : terminal.namespace || (terminal.shell.split(/[\\/]/).pop() ?? ""),
           close: () => {
             useUIStore.getState().closeTerminal(id);
             if (!done) void TerminalService.Stop(id);
@@ -254,7 +334,11 @@ function Dock({ cluster }: { cluster: Cluster }) {
   const [edges, setEdges] = useState({ left: false, right: false });
   const measure = () => {
     const el = listRef.current;
-    if (el) setEdges({ left: el.scrollLeft > 0, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1 });
+    if (el)
+      setEdges({
+        left: el.scrollLeft > 0,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
   };
   const ids = tabs.map((t) => t.id).join(" ");
   useEffect(() => {
@@ -283,7 +367,9 @@ function Dock({ cluster }: { cluster: Cluster }) {
   const empty = tabs.length === 0;
   const { mutate: startTerminal, isPending: starting } = newTerminal;
   const start = (e: KeyboardEvent) => !starting && !e.repeat && startTerminal();
-  useCommand("toggle-panel", (e) => (empty ? start(e) : setDockOpen(!useUIStore.getState().dockOpen)));
+  useCommand("toggle-panel", (e) =>
+    empty ? start(e) : setDockOpen(!useUIStore.getState().dockOpen),
+  );
   useCommand("new-terminal", start);
 
   const closeActive = open ? active?.close : undefined;
@@ -295,12 +381,14 @@ function Dock({ cluster }: { cluster: Cluster }) {
   // The tab keys wrap at the ends. They act only while the focus is in the panel.
   const sectionRef = useRef<HTMLElement>(null);
   const step = (by: number) => () => {
-    const next = tabs[(tabs.findIndex((t) => t.id === active?.id) + by + tabs.length) % tabs.length];
+    const next =
+      tabs[(tabs.findIndex((t) => t.id === active?.id) + by + tabs.length) % tabs.length];
     if (!next) return;
     useUIStore.getState().openDock(cluster.id, next.id);
     // The old tab's view takes the focus with it. A Terminal takes it again; other views leave it on their tab.
     requestAnimationFrame(() => {
-      if (!sectionRef.current?.contains(document.activeElement)) listRef.current?.querySelector<HTMLElement>("[aria-selected=true]")?.focus();
+      if (!sectionRef.current?.contains(document.activeElement))
+        listRef.current?.querySelector<HTMLElement>("[aria-selected=true]")?.focus();
     });
   };
   useCommand("previous-tab", step(-1), { target: sectionRef });
@@ -309,7 +397,10 @@ function Dock({ cluster }: { cluster: Cluster }) {
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
     const from = e.clientY;
-    const move = (ev: PointerEvent) => setDockHeight(Math.min(Math.max(height + from - ev.clientY, dockMin), window.innerHeight - viewMin));
+    const move = (ev: PointerEvent) =>
+      setDockHeight(
+        Math.min(Math.max(height + from - ev.clientY, dockMin), window.innerHeight - viewMin),
+      );
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -322,8 +413,20 @@ function Dock({ cluster }: { cluster: Cluster }) {
   // data-panel tells the key Commands that the focus is in the panel (see focusArea and inPanel).
   const expanded = open && !!active;
   return (
-    <section ref={sectionRef} data-panel className="relative flex shrink-0 flex-col border-t" style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}>
-      {expanded && <div role="separator" aria-orientation="horizontal" className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize" onPointerDown={resize} />}
+    <section
+      ref={sectionRef}
+      data-panel
+      className="relative flex shrink-0 flex-col border-t"
+      style={expanded ? { height: Math.min(height, window.innerHeight - viewMin) } : undefined}
+    >
+      {expanded && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          className="absolute inset-x-0 -top-1 z-20 h-2 cursor-row-resize"
+          onPointerDown={resize}
+        />
+      )}
       <div className="flex h-9 shrink-0 items-stretch gap-2 pr-2 pl-4">
         {tabs.length > 0 && (
           <div
@@ -334,16 +437,31 @@ function Dock({ cluster }: { cluster: Cluster }) {
             onScroll={measure}
           >
             {tabs.map((t) => (
-              <DockTab key={t.id} session={t} cluster={cluster} active={open && t.id === active?.id} />
+              <DockTab
+                key={t.id}
+                session={t}
+                cluster={cluster}
+                active={open && t.id === active?.id}
+              />
             ))}
           </div>
         )}
         {/* Beside tabs it adds one; alone on the bar, with no tab to be taken for, it shows what it opens, 8px in like the bar's other end. */}
-        <Button variant="ghost" size="icon-xs" className={cn("my-auto", tabs.length === 0 && "-ml-2")} title={`Open a Terminal on ${cluster.name} (${keyLabel("new-terminal")})`} disabled={newTerminal.isPending} onClick={() => newTerminal.mutate()}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={cn("my-auto", tabs.length === 0 && "-ml-2")}
+          title={`Open a Terminal on ${cluster.name} (${keyLabel("new-terminal")})`}
+          disabled={newTerminal.isPending}
+          onClick={() => newTerminal.mutate()}
+        >
           {tabs.length > 0 ? <PlusIcon /> : <TerminalWindowIcon className="size-4" />}
         </Button>
         {newTerminal.error && (
-          <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(newTerminal.error)}>
+          <span
+            className="my-auto min-w-0 truncate text-xs text-destructive"
+            title={errorText(newTerminal.error)}
+          >
             {errorText(newTerminal.error)}
           </span>
         )}
@@ -352,7 +470,13 @@ function Dock({ cluster }: { cluster: Cluster }) {
         {tabs.length > 0 && (
           <>
             <span className="my-auto h-4 w-px shrink-0 bg-border" />
-            <Button variant="ghost" size="icon-xs" className="my-auto" title={`${open ? "Hide" : "Show"} panel (${keyLabel("toggle-panel")})`} onClick={() => setDockOpen(!open)}>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="my-auto"
+              title={`${open ? "Hide" : "Show"} panel (${keyLabel("toggle-panel")})`}
+              onClick={() => setDockOpen(!open)}
+            >
               {open ? <CaretDownIcon /> : <CaretUpIcon />}
             </Button>
           </>
@@ -363,22 +487,40 @@ function Dock({ cluster }: { cluster: Cluster }) {
   );
 }
 
-type DockSession = { id: string; status: LogStatus | ShellStatus | TerminalStatus; icon: ReactNode; label: string; detail: string; close: () => void; view: ReactNode };
+type DockSession = {
+  id: string;
+  status: LogStatus | ShellStatus | TerminalStatus;
+  icon: ReactNode;
+  label: string;
+  detail: string;
+  close: () => void;
+  view: ReactNode;
+};
 
 // DockTab names its session's kind with the icon, its state with the dot on the icon, and its source with the label.
-function DockTab({ session, cluster, active }: { session: DockSession; cluster: Cluster; active: boolean }) {
+function DockTab({
+  session,
+  cluster,
+  active,
+}: {
+  session: DockSession;
+  cluster: Cluster;
+  active: boolean;
+}) {
   const openDock = useUIStore((s) => s.openDock);
   const { id, status, icon, label, detail, close } = session;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    if (active)
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
   }, [active]);
   return (
     <div
       ref={ref}
       className={cn(
         "group relative flex shrink-0 items-center gap-1 text-sm text-muted-foreground hover:text-foreground",
-        active && "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground",
+        active &&
+          "text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-foreground",
       )}
     >
       <button
@@ -398,7 +540,16 @@ function DockTab({ session, cluster, active }: { session: DockSession; cluster: 
         <span className="max-w-64 truncate">{label}</span>
         {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
       </button>
-      <Button variant="ghost" size="icon-xs" title="Close" className={cn("size-5", !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")} onClick={close}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title="Close"
+        className={cn(
+          "size-5",
+          !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+        )}
+        onClick={close}
+      >
         <XIcon />
       </Button>
     </div>
@@ -414,12 +565,16 @@ function RouteBanner({ cluster }: { cluster: Cluster }) {
   const route = data?.routes?.find((r) => r.id === cluster.route);
   if (!cluster.route) return <DirectBanner cluster={cluster} />;
   if (!route) return null;
-  if (status?.state === State.StateConnected) return cluster.remote ? <SudoBanner cluster={cluster} /> : null;
+  if (status?.state === State.StateConnected)
+    return cluster.remote ? <SudoBanner cluster={cluster} /> : null;
   const busy = status?.state === State.StateConnecting || status?.state === State.StateReconnecting;
   return (
     <div className="flex h-10 shrink-0 items-center gap-2.5 border-y bg-muted/50 px-4 text-sm">
       <StateDot status={status} />
-      <span className={cn("min-w-0 flex-1 truncate", problem && !busy && "text-destructive")} title={problem}>
+      <span
+        className={cn("min-w-0 flex-1 truncate", problem && !busy && "text-destructive")}
+        title={problem}
+      >
         {busy
           ? `Connecting through ${route.name}…`
           : problem
@@ -478,7 +633,9 @@ function DirectBanner({ cluster }: { cluster: Cluster }) {
         {errorText(error)}
       </span>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="outline" size="xs" />}>Reach through a route…</DropdownMenuTrigger>
+        <DropdownMenuTrigger render={<Button variant="outline" size="xs" />}>
+          Reach through a route…
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           {data?.routes?.map((r) => (
             <DropdownMenuItem key={r.id} onClick={() => setRoute.mutate(r.id)}>
@@ -489,7 +646,13 @@ function DirectBanner({ cluster }: { cluster: Cluster }) {
           <DropdownMenuItem onClick={() => setCreating(true)}>New route…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {creating && <RouteDialog route={null} onClose={() => setCreating(false)} onSaved={(r) => setRoute.mutate(r.id)} />}
+      {creating && (
+        <RouteDialog
+          route={null}
+          onClose={() => setCreating(false)}
+          onSaved={(r) => setRoute.mutate(r.id)}
+        />
+      )}
     </div>
   );
 }
@@ -517,11 +680,18 @@ function RenameDialog({ cluster, onClose }: { cluster: Cluster; onClose: () => v
           <DialogHeader>
             <DialogTitle>Rename {cluster.name}</DialogTitle>
             <DialogDescription>
-              The name is only shown in Kubereach; context <span className="font-medium text-foreground">{cluster.context}</span> in your kubeconfig stays as it is. Leave it empty to use the
-              context's name.
+              The name is only shown in Kubereach; context{" "}
+              <span className="font-medium text-foreground">{cluster.context}</span> in your
+              kubeconfig stays as it is. Leave it empty to use the context's name.
             </DialogDescription>
           </DialogHeader>
-          <Input autoFocus value={name} placeholder={cluster.context} onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} />
+          <Input
+            autoFocus
+            value={name}
+            placeholder={cluster.context}
+            onChange={(e) => setName(e.target.value)}
+            onFocus={(e) => e.target.select()}
+          />
           {rename.error && <p className="text-sm text-destructive">{errorText(rename.error)}</p>}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -552,8 +722,10 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
     mutationFn: () => ClusterService.Delete(cluster.id),
     onSuccess: () => {
       const { shellSessions, closeShell, terminalSessions, closeTerminal } = useUIStore.getState();
-      for (const s of Object.values(shellSessions)) if (s.target.clusterId === cluster.id) closeShell(s.id);
-      for (const t of Object.values(terminalSessions)) if (t.clusterId === cluster.id) closeTerminal(t.id);
+      for (const s of Object.values(shellSessions))
+        if (s.target.clusterId === cluster.id) closeShell(s.id);
+      for (const t of Object.values(terminalSessions))
+        if (t.clusterId === cluster.id) closeTerminal(t.id);
       selectCluster(null);
       queryClient.invalidateQueries();
     },
@@ -563,7 +735,10 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       <div className="flex min-w-0 flex-1 items-baseline gap-3">
         <span className="truncate text-base font-semibold">{cluster.name}</span>
         {cluster.context !== cluster.name && (
-          <span className="truncate font-mono text-xs text-muted-foreground" title={cluster.remote ? `${cluster.remote} on the SSH server` : cluster.kubeconfig}>
+          <span
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={cluster.remote ? `${cluster.remote} on the SSH server` : cluster.kubeconfig}
+          >
             {cluster.context}
           </span>
         )}
@@ -572,7 +747,10 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       <RouteChip cluster={cluster} />
       <span
         title={reachabilityLabel(status, error, version)}
-        className={cn("inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs", status === "error" ? "text-muted-foreground" : "text-foreground")}
+        className={cn(
+          "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs",
+          status === "error" ? "text-muted-foreground" : "text-foreground",
+        )}
       >
         <span
           className={cn(
@@ -582,7 +760,11 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
             status === "error" && "border-[1.5px] border-muted-foreground/70",
           )}
         />
-        {status === "pending" ? "Checking…" : status === "error" ? "Unreachable" : version || "Reachable"}
+        {status === "pending"
+          ? "Checking…"
+          : status === "error"
+            ? "Unreachable"
+            : version || "Reachable"}
       </span>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="More" />}>
@@ -594,10 +776,15 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="whitespace-nowrap">
                 Reach through
-                <span className="ml-auto min-w-0 truncate pl-4 text-muted-foreground">{data?.routes?.find((r) => r.id === cluster.route)?.name ?? "Direct"}</span>
+                <span className="ml-auto min-w-0 truncate pl-4 text-muted-foreground">
+                  {data?.routes?.find((r) => r.id === cluster.route)?.name ?? "Direct"}
+                </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={cluster.route} onValueChange={(id) => setRoute.mutate(id as string)}>
+                <DropdownMenuRadioGroup
+                  value={cluster.route}
+                  onValueChange={(id) => setRoute.mutate(id as string)}
+                >
                   <DropdownMenuRadioItem value="">Direct</DropdownMenuRadioItem>
                   {data?.routes?.map((r) => (
                     <DropdownMenuRadioItem key={r.id} value={r.id}>

@@ -1,4 +1,12 @@
-import { createContext, Fragment, useContext, useRef, type ComponentProps, type ReactNode, type RefObject } from "react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { CopyButton } from "@/components/copy-button";
@@ -30,7 +38,10 @@ export function Inspector({ onClose, children }: { onClose: () => void; children
       >
         <CaretRightIcon />
       </Button>
-      <section data-slot="inspector" className="relative flex h-full flex-col gap-4 overflow-hidden py-4 pr-4 pl-6 text-sm">
+      <section
+        data-slot="inspector"
+        className="relative flex h-full flex-col gap-4 overflow-hidden py-4 pr-4 pl-6 text-sm"
+      >
         {children}
       </section>
     </>,
@@ -45,14 +56,30 @@ export function InspectorHeader({ className, ...props }: ComponentProps<"div">) 
 export function InspectorTitle({ className, ...props }: ComponentProps<"h2">) {
   // Top-aligned rather than centred: a long name wraps, and its icons and badges stay level with its first line,
   // each nudged down to sit in that line's 28px, the height of the icon buttons.
-  return <h2 className={cn("flex items-start gap-2 font-heading text-base leading-none font-medium [&>[data-slot=badge]]:mt-[5px]", className)} {...props} />;
+  return (
+    <h2
+      className={cn(
+        "flex items-start gap-2 font-heading text-base leading-none font-medium [&>[data-slot=badge]]:mt-[5px]",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 // InspectorName is an object's name in its detail title. The namespace steps back, so the name reads as what the button
 // beside it copies: the part kubectl takes. It wraps rather than truncates: a detail is where the whole name is read,
 // and a pod's is long, its distinguishing suffix last. The kind leads it as the same badge its row in the list wears, so the detail
 // says what it shows without a line of its own; its tooltip spells the kind out.
-export function InspectorName({ kind, namespace, name }: { kind: Kind; namespace?: string; name: string }) {
+export function InspectorName({
+  kind,
+  namespace,
+  name,
+}: {
+  kind: Kind;
+  namespace?: string;
+  name: string;
+}) {
   return (
     <>
       <KindBadge kind={kind} title={kindName[kind]} className="mt-[5px] w-auto" />
@@ -73,7 +100,9 @@ export function InspectorActions({ open, change }: { open?: ReactNode; change?: 
   return (
     <div className="flex flex-wrap items-center gap-1.5 [&:not(:has(>:not(:empty)))]:hidden">
       <div className="flex flex-wrap items-center gap-1.5 empty:hidden">{open}</div>
-      <div className="flex flex-wrap items-center gap-1.5 empty:hidden [:not(:empty)+&]:ml-auto">{change}</div>
+      <div className="flex flex-wrap items-center gap-1.5 empty:hidden [:not(:empty)+&]:ml-auto">
+        {change}
+      </div>
     </div>
   );
 }
@@ -84,7 +113,9 @@ export function InspectorFacts({ facts }: { facts: [string, ReactNode][] }) {
   return (
     <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-0.5 text-xs">
       {facts
-        .filter(([, value]) => value !== undefined && value !== null && value !== false && value !== "")
+        .filter(
+          ([, value]) => value !== undefined && value !== null && value !== false && value !== "",
+        )
         .map(([label, value]) => (
           <Fragment key={label}>
             <dt className="text-muted-foreground">{label}</dt>
@@ -97,23 +128,40 @@ export function InspectorFacts({ facts }: { facts: [string, ReactNode][] }) {
 
 // ↑/↓ and K/J walk the rows as they are shown. With no detail open, the next-row key opens the first row.
 // Each row carries its key in data-row to be scrolled to.
-export function useInspectorWalk<T>(rows: RefObject<T[]>, current: T | null, key: (row: T) => string, select: (row: T) => void) {
+export function useInspectorWalk<T>(
+  rows: RefObject<T[]>,
+  current: T | null,
+  key: (row: T) => string,
+  select: (row: T) => void,
+) {
   const walk = (step: number) => () => {
-    const next = current ? rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step] : step > 0 && rows.current[0];
+    const next = current
+      ? rows.current[rows.current.findIndex((r) => key(r) === key(current)) + step]
+      : step > 0 && rows.current[0];
     if (!next) return;
     // The first row opens a detail, a new place. The next rows replace it.
     if (current) replacePlace(() => select(next));
     else select(next);
-    document.querySelector(`[data-row="${CSS.escape(key(next))}"]`)?.scrollIntoView({ block: "nearest" });
+    document
+      .querySelector(`[data-row="${CSS.escape(key(next))}"]`)
+      ?.scrollIntoView({ block: "nearest" });
   };
   useCommand("next-row", walk(1));
   useCommand("previous-row", walk(-1), { enabled: !!current });
 }
 
 // The row of the open detail, found by its key. A row that leaves the list keeps its detail open until it is closed.
-export function useDetailRow<T>(rows: T[] | undefined, key: (row: T) => string, detail: string | null): T | null {
+export function useDetailRow<T>(
+  rows: T[] | undefined,
+  key: (row: T) => string,
+  detail: string | null,
+): T | null {
   const last = useRef<T | null>(null);
-  const row = detail === null ? null : (rows?.find((r) => key(r) === detail) ?? (last.current && key(last.current) === detail ? last.current : null));
+  const row =
+    detail === null
+      ? null
+      : (rows?.find((r) => key(r) === detail) ??
+        (last.current && key(last.current) === detail ? last.current : null));
   last.current = row;
   return row;
 }

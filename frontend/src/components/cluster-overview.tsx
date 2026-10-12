@@ -1,7 +1,22 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretDownIcon, CaretRightIcon, CheckIcon, CircleNotchIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
+import {
+  CaretDownIcon,
+  CaretRightIcon,
+  CheckIcon,
+  CircleNotchIcon,
+  MagnifyingGlassIcon,
+} from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
 import { JobResult, RolloutState, type Cluster, type KubeHPA } from "@bindings/internal/service";
 import { ConfigDetail } from "@/components/config-detail";
@@ -9,14 +24,36 @@ import { AddForward, forwardsFor } from "@/components/forwards";
 import { HPADetail, metricsLabel, metricsTitle } from "@/components/hpa-detail";
 import { hostsLabel, IngressDetail } from "@/components/ingress-detail";
 import { useDetailRow, useInspectorWalk } from "@/components/inspector";
-import { ago, PodDetail, ReasonBadge, restartsLabel, since, usagePressure } from "@/components/pod-detail";
+import {
+  ago,
+  PodDetail,
+  ReasonBadge,
+  restartsLabel,
+  since,
+  usagePressure,
+} from "@/components/pod-detail";
 import { PVCDetail, pvcLabel, pvcReason } from "@/components/pvc-detail";
 import { WorkloadDetail, workloadLabel, workloadReason } from "@/components/workload-detail";
 import { YamlDetail } from "@/components/yaml-view";
-import { KindBadge, portsLabel, targetValue, useTargets, type Target, type TargetGroup } from "@/components/targets";
+import {
+  KindBadge,
+  portsLabel,
+  targetValue,
+  useTargets,
+  type Target,
+  type TargetGroup,
+} from "@/components/targets";
 import { RowVerbs, useRowFacts } from "@/components/target-verbs";
 import { Button } from "@/components/ui/button";
-import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxTrigger } from "@/components/ui/combobox";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -28,7 +65,14 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { configQuery, isForbidden, namespacesQuery, podMetricsQuery, podUsageKey, errorText } from "@/queries";
+import {
+  configQuery,
+  isForbidden,
+  namespacesQuery,
+  podMetricsQuery,
+  podUsageKey,
+  errorText,
+} from "@/queries";
 import { useUIStore } from "@/store";
 import { cn, isZeroTime } from "@/lib/utils";
 
@@ -38,10 +82,15 @@ import { cn, isZeroTime } from "@/lib/utils";
 const folded = (group: string) => group === "ConfigMaps" || group === "Secrets";
 // "ingresses" loses two letters where "services" loses one.
 const singular = (word: string) => (word.endsWith("sses") ? word.slice(0, -2) : word.slice(0, -1));
-const counts = (kinds: [label: string, n: number][]) => kinds.map(([label, n]) => `${n} ${n === 1 ? singular(label.toLowerCase()) : label.toLowerCase()}`).join(" · ");
-const tally = (groups: TargetGroup[]) => groups.map((g): [string, number] => [g.label, g.items.length]);
+const counts = (kinds: [label: string, n: number][]) =>
+  kinds
+    .map(([label, n]) => `${n} ${n === 1 ? singular(label.toLowerCase()) : label.toLowerCase()}`)
+    .join(" · ");
+const tally = (groups: TargetGroup[]) =>
+  groups.map((g): [string, number] => [g.label, g.items.length]);
 
-const matches = (words: string[], t: Target) => words.every((w) => t.name.toLowerCase().includes(w));
+const matches = (words: string[], t: Target) =>
+  words.every((w) => t.name.toLowerCase().includes(w));
 
 // The tick goes before the label, as in a macOS menu, so a count keeps the right edge to itself.
 const checkLeft = "pr-2 pl-7 *:data-[slot$=indicator]:right-auto *:data-[slot$=indicator]:left-2";
@@ -49,13 +98,21 @@ const checkLeft = "pr-2 pl-7 *:data-[slot$=indicator]:right-auto *:data-[slot$=i
 // Passage states a pod goes through on its way up or out, and the end of one that finished cleanly; any other reason,
 // a stuck rollout, a failed Job, a claim no volume backs and an autoscaler that cannot scale are problems.
 // A pod near its limit is not: a JVM sized to its limit lives there, so it keeps its badge but raises no alarm, as in k9s and Headlamp.
-const transientReasons = new Set(["ContainerCreating", "PodInitializing", "Terminating", "Completed"]);
+const transientReasons = new Set([
+  "ContainerCreating",
+  "PodInitializing",
+  "Terminating",
+  "Completed",
+]);
 const isProblem = (t: Target) => {
   if (t.kind === "pod") return !!t.reason && !transientReasons.has(t.reason.replace(/^Init:/, ""));
   if (t.ingress) return !!t.ingress.problem;
   if (t.pvc) return !!pvcReason(t.pvc);
   if (t.hpa) return !!t.hpa.problem;
-  return t.workload?.rollout?.state === RolloutState.RolloutStuck || t.workload?.job?.result === JobResult.JobFailed;
+  return (
+    t.workload?.rollout?.state === RolloutState.RolloutStuck ||
+    t.workload?.job?.result === JobResult.JobFailed
+  );
 };
 
 // The Overview is drawn as one sequence of fixed-height lines, of which only those in view are mounted: a namespace's
@@ -83,7 +140,9 @@ function derive(groups: TargetGroup[]) {
     if (t.workload) workloads.add(t.value);
     if (t.workload?.job?.result === JobResult.JobComplete) succeeded.add(t.value);
   }
-  const finished = (t: Target) => succeeded.has(t.value) || (t.kind === "pod" && (t.reason === "Completed" || (!!t.owner && succeeded.has(t.owner))));
+  const finished = (t: Target) =>
+    succeeded.has(t.value) ||
+    (t.kind === "pod" && (t.reason === "Completed" || (!!t.owner && succeeded.has(t.owner))));
   const problem = (t: Target) => !finished(t) && isProblem(t);
   // A pod goes under the workload or Job that runs it, and a Job under its CronJob.
   const childrenOf = new Map<string, Target[]>();
@@ -95,7 +154,9 @@ function derive(groups: TargetGroup[]) {
     push(byNamespace, t.namespace, t);
   }
   // Counted over the scope, not the search or the kind: narrowing the list must not make the alarm go quiet.
-  const unhealthy = groups.map((g) => ({ ...g, items: g.items.filter(problem) })).filter((g) => g.items.length);
+  const unhealthy = groups
+    .map((g) => ({ ...g, items: g.items.filter(problem) }))
+    .filter((g) => g.items.length);
   return { groupOf, workloads, finished, problem, childrenOf, scaledBy, byNamespace, unhealthy };
 }
 
@@ -105,9 +166,20 @@ function push<K, V>(m: Map<K, V[]>, key: K, value: V) {
   else m.set(key, [value]);
 }
 
-type View = { words: string[]; kind: string | null; problems: boolean; hidden: Record<string, boolean>; unfolded: Record<string, boolean> };
+type View = {
+  words: string[];
+  kind: string | null;
+  problems: boolean;
+  hidden: Record<string, boolean>;
+  unfolded: Record<string, boolean>;
+};
 
-function lay(groups: TargetGroup[], index: ReturnType<typeof derive>, namespaces: string[], { words, kind, problems, hidden, unfolded }: View) {
+function lay(
+  groups: TargetGroup[],
+  index: ReturnType<typeof derive>,
+  namespaces: string[],
+  { words, kind, problems, hidden, unfolded }: View,
+) {
   const seeking = words.length > 0 || !!kind;
   const filtering = seeking || problems;
   // What passes the kind, the search and the problems, by namespace and kind; every namespace in scope comes first, in its order.
@@ -127,17 +199,30 @@ function lay(groups: TargetGroup[], index: ReturnType<typeof derive>, namespaces
   const showing = new Map<string, boolean>();
   const shows = (t: Target): boolean => {
     let yes = showing.get(t.value);
-    if (yes === undefined) showing.set(t.value, (yes = passing.has(t.value) || (index.childrenOf.get(t.value) ?? []).some(shows)));
+    if (yes === undefined)
+      showing.set(
+        t.value,
+        (yes = passing.has(t.value) || (index.childrenOf.get(t.value) ?? []).some(shows)),
+      );
     return yes;
   };
   const lines: Line[] = [];
-  const row = (t: Target, depth: Depth = 0, fold?: boolean): Line => ({ type: "row", key: t.value, target: t, depth, done: index.finished(t), fold });
+  const row = (t: Target, depth: Depth = 0, fold?: boolean): Line => ({
+    type: "row",
+    key: t.value,
+    target: t,
+    depth,
+    done: index.finished(t),
+    fold,
+  });
   for (const [ns, kinds] of shown) {
     if (kinds.size === 0) continue;
     const rows: Line[] = [];
     // The header counts what is shown, a workload kept for its matching pods included.
     const shownLive = new Set<string>();
-    const live = (index.byNamespace.get(ns) ?? []).filter((t) => t.kind !== "cm" && t.kind !== "secret" && !index.finished(t));
+    const live = (index.byNamespace.get(ns) ?? []).filter(
+      (t) => t.kind !== "cm" && t.kind !== "secret" && !index.finished(t),
+    );
     const tree = (t: Target, depth: Depth) => {
       if (!shows(t)) return;
       const children = (index.childrenOf.get(t.value) ?? []).filter(shows);
@@ -148,12 +233,22 @@ function lay(groups: TargetGroup[], index: ReturnType<typeof derive>, namespaces
     };
     for (const t of live) {
       if (kind) {
-        if (passing.has(t.value)) shownLive.add(t.value), rows.push(row(t));
+        if (passing.has(t.value)) (shownLive.add(t.value), rows.push(row(t)));
       } else if (!(t.owner && index.workloads.has(t.owner))) tree(t, 0);
     }
     const running = new Map<string, number>();
-    for (const value of shownLive) running.set(index.groupOf.get(value)!, (running.get(index.groupOf.get(value)!) ?? 0) + 1);
-    lines.push({ type: "ns", key: `ns:${ns}`, ns, counts: counts(groups.filter((g) => !folded(g.label) && running.has(g.label)).map((g) => [g.label, running.get(g.label)!])) });
+    for (const value of shownLive)
+      running.set(index.groupOf.get(value)!, (running.get(index.groupOf.get(value)!) ?? 0) + 1);
+    lines.push({
+      type: "ns",
+      key: `ns:${ns}`,
+      ns,
+      counts: counts(
+        groups
+          .filter((g) => !folded(g.label) && running.has(g.label))
+          .map((g) => [g.label, running.get(g.label)!]),
+      ),
+    });
     lines.push(...rows);
     const foldLine = (key: string, list: Target[], label: string) => {
       if (!list.length) return;
@@ -164,10 +259,27 @@ function lay(groups: TargetGroup[], index: ReturnType<typeof derive>, namespaces
     const all = [...kinds.values()].flat();
     const done = all.filter(index.finished);
     const reference = [...kinds].filter(([label]) => folded(label));
-    foldLine(`${ns}:finished`, done, `${counts([["Jobs", done.filter((t) => t.kind === "job").length], ["Pods", done.filter((t) => t.kind === "pod").length]].filter(([, n]) => n) as [string, number][])} finished`);
-    foldLine(ns, reference.flatMap(([, items]) => items), counts(reference.map(([label, items]) => [label, items.length])));
+    foldLine(
+      `${ns}:finished`,
+      done,
+      `${counts(
+        [
+          ["Jobs", done.filter((t) => t.kind === "job").length],
+          ["Pods", done.filter((t) => t.kind === "pod").length],
+        ].filter(([, n]) => n) as [string, number][],
+      )} finished`,
+    );
+    foldLine(
+      ns,
+      reference.flatMap(([, items]) => items),
+      counts(reference.map(([label, items]) => [label, items.length])),
+    );
   }
-  return { lines, total: passing.size, rows: lines.flatMap((l) => (l.type === "row" ? [l.target] : [])) };
+  return {
+    lines,
+    total: passing.size,
+    rows: lines.flatMap((l) => (l.type === "row" ? [l.target] : [])),
+  };
 }
 
 // How far each level's name sits in; see indent.
@@ -189,7 +301,10 @@ function measure(sizes: Map<string, number>, text: string, font: string) {
       probe.remove();
     }
     canvas.font = font;
-    width = canvas.measureText(text.replace(/\d/g, "")).width + (text.match(/\d/g)?.length ?? 0) * digit + 2;
+    width =
+      canvas.measureText(text.replace(/\d/g, "")).width +
+      (text.match(/\d/g)?.length ?? 0) * digit +
+      2;
     sizes.set(key, width);
   }
   return width;
@@ -207,12 +322,16 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const settled = useRef({ groups: liveGroups, namespaces: liveNamespaces, loaded: false });
   if (!fetching && !namespaces.isFetching && !rescoping) {
     const s = settled.current;
-    if (!s.loaded || s.groups !== liveGroups || s.namespaces !== liveNamespaces) settled.current = { groups: liveGroups, namespaces: liveNamespaces, loaded: true };
+    if (!s.loaded || s.groups !== liveGroups || s.namespaces !== liveNamespaces)
+      settled.current = { groups: liveGroups, namespaces: liveNamespaces, loaded: true };
   }
   const { groups, loaded } = settled.current;
   const index = useMemo(() => derive(groups), [groups]);
   const metrics = useQuery(podMetricsQuery(cluster.id)).data;
-  const pressure = (t: Target) => (t.kind === "pod" ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits) : undefined);
+  const pressure = (t: Target) =>
+    t.kind === "pod"
+      ? usagePressure(metrics?.get(podUsageKey(t.namespace, t.name))?.usage, t.limits)
+      : undefined;
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [unfolded, setUnfolded] = useState<Record<string, boolean>>({});
   // Workloads whose pods or runs are folded away, by row value; open is the default, and a filter shows its matches regardless.
@@ -221,10 +340,24 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [forwarding, setForwarding] = useState<Target | null>(null);
   // A node's detail is on the Nodes view.
-  const detail = useUIStore((s) => (s.detail?.clusterId === cluster.id && s.detail.kind !== "node" ? targetValue(s.detail.kind, s.detail.namespace, s.detail.name) : null));
+  const detail = useUIStore((s) =>
+    s.detail?.clusterId === cluster.id && s.detail.kind !== "node"
+      ? targetValue(s.detail.kind, s.detail.namespace, s.detail.name)
+      : null,
+  );
   const openDetail = useUIStore((s) => s.openDetail);
-  const inspecting = useDetailRow(useMemo(() => liveGroups.flatMap((g) => g.items), [liveGroups]), (t) => t.value, detail);
-  const setInspecting = useCallback((t: Target | null) => openDetail(t && { clusterId: cluster.id, kind: t.kind, namespace: t.namespace, name: t.name }), [openDetail, cluster.id]);
+  const inspecting = useDetailRow(
+    useMemo(() => liveGroups.flatMap((g) => g.items), [liveGroups]),
+    (t) => t.value,
+    detail,
+  );
+  const setInspecting = useCallback(
+    (t: Target | null) =>
+      openDetail(
+        t && { clusterId: cluster.id, kind: t.kind, namespace: t.namespace, name: t.name },
+      ),
+    [openDetail, cluster.id],
+  );
   const forwardFrom = (t: Target) => {
     setInspecting(null);
     setForwarding(t);
@@ -237,7 +370,14 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   // Once nothing is unhealthy the filter lets go, rather than leave an empty list behind a line that is gone.
   const problems = onlyProblems && index.unhealthy.length > 0;
   const { lines, total, rows } = useMemo(
-    () => lay(groups, index, settled.current.namespaces, { words, kind, problems, hidden: hiddenChildren, unfolded }),
+    () =>
+      lay(groups, index, settled.current.namespaces, {
+        words,
+        kind,
+        problems,
+        hidden: hiddenChildren,
+        unfolded,
+      }),
     [groups, index, settled.current.namespaces, words, kind, problems, hiddenChildren, unfolded],
   );
   const shownRows = useRef<Target[]>(rows);
@@ -261,7 +401,11 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     for (const l of lines) {
       if (l.type !== "row") continue;
       const t = l.target;
-      name = Math.max(name, indentWidth[l.depth] + measure(sizes, t.name, `${t.workload && !l.depth ? 500 : 400} 13px ${family}`));
+      name = Math.max(
+        name,
+        indentWidth[l.depth] +
+          measure(sizes, t.name, `${t.workload && !l.depth ? 500 : 400} 13px ${family}`),
+      );
       if (t.created) age = Math.max(age, measure(sizes, since(t.created), `400 13px ${family}`));
       const f = facts.get(t.value);
       if (f) verbs = Math.max(verbs, +!!f.forwarded + +!!f.stream + +!!f.shell);
@@ -270,7 +414,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
     // after it, so it sits 12px from its name; see KindBadge in TargetLine.
     const nameColumn = `minmax(min(12rem,calc(40% + 0.8rem)),${Math.ceil(name)}px)`;
     const verbsColumn = `${verbs * 24 + Math.max(0, verbs - 1) * 2}px`;
-    return { "--cols": `40px ${nameColumn} minmax(8rem,1fr) ${verbsColumn}`, "--cols-wide": `28px ${nameColumn} 1fr ${Math.ceil(age)}px ${verbsColumn}` } as CSSProperties;
+    return {
+      "--cols": `40px ${nameColumn} minmax(8rem,1fr) ${verbsColumn}`,
+      "--cols-wide": `28px ${nameColumn} 1fr ${Math.ceil(age)}px ${verbsColumn}`,
+    } as CSSProperties;
   }, [lines, facts, sizes]);
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -279,7 +426,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => scroller.current,
-    estimateSize: useCallback((i: number) => (lines[i]!.type === "ns" ? headerHeight : lineHeight), [lines]),
+    estimateSize: useCallback(
+      (i: number) => (lines[i]!.type === "ns" ? headerHeight : lineHeight),
+      [lines],
+    ),
     getItemKey: useCallback((i: number) => lines[i]!.key, [lines]),
     overscan: 10,
     paddingEnd: 16,
@@ -289,7 +439,12 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       (range: Range) => {
         pinned.current = -1;
         for (const i of headers) if (i <= range.startIndex) pinned.current = i;
-        return [...new Set([...(pinned.current >= 0 ? [pinned.current] : []), ...defaultRangeExtractor(range)])].sort((a, b) => a - b);
+        return [
+          ...new Set([
+            ...(pinned.current >= 0 ? [pinned.current] : []),
+            ...defaultRangeExtractor(range),
+          ]),
+        ].sort((a, b) => a - b);
       },
       [headers],
     ),
@@ -307,8 +462,14 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
 
   const shown = useRef(inspecting);
   shown.current = inspecting;
-  const inspect = useCallback((t: Target) => setInspecting(shown.current?.value === t.value ? null : t), [setInspecting]);
-  const toggleChildren = useCallback((value: string) => setHiddenChildren((h) => ({ ...h, [value]: !h[value] })), []);
+  const inspect = useCallback(
+    (t: Target) => setInspecting(shown.current?.value === t.value ? null : t),
+    [setInspecting],
+  );
+  const toggleChildren = useCallback(
+    (value: string) => setHiddenChildren((h) => ({ ...h, [value]: !h[value] })),
+    [],
+  );
   const selectTab = useUIStore((s) => s.selectTab);
   const openDock = useUIStore((s) => s.openDock);
   const showForwards = useCallback(() => selectTab("forwards"), [selectTab]);
@@ -343,7 +504,10 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           <span className="col-span-2 truncate" title={l.ns}>
             {l.ns}
           </span>
-          <span className="min-w-0 truncate text-xs font-normal text-muted-foreground" title={l.counts}>
+          <span
+            className="min-w-0 truncate text-xs font-normal text-muted-foreground"
+            title={l.counts}
+          >
             {l.counts}
           </span>
         </h3>
@@ -387,18 +551,82 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
   return (
     <div className="@container flex min-h-0 flex-1 flex-col">
       {forwarding && (
-        <AddForward cluster={cluster} saved={forwardsFor(config?.forwards, cluster)} initial={forwarding} onClose={() => setForwarding(null)} />
+        <AddForward
+          cluster={cluster}
+          saved={forwardsFor(config?.forwards, cluster)}
+          initial={forwarding}
+          onClose={() => setForwarding(null)}
+        />
       )}
-      {inspecting?.kind === "pod" && <PodDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
-      {inspecting?.workload && <WorkloadDetail key={inspecting.value} cluster={cluster} target={inspecting} workload={inspecting.workload} onClose={() => setInspecting(null)} />}
-      {inspecting?.config && <ConfigDetail key={inspecting.value} cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.pvc && <PVCDetail key={inspecting.value} cluster={cluster} target={inspecting} pvc={inspecting.pvc} onClose={() => setInspecting(null)} />}
-      {inspecting?.hpa && <HPADetail key={inspecting.value} cluster={cluster} target={inspecting} hpa={inspecting.hpa} onClose={() => setInspecting(null)} />}
-      {inspecting?.ingress && <IngressDetail key={inspecting.value} cluster={cluster} target={inspecting} onClose={() => setInspecting(null)} />}
-      {inspecting?.kind === "svc" && <YamlDetail key={inspecting.value} cluster={cluster} target={inspecting} onForward={() => forwardFrom(inspecting)} onClose={() => setInspecting(null)} />}
+      {inspecting?.kind === "pod" && (
+        <PodDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          onForward={() => forwardFrom(inspecting)}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.workload && (
+        <WorkloadDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          workload={inspecting.workload}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.config && (
+        <ConfigDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.pvc && (
+        <PVCDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          pvc={inspecting.pvc}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.hpa && (
+        <HPADetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          hpa={inspecting.hpa}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.ingress && (
+        <IngressDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+      {inspecting?.kind === "svc" && (
+        <YamlDetail
+          key={inspecting.value}
+          cluster={cluster}
+          target={inspecting}
+          onForward={() => forwardFrom(inspecting)}
+          onClose={() => setInspecting(null)}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <InputGroup className="h-7 w-72">
-          <InputGroupInput data-filter placeholder="Filter by name" value={needle} onChange={(e) => setNeedle(e.target.value)} />
+          <InputGroupInput
+            data-filter
+            placeholder="Filter by name"
+            value={needle}
+            onChange={(e) => setNeedle(e.target.value)}
+          />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
@@ -412,14 +640,24 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
             <CaretDownIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-48">
-            <DropdownMenuRadioGroup value={kind ?? ""} onValueChange={(v: string) => setPicked(v || null)}>
+            <DropdownMenuRadioGroup
+              value={kind ?? ""}
+              onValueChange={(v: string) => setPicked(v || null)}
+            >
               <DropdownMenuRadioItem value="" closeOnClick className={checkLeft}>
                 All
               </DropdownMenuRadioItem>
               {kinds.map((g) => (
-                <DropdownMenuRadioItem key={g.label} value={g.label} closeOnClick className={checkLeft}>
+                <DropdownMenuRadioItem
+                  key={g.label}
+                  value={g.label}
+                  closeOnClick
+                  className={checkLeft}
+                >
                   {g.label}
-                  <DropdownMenuShortcut className="tracking-normal tabular-nums">{g.items.length}</DropdownMenuShortcut>
+                  <DropdownMenuShortcut className="tracking-normal tabular-nums">
+                    {g.items.length}
+                  </DropdownMenuShortcut>
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -429,7 +667,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
       {/* Only there while something is broken: a healthy cluster shows no counter to read. "Show only these" lists exactly what it names, so it drops the kind. */}
       {index.unhealthy.length > 0 && (
         <div className="mx-4 mb-2 flex items-center gap-3 rounded-md bg-muted/60 py-1 pr-1 pl-3 text-sm text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">{counts(tally(index.unhealthy))} not healthy</span>
+          <span className="min-w-0 flex-1 truncate">
+            {counts(tally(index.unhealthy))} not healthy
+          </span>
           <Button
             variant="ghost"
             size="xs"
@@ -446,7 +686,9 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
         .filter((g) => g.error)
         .map((g) => (
           <p key={g.label} className="px-4 pb-1 text-xs text-muted-foreground">
-            {isForbidden(g.error) ? `${g.label} are forbidden for this role.` : `${g.label} could not be listed: ${errorText(g.error)}`}
+            {isForbidden(g.error)
+              ? `${g.label} are forbidden for this role.`
+              : `${g.label} could not be listed: ${errorText(g.error)}`}
           </p>
         ))}
       {/* Every line lays its cells on the same columns, so they line up across rows: kind, name, details, age, verbs.
@@ -455,13 +697,34 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
           No header row names them: each column means one thing, which the kind badge and the value's own shape already say.
           When the list is narrow (a detail open beside it), Age steps aside with its header, the gutters shrink to 20px and Details
           keeps at least 8rem, so long pod names are cut before the squares and ports are. */}
-      <div ref={scroller} style={columns} className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto transition-opacity", rescoping && "opacity-50")}>
+      <div
+        ref={scroller}
+        style={columns}
+        className={cn(
+          "min-h-0 flex-1 overflow-x-hidden overflow-y-auto transition-opacity",
+          rescoping && "opacity-50",
+        )}
+      >
         {total === 0 ? (
           <Empty className="justify-start border-0 pt-12">
             <EmptyHeader>
-              <EmptyTitle>{!loaded ? "Loading…" : words.length ? `Nothing matches “${needle.trim()}”` : problems ? `No ${kind?.toLowerCase()} are unhealthy` : "Nothing to show"}</EmptyTitle>
+              <EmptyTitle>
+                {!loaded
+                  ? "Loading…"
+                  : words.length
+                    ? `Nothing matches “${needle.trim()}”`
+                    : problems
+                      ? `No ${kind?.toLowerCase()} are unhealthy`
+                      : "Nothing to show"}
+              </EmptyTitle>
               <EmptyDescription>
-                {!loaded ? "Its objects appear as soon as the cluster answers." : words.length ? "Try a shorter name." : problems ? "Pick All to see the rest." : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
+                {!loaded
+                  ? "Its objects appear as soon as the cluster answers."
+                  : words.length
+                    ? "Try a shorter name."
+                    : problems
+                      ? "Pick All to see the rest."
+                      : "This scope has no services, workloads, jobs, autoscalers, volume claims, pods, ingresses, configmaps or secrets."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -473,7 +736,11 @@ export function ClusterOverview({ cluster }: { cluster: Cluster }) {
                 <div
                   key={item.key}
                   className={cn("top-0 left-0 w-full", l.type === "ns" && "z-10")}
-                  style={item.index === pinned.current ? { position: "sticky", top: pushed() } : { position: "absolute", transform: `translateY(${item.start}px)` }}
+                  style={
+                    item.index === pinned.current
+                      ? { position: "sticky", top: pushed() }
+                      : { position: "absolute", transform: `translateY(${item.start}px)` }
+                  }
                 >
                   {line(l)}
                 </div>
@@ -492,11 +759,13 @@ type Figure = { text: string; title?: string; mono?: boolean };
 const keysLabel = (n: number) => (n === 1 ? "1 key" : `${n} keys`);
 const figure = (t: Target): Figure | null => {
   if (t.kind === "svc") return { text: portsLabel(t.ports), mono: true };
-  if (t.ingress) return { text: hostsLabel(t.ingress.hosts), title: t.ingress.hosts?.join("\n"), mono: true };
+  if (t.ingress)
+    return { text: hostsLabel(t.ingress.hosts), title: t.ingress.hosts?.join("\n"), mono: true };
   if (t.config) return { text: keysLabel(t.config.keys?.length ?? 0) };
   if (t.pvc) return { text: pvcLabel(t.pvc), mono: true };
   if (t.hpa) return { text: metricsLabel(t.hpa), title: metricsTitle(t.hpa), mono: true };
-  if (t.workload?.cronJob) return { text: t.workload.cronJob.schedule, title: workloadLabel(t.workload), mono: true };
+  if (t.workload?.cronJob)
+    return { text: t.workload.cronJob.schedule, title: workloadLabel(t.workload), mono: true };
   return null;
 };
 
@@ -505,7 +774,17 @@ const figure = (t: Target): Figure | null => {
 // so rows line up; the count is in the title. An autoscaled workload runs on to its maximum, the replicas it may still add drawn
 // as stubs on the baseline, and past 12 slots each square stands for a share.
 const maxSlots = 12;
-function Slots({ ready, of, max = 0, title }: { ready: number; of: number; max?: number; title: string }) {
+function Slots({
+  ready,
+  of,
+  max = 0,
+  title,
+}: {
+  ready: number;
+  of: number;
+  max?: number;
+  title: string;
+}) {
   const slots = Math.max(of, max);
   const scale = (n: number) => (slots > maxSlots ? Math.round((n * maxSlots) / slots) : n);
   const [filled, wanted] = [scale(ready), scale(of)];
@@ -516,7 +795,11 @@ function Slots({ ready, of, max = 0, title }: { ready: number; of: number; max?:
           key={i}
           className={cn(
             "w-2.5 rounded-[2px]",
-            i < filled ? "h-2.5 bg-foreground/60" : i >= wanted ? "h-px bg-foreground/30" : "h-2.5 border border-foreground/45",
+            i < filled
+              ? "h-2.5 bg-foreground/60"
+              : i >= wanted
+                ? "h-px bg-foreground/30"
+                : "h-2.5 border border-foreground/45",
           )}
         />
       ))}
@@ -526,7 +809,11 @@ function Slots({ ready, of, max = 0, title }: { ready: number; of: number; max?:
 
 // Names sit one step in so a workload's caret has room left of its name, and each level under it one more step behind a guide line.
 type Depth = 0 | 1 | 2;
-const indent: Record<Depth, string> = { 0: "pl-5", 1: "ml-1.5 border-l pl-8", 2: "ml-1.5 border-l pl-13" };
+const indent: Record<Depth, string> = {
+  0: "pl-5",
+  1: "ml-1.5 border-l pl-8",
+  2: "ml-1.5 border-l pl-13",
+};
 
 // Name and Details stay when the list is narrow (a detail open beside it); Age steps aside for every row at once,
 // rather than being truncated row by row.
@@ -595,8 +882,19 @@ const TargetLine = memo(function TargetLine({
         )}
         <button
           type="button"
-          className={cn("truncate text-left text-sm hover:underline", target.workload && !depth && "font-medium")}
-          title={target.config ? `What is in ${target.name}?` : target.kind === "svc" ? `Show ${target.name}` : target.ingress ? `What does ${target.name} reach?` : `Why is ${target.name} in this state?`}
+          className={cn(
+            "truncate text-left text-sm hover:underline",
+            target.workload && !depth && "font-medium",
+          )}
+          title={
+            target.config
+              ? `What is in ${target.name}?`
+              : target.kind === "svc"
+                ? `Show ${target.name}`
+                : target.ingress
+                  ? `What does ${target.name} reach?`
+                  : `Why is ${target.name} in this state?`
+          }
           onClick={inspect}
         >
           {target.name}
@@ -610,15 +908,44 @@ const TargetLine = memo(function TargetLine({
         {/* What is wrong, or on its way, leads the column, so the name keeps the width; a healthy or finished object says nothing. */}
         {target.kind === "pod" && (
           <>
-            <ReasonBadge reason={target.reason === "Completed" ? undefined : target.reason} className="cursor-pointer" onClick={inspect} />
-            <ReasonBadge reason={pressure} className="cursor-pointer" title="Close to its limit" onClick={inspect} />
+            <ReasonBadge
+              reason={target.reason === "Completed" ? undefined : target.reason}
+              className="cursor-pointer"
+              onClick={inspect}
+            />
+            <ReasonBadge
+              reason={pressure}
+              className="cursor-pointer"
+              title="Close to its limit"
+              onClick={inspect}
+            />
           </>
         )}
-        {target.workload && <ReasonBadge reason={reason} className="cursor-pointer" title={job?.message || reason} onClick={inspect} />}
-        {target.pvc && <ReasonBadge reason={pvcReason(target.pvc)} className="cursor-pointer" onClick={inspect} />}
-        {target.hpa && <ReasonBadge reason={target.hpa.problem} className="cursor-pointer" onClick={inspect} />}
+        {target.workload && (
+          <ReasonBadge
+            reason={reason}
+            className="cursor-pointer"
+            title={job?.message || reason}
+            onClick={inspect}
+          />
+        )}
+        {target.pvc && (
+          <ReasonBadge
+            reason={pvcReason(target.pvc)}
+            className="cursor-pointer"
+            onClick={inspect}
+          />
+        )}
+        {target.hpa && (
+          <ReasonBadge reason={target.hpa.problem} className="cursor-pointer" onClick={inspect} />
+        )}
         {target.ingress && (
-          <ReasonBadge reason={target.ingress.problem} className="cursor-pointer" title="Where the chain to its pods stops" onClick={inspect} />
+          <ReasonBadge
+            reason={target.ingress.problem}
+            className="cursor-pointer"
+            title="Where the chain to its pods stops"
+            onClick={inspect}
+          />
         )}
         {target.workload?.rollout && (
           <Slots
@@ -629,13 +956,24 @@ const TargetLine = memo(function TargetLine({
           />
         )}
         {job && (
-          <Slots ready={job.succeeded} of={job.completions} title={`${job.succeeded} of ${job.completions} completed`} />
+          <Slots
+            ready={job.succeeded}
+            of={job.completions}
+            title={`${job.succeeded} of ${job.completions} completed`}
+          />
         )}
         {target.kind === "pod" && !isProblem(target) && target.reason !== "Completed" && (
-          <Slots ready={target.ready ?? 0} of={target.containers.length} title={`${target.ready ?? 0} of ${target.containers.length} containers ready`} />
+          <Slots
+            ready={target.ready ?? 0}
+            of={target.containers.length}
+            title={`${target.ready ?? 0} of ${target.containers.length} containers ready`}
+          />
         )}
         {!!target.restarts && (
-          <span className="shrink-0 text-muted-foreground" title={restartsLabel(target.restarts, target.lastRestart)}>
+          <span
+            className="shrink-0 text-muted-foreground"
+            title={restartsLabel(target.restarts, target.lastRestart)}
+          >
             {target.restarts === 1 ? "1 restart" : `${target.restarts} restarts`}
           </span>
         )}
@@ -646,7 +984,13 @@ const TargetLine = memo(function TargetLine({
         )}
       </span>
       <span className="hidden @2xl:flex">
-        {target.created && !isZeroTime(target.created) && <span title={`Created ${ago(target.created)}, ${new Date(target.created).toLocaleString()}`}>{since(target.created)}</span>}
+        {target.created && !isZeroTime(target.created) && (
+          <span
+            title={`Created ${ago(target.created)}, ${new Date(target.created).toLocaleString()}`}
+          >
+            {since(target.created)}
+          </span>
+        )}
       </span>
       <span className="flex justify-end gap-0.5">
         <RowVerbs facts={{ forwarded, stream, shell }} onForwards={onForwards} onOpen={onOpen} />
@@ -673,14 +1017,19 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
     scope: { id: scopeKey(cluster.id).join(":") },
     mutationFn: (namespaces: string[]) => ClusterService.SetNamespaces(cluster.id, namespaces),
     onSettled: () =>
-      Promise.all([queryClient.invalidateQueries({ queryKey: ["config"] }), queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] })]),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["config"] }),
+        queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] }),
+      ]),
   });
   const pick = (namespaces: string[]) => {
     setDraft(namespaces);
     save.mutate([...namespaces].sort());
   };
   const typed = query.trim();
-  const items = [...new Set([...(known ?? []), ...draft, ...(!known && typed ? [typed] : [])])].sort();
+  const items = [
+    ...new Set([...(known ?? []), ...draft, ...(!known && typed ? [typed] : [])]),
+  ].sort();
   const label = scope.length ? scope.join(", ") : "All namespaces";
   // Every name is written and cut where the button ends; the count is of the names that cannot be read whole.
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -689,10 +1038,15 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
     const el = labelRef.current;
     if (!el) return;
     const { font, fontFamily } = getComputedStyle(el);
-    const width = (text: string, as: string) => ((canvas.font = as), canvas.measureText(text).width);
+    const width = (text: string, as: string) => (
+      (canvas.font = as),
+      canvas.measureText(text).width
+    );
     // The count is an 11px pill with 6px padding a side, 6px from the names.
-    const count = (n: number) => (n < scope.length ? width(`+${scope.length - n}`, `11px ${fontFamily}`) + 18 : 0);
-    const fits = (n: number) => width(scope.slice(0, n).join(", "), font) + count(n) <= el.clientWidth;
+    const count = (n: number) =>
+      n < scope.length ? width(`+${scope.length - n}`, `11px ${fontFamily}`) + 18 : 0;
+    const fits = (n: number) =>
+      width(scope.slice(0, n).join(", "), font) + count(n) <= el.clientWidth;
     const fit = () => {
       let n = scope.length;
       while (n > 1 && !fits(n)) n--;
@@ -718,16 +1072,34 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
     >
       {/* The caret sits by the name, and the spinner takes its place while the scope saves. */}
       <ComboboxTrigger
-        render={<Button variant="ghost" size="sm" className={cn("max-w-60 bg-foreground/6 text-muted-foreground [&>svg:last-child]:size-3.5", save.isPending && "[&>svg:last-child]:hidden")} title={label} />}
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "max-w-60 bg-foreground/6 text-muted-foreground [&>svg:last-child]:size-3.5",
+              save.isPending && "[&>svg:last-child]:hidden",
+            )}
+            title={label}
+          />
+        }
       >
         <span ref={labelRef} className="flex min-w-0 flex-1 items-center gap-1.5">
           <span className="truncate">{label}</span>
-          {shown < scope.length && <span className="shrink-0 rounded-full bg-foreground/8 px-1.5 text-[11px] leading-4 tabular-nums">+{scope.length - shown}</span>}
+          {shown < scope.length && (
+            <span className="shrink-0 rounded-full bg-foreground/8 px-1.5 text-[11px] leading-4 tabular-nums">
+              +{scope.length - shown}
+            </span>
+          )}
         </span>
         {save.isPending && <CircleNotchIcon className="size-4 animate-spin" />}
       </ComboboxTrigger>
       <ComboboxContent align="start" className="w-72">
-        <ComboboxInput showTrigger={false} placeholder={known ? "Search namespaces" : "Add a namespace by name"} autoFocus>
+        <ComboboxInput
+          showTrigger={false}
+          placeholder={known ? "Search namespaces" : "Add a namespace by name"}
+          autoFocus
+        >
           <MagnifyingGlassIcon className="order-first ml-2 size-4 text-muted-foreground" />
         </ComboboxInput>
         {known && (
@@ -740,7 +1112,9 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
             {draft.length === 0 && <CheckIcon className="absolute right-2 size-4" />}
           </button>
         )}
-        <ComboboxEmpty>{known ? "No namespace matches." : "Type a namespace you may use."}</ComboboxEmpty>
+        <ComboboxEmpty>
+          {known ? "No namespace matches." : "Type a namespace you may use."}
+        </ComboboxEmpty>
         <ComboboxList>
           {(ns: string) => (
             <ComboboxItem key={ns} value={ns}>
@@ -748,7 +1122,9 @@ export function NamespaceScope({ cluster }: { cluster: Cluster }) {
             </ComboboxItem>
           )}
         </ComboboxList>
-        {save.error && <p className="px-2 pb-2 text-xs text-destructive">{errorText(save.error)}</p>}
+        {save.error && (
+          <p className="px-2 pb-2 text-xs text-destructive">{errorText(save.error)}</p>
+        )}
       </ComboboxContent>
     </Combobox>
   );
@@ -773,12 +1149,21 @@ function NamespacePrompt({ cluster, error }: { cluster: Cluster; error: unknown 
       }}
     >
       <div>
-        <p className="text-sm font-medium">{error ? "Some of these namespaces are forbidden" : "Cluster-wide listing is forbidden"}</p>
-        <p className="text-sm text-muted-foreground">Enter the namespaces you may use. They are remembered for this cluster.</p>
+        <p className="text-sm font-medium">
+          {error ? "Some of these namespaces are forbidden" : "Cluster-wide listing is forbidden"}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Enter the namespaces you may use. They are remembered for this cluster.
+        </p>
         {!!error && <p className="mt-2 text-xs text-muted-foreground">{errorText(error)}</p>}
       </div>
       <div className="flex gap-2">
-        <Input autoFocus placeholder="default, payments" value={value} onChange={(e) => setValue(e.target.value)} />
+        <Input
+          autoFocus
+          placeholder="default, payments"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
         <Button type="submit" disabled={namespaces.length === 0 || save.isPending}>
           Save
         </Button>

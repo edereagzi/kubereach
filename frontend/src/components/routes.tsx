@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownIcon, ArrowUpIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { RouteService } from "@bindings/internal/bindings";
 import {
   AuthMethod,
@@ -21,11 +27,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { configQuery, credentialRequired, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
@@ -54,20 +72,32 @@ export function StateDot({ status, hollow = false }: { status?: Status; hollow?:
       title={hollow ? "off" : statusLabel(status)}
       className={cn(
         "size-2 shrink-0 rounded-full",
-        hollow ? "border-[1.5px] border-muted-foreground/70" : stateColor[status?.state ?? State.StateIdle],
+        hollow
+          ? "border-[1.5px] border-muted-foreground/70"
+          : stateColor[status?.state ?? State.StateIdle],
       )}
     />
   );
 }
 
 // The Route's SSH Servers in the order they are reached, as user@host.
-export const serverChain = (route: Route) => (route.servers ?? []).map((s) => (s.user ? `${s.user}@${s.host}` : s.host)).join(" → ");
+export const serverChain = (route: Route) =>
+  (route.servers ?? []).map((s) => (s.user ? `${s.user}@${s.host}` : s.host)).join(" → ");
 
-export const isUp = (s?: RouteStatus) => s?.state === State.StateConnecting || s?.state === State.StateConnected || s?.state === State.StateReconnecting;
+export const isUp = (s?: RouteStatus) =>
+  s?.state === State.StateConnecting ||
+  s?.state === State.StateConnected ||
+  s?.state === State.StateReconnecting;
 
 // Why a Route is not working: a Connect refused before it started, or the error it stopped on.
 export function useRouteProblem(routeId: string) {
-  return useUIStore((s) => s.connectErrors[routeId] ?? (s.routeStatuses[routeId]?.state === State.StateError ? s.routeStatuses[routeId]?.error : undefined));
+  return useUIStore(
+    (s) =>
+      s.connectErrors[routeId] ??
+      (s.routeStatuses[routeId]?.state === State.StateError
+        ? s.routeStatuses[routeId]?.error
+        : undefined),
+  );
 }
 
 // A mutation's own state only follows its latest call, so each Route's pending call is looked up among all of them.
@@ -79,7 +109,10 @@ function usePendingRoutes() {
 }
 
 function useStopRoute() {
-  return useMutation({ mutationKey: ["route"], mutationFn: ({ route }: { route: Route }) => RouteService.Stop(route.id) });
+  return useMutation({
+    mutationKey: ["route"],
+    mutationFn: ({ route }: { route: Route }) => RouteService.Stop(route.id),
+  });
 }
 
 // RouteConnector runs every Connect the window asks for, so a Route's credential and host key prompts have one home.
@@ -96,7 +129,8 @@ export function RouteConnector() {
   // A wrong secret is a plain error and keeps the dialog open; a missing one opens or re-targets it.
   const connect = useMutation({
     mutationKey: ["route"],
-    mutationFn: ({ route, secret = "" }: { route: Route; secret?: string }) => RouteService.Connect(route.id, secret),
+    mutationFn: ({ route, secret = "" }: { route: Route; secret?: string }) =>
+      RouteService.Connect(route.id, secret),
     onMutate: ({ route }) => setConnectError(route.id, null),
     onSuccess: () => setCredential(null),
     onError: (error, { route }) => {
@@ -200,36 +234,61 @@ export function RoutesPage() {
     <>
       <div data-drag className="flex h-13 shrink-0 items-center gap-2 px-4 select-none">
         <span className="flex-1 text-base font-semibold">Routes</span>
-        <Button variant="ghost" size="sm" disabled={importSSHConfig.isPending} onClick={() => importSSHConfig.mutate()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={importSSHConfig.isPending}
+          onClick={() => importSSHConfig.mutate()}
+        >
           Import from SSH config…
         </Button>
         <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
           <PlusIcon /> New route
         </Button>
       </div>
-      {importSSHConfig.error && <p className="px-4 pb-2 text-xs text-destructive">{errorText(importSSHConfig.error)}</p>}
+      {importSSHConfig.error && (
+        <p className="px-4 pb-2 text-xs text-destructive">{errorText(importSSHConfig.error)}</p>
+      )}
       <div className="min-h-0 flex-1 overflow-auto border-t">
         {routes.length === 0 ? (
           <Empty className="border-0">
             <EmptyHeader>
               <EmptyTitle>No routes</EmptyTitle>
-              <EmptyDescription>A route reaches a cluster this machine cannot reach directly, through one or more SSH servers.</EmptyDescription>
+              <EmptyDescription>
+                A route reaches a cluster this machine cannot reach directly, through one or more
+                SSH servers.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
           <ul className="divide-y">
             {routes.map((r) => (
-              <RouteRow key={r.id} route={r} clusters={(data?.clusters ?? []).filter((c) => c.route === r.id)} onEdit={() => setEditing(r)} />
+              <RouteRow
+                key={r.id}
+                route={r}
+                clusters={(data?.clusters ?? []).filter((c) => c.route === r.id)}
+                onEdit={() => setEditing(r)}
+              />
             ))}
           </ul>
         )}
       </div>
-      {editing !== undefined && <RouteDialog route={editing} onClose={() => setEditing(undefined)} />}
+      {editing !== undefined && (
+        <RouteDialog route={editing} onClose={() => setEditing(undefined)} />
+      )}
     </>
   );
 }
 
-function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster[]; onEdit: () => void }) {
+function RouteRow({
+  route,
+  clusters,
+  onEdit,
+}: {
+  route: Route;
+  clusters: Cluster[];
+  onEdit: () => void;
+}) {
   const status = useUIStore((s) => s.routeStatuses[route.id]);
   const selectCluster = useUIStore((s) => s.selectCluster);
   const problem = useRouteProblem(route.id);
@@ -241,9 +300,7 @@ function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster
       <div className="grid min-w-0 flex-1 gap-0.5">
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="text-sm font-medium">{route.name}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {serverChain(route)}
-          </span>
+          <span className="truncate text-xs text-muted-foreground">{serverChain(route)}</span>
         </div>
         {problem && (
           <p className="truncate text-xs text-destructive" title={problem}>
@@ -256,7 +313,11 @@ function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster
             : clusters.map((c, i) => (
                 <span key={c.id}>
                   {i > 0 && ", "}
-                  <button type="button" className="text-foreground/80 underline-offset-2 outline-none hover:underline focus-visible:underline" onClick={() => selectCluster(c.id)}>
+                  <button
+                    type="button"
+                    className="text-foreground/80 underline-offset-2 outline-none hover:underline focus-visible:underline"
+                    onClick={() => selectCluster(c.id)}
+                  >
                     {c.name}
                   </button>
                 </span>
@@ -271,14 +332,34 @@ function RouteRow({ route, clusters, onEdit }: { route: Route; clusters: Cluster
   );
 }
 
-export type CredentialRequest = { route: Route; code: "passphrase" | "password" | "sudo"; target: string };
+export type CredentialRequest = {
+  route: Route;
+  code: "passphrase" | "password" | "sudo";
+  target: string;
+};
 
-const emptyServer: SSHServer = { host: "", port: 22, user: "", auth: AuthMethod.AuthAgent, keyFile: "" };
+const emptyServer: SSHServer = {
+  host: "",
+  port: 22,
+  user: "",
+  auth: AuthMethod.AuthAgent,
+  keyFile: "",
+};
 
-export function RouteDialog({ route, onClose, onSaved }: { route: Route | null; onClose: () => void; onSaved?: (route: Route) => void }) {
+export function RouteDialog({
+  route,
+  onClose,
+  onSaved,
+}: {
+  route: Route | null;
+  onClose: () => void;
+  onSaved?: (route: Route) => void;
+}) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(route?.name ?? "");
-  const [servers, setServers] = useState<SSHServer[]>(route?.servers?.length ? route.servers : [emptyServer]);
+  const [servers, setServers] = useState<SSHServer[]>(
+    route?.servers?.length ? route.servers : [emptyServer],
+  );
   const patch = (i: number, p: Partial<SSHServer>) =>
     setServers((list) => list.map((s, j) => (j === i ? { ...s, ...p } : s)));
   const move = (i: number, to: number) =>
@@ -301,7 +382,9 @@ export function RouteDialog({ route, onClose, onSaved }: { route: Route | null; 
   const remove = useMutation({ mutationFn: () => RouteService.Delete(route!.id), onSuccess: done });
   const [deleting, setDeleting] = useState(false);
   const { data } = useQuery(configQuery);
-  const clusters = (data?.clusters ?? []).filter((c) => route && c.route === route.id).map((c) => c.name);
+  const clusters = (data?.clusters ?? [])
+    .filter((c) => route && c.route === route.id)
+    .map((c) => c.name);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -376,14 +459,16 @@ export function RouteDialog({ route, onClose, onSaved }: { route: Route | null; 
             onOpenChange={setDeleting}
             title={`Delete route ${route.name}?`}
             description={
-              clusters.length > 0
-                ? (
-                  <>
-                    {clusters.length > 1 ? "Clusters" : "Cluster"} <span className="font-medium text-foreground">{clusters.join(", ")}</span>{" "}
-                    {clusters.length > 1 ? "use" : "uses"} this route. Switch {clusters.length > 1 ? "them" : "it"} to another route or Direct first.
-                  </>
-                )
-                : "Kubereach forgets this route and its SSH servers, and disconnects it if connected. Your SSH config and keys stay as they are."
+              clusters.length > 0 ? (
+                <>
+                  {clusters.length > 1 ? "Clusters" : "Cluster"}{" "}
+                  <span className="font-medium text-foreground">{clusters.join(", ")}</span>{" "}
+                  {clusters.length > 1 ? "use" : "uses"} this route. Switch{" "}
+                  {clusters.length > 1 ? "them" : "it"} to another route or Direct first.
+                </>
+              ) : (
+                "Kubereach forgets this route and its SSH servers, and disconnects it if connected. Your SSH config and keys stay as they are."
+              )
             }
             confirm="Delete route"
             destructive
@@ -425,7 +510,14 @@ function ServerFields({
     <fieldset className="grid gap-3 rounded-md border p-3">
       <div className="flex items-center gap-1">
         <legend className="flex-1 text-sm font-medium">SSH server {index + 1}</legend>
-        <Button type="button" variant="ghost" size="icon-xs" title="Move up" disabled={!canMoveUp} onClick={onMoveUp}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Move up"
+          disabled={!canMoveUp}
+          onClick={onMoveUp}
+        >
           <ArrowUpIcon />
         </Button>
         <Button
@@ -438,13 +530,24 @@ function ServerFields({
         >
           <ArrowDownIcon />
         </Button>
-        <Button type="button" variant="ghost" size="icon-xs" title="Remove" disabled={!canRemove} onClick={onRemove}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          title="Remove"
+          disabled={!canRemove}
+          onClick={onRemove}
+        >
           <TrashIcon />
         </Button>
       </div>
       <div className="grid grid-cols-[1fr_5rem] gap-2">
         <Field label="Host">
-          <Input required value={server.host} onChange={(e) => onChange({ host: e.target.value })} />
+          <Input
+            required
+            value={server.host}
+            onChange={(e) => onChange({ host: e.target.value })}
+          />
         </Field>
         <Field label="Port">
           <Input
@@ -461,7 +564,10 @@ function ServerFields({
         <Input required value={server.user} onChange={(e) => onChange({ user: e.target.value })} />
       </Field>
       <Field label="Authentication">
-        <Select value={server.auth} onValueChange={(auth) => onChange({ auth: auth ?? AuthMethod.AuthAgent })}>
+        <Select
+          value={server.auth}
+          onValueChange={(auth) => onChange({ auth: auth ?? AuthMethod.AuthAgent })}
+        >
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -475,7 +581,11 @@ function ServerFields({
       {server.auth === AuthMethod.AuthKeyFile && (
         <Field label="Key file">
           <div className="flex gap-2">
-            <Input required value={server.keyFile} onChange={(e) => onChange({ keyFile: e.target.value })} />
+            <Input
+              required
+              value={server.keyFile}
+              onChange={(e) => onChange({ keyFile: e.target.value })}
+            />
             <Button type="button" variant="outline" onClick={pickKey}>
               Browse
             </Button>
@@ -511,7 +621,13 @@ export function CredentialDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{code === "passphrase" ? "Key passphrase" : code === "sudo" ? "Sudo password" : "Password"}</DialogTitle>
+            <DialogTitle>
+              {code === "passphrase"
+                ? "Key passphrase"
+                : code === "sudo"
+                  ? "Sudo password"
+                  : "Password"}
+            </DialogTitle>
             <DialogDescription>
               {code === "passphrase"
                 ? `${target} is protected.`
@@ -521,7 +637,12 @@ export function CredentialDialog({
               It is kept in memory for this session only.
             </DialogDescription>
           </DialogHeader>
-          <Input autoFocus type="password" value={secret} onChange={(e) => setSecret(e.target.value)} />
+          <Input
+            autoFocus
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -539,7 +660,17 @@ export function CredentialDialog({
 
 // SudoPasswordDialog asks for the sudo password a remote kubeconfig read is missing, then runs the read again through
 // retry; a refused password comes back as error and is asked for again.
-export function SudoPasswordDialog({ routeId, error, retry, onClose }: { routeId: string; error: unknown; retry: () => Promise<unknown>; onClose: () => void }) {
+export function SudoPasswordDialog({
+  routeId,
+  error,
+  retry,
+  onClose,
+}: {
+  routeId: string;
+  error: unknown;
+  retry: () => Promise<unknown>;
+  onClose: () => void;
+}) {
   const [submitted, setSubmitted] = useState(false);
   const save = useMutation({
     mutationFn: async (secret: string) => {
@@ -573,8 +704,8 @@ export function HostKeyDialog({ prompt }: { prompt: HostKeyPrompt }) {
         <DialogHeader>
           <DialogTitle>Unknown host key</DialogTitle>
           <DialogDescription>
-            {prompt.address} is not in your known_hosts. Accepting adds this key so it is checked on every later
-            connection.
+            {prompt.address} is not in your known_hosts. Accepting adds this key so it is checked on
+            every later connection.
           </DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

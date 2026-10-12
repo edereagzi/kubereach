@@ -9,12 +9,24 @@ import { pvcQuery, errorText } from "@/queries";
 import { cn } from "@/lib/utils";
 
 // pvcReason is what a row's badge says: nothing once bound, "unbound" while no volume backs the claim, "lost" once its volume is gone.
-export const pvcReason = (c: KubePVC) => (c.phase === "Bound" ? undefined : c.phase === "Lost" ? "lost" : "unbound");
+export const pvcReason = (c: KubePVC) =>
+  c.phase === "Bound" ? undefined : c.phase === "Lost" ? "lost" : "unbound";
 
 // pvcLabel is the row's figure: the volume's size and class, or what an unbound claim asks for.
-export const pvcLabel = (c: KubePVC) => [c.phase === "Bound" ? c.size : `wants ${c.size}`, c.storageClass].filter(Boolean).join(" · ");
+export const pvcLabel = (c: KubePVC) =>
+  [c.phase === "Bound" ? c.size : `wants ${c.size}`, c.storageClass].filter(Boolean).join(" · ");
 
-export function PVCDetail({ cluster, target, pvc, onClose }: { cluster: Cluster; target: Target; pvc: KubePVC; onClose: () => void }) {
+export function PVCDetail({
+  cluster,
+  target,
+  pvc,
+  onClose,
+}: {
+  cluster: Cluster;
+  target: Target;
+  pvc: KubePVC;
+  onClose: () => void;
+}) {
   const q = useQuery(pvcQuery(cluster.id, target.namespace, target.name));
   const d = q.data;
   const c = d?.pvc ?? pvc;
@@ -33,7 +45,9 @@ export function PVCDetail({ cluster, target, pvc, onClose }: { cluster: Cluster;
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 text-xs">
             <dt className="text-muted-foreground">Phase</dt>
             <dd className={cn(pvcReason(c) && "text-destructive")}>{c.phase || "Pending"}</dd>
-            <dt className="text-muted-foreground">{c.phase === "Bound" ? "Capacity" : "Asks for"}</dt>
+            <dt className="text-muted-foreground">
+              {c.phase === "Bound" ? "Capacity" : "Asks for"}
+            </dt>
             <dd className="font-mono">{c.size}</dd>
             <dt className="text-muted-foreground">Storage class</dt>
             <dd className="font-mono">{c.storageClass || "—"}</dd>
@@ -56,7 +70,11 @@ export function PVCDetail({ cluster, target, pvc, onClose }: { cluster: Cluster;
         )}
         {d && (
           <Section title="Events">
-            {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
+            {d.eventsError ? (
+              <p className="text-xs text-destructive">{d.eventsError}</p>
+            ) : (
+              <Events events={d.events ?? []} />
+            )}
           </Section>
         )}
       </DetailTabs>

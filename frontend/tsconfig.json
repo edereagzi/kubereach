@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -19,16 +15,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@bindings/*": [
-        "./bindings/github.com/edereagzi/kubereach/*"
-      ]
+      "@/*": ["./src/*"],
+      "@bindings/*": ["./bindings/github.com/edereagzi/kubereach/*"]
     }
   },
-  "include": [
-    "src",
-    "bindings"
-  ]
+  "include": ["src", "bindings"]
 }

@@ -14,7 +14,15 @@ import { sessionEnded, useUIStore } from "@/store";
 // TargetVerbs is Forward, Logs and Shell for one object in its detail, each turning into a link to its tab once running,
 // as its row's RowVerbs say. Another view has no detail, so moving to it closes the detail.
 // Logs and shells open in the dock under the view, so the detail stays open beside them.
-export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; target: Target; onForward?: () => void }) {
+export function TargetVerbs({
+  cluster,
+  target,
+  onForward,
+}: {
+  cluster: Cluster;
+  target: Target;
+  onForward?: () => void;
+}) {
   const selectTab = useUIStore((s) => s.selectTab);
   const openDock = useUIStore((s) => s.openDock);
   const { forwarded, stream, shell } = useRowFacts(cluster).get(target.value) ?? {};
@@ -22,9 +30,13 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
   const active = "text-primary hover:text-primary";
   const hasLogs = !!logKind[target.kind];
   const forwardable = target.kind === "svc" || target.kind === "pod";
-  useCommand("logs", () => (stream ? openDock(cluster.id, stream) : startLogs.mutate(target)), { enabled: hasLogs && !startLogs.isPending });
+  useCommand("logs", () => (stream ? openDock(cluster.id, stream) : startLogs.mutate(target)), {
+    enabled: hasLogs && !startLogs.isPending,
+  });
   useCommand("shell", () => shell && openDock(cluster.id, shell), { enabled: !!shell });
-  useCommand("forward", () => (forwarded ? selectTab("forwards") : onForward?.()), { enabled: forwardable && (forwarded || !!onForward) });
+  useCommand("forward", () => (forwarded ? selectTab("forwards") : onForward?.()), {
+    enabled: forwardable && (forwarded || !!onForward),
+  });
 
   return (
     <>
@@ -41,25 +53,45 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
             Forward
           </Button>
         ) : (
-          <Button variant="outline" size="xs" title={`Add forward (${keyLabel("forward")})`} onClick={onForward}>
+          <Button
+            variant="outline"
+            size="xs"
+            title={`Add forward (${keyLabel("forward")})`}
+            onClick={onForward}
+          >
             <ArrowsLeftRightIcon />
             Forward
           </Button>
         ))}
       {hasLogs &&
         (stream ? (
-          <Button variant="outline" size="xs" className={active} title={`Following logs (${keyLabel("logs")})`} onClick={() => openDock(cluster.id, stream)}>
+          <Button
+            variant="outline"
+            size="xs"
+            className={active}
+            title={`Following logs (${keyLabel("logs")})`}
+            onClick={() => openDock(cluster.id, stream)}
+          >
             <ScrollIcon />
             Logs
           </Button>
         ) : (
           <>
-            <Button variant="outline" size="xs" title={`Logs (${keyLabel("logs")})`} disabled={startLogs.isPending} onClick={() => startLogs.mutate(target)}>
+            <Button
+              variant="outline"
+              size="xs"
+              title={`Logs (${keyLabel("logs")})`}
+              disabled={startLogs.isPending}
+              onClick={() => startLogs.mutate(target)}
+            >
               <ScrollIcon />
               Logs
             </Button>
             {startLogs.error && (
-              <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(startLogs.error)}>
+              <span
+                className="my-auto min-w-0 truncate text-xs text-destructive"
+                title={errorText(startLogs.error)}
+              >
                 {errorText(startLogs.error)}
               </span>
             )}
@@ -67,7 +99,13 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
         ))}
       {target.kind === "pod" &&
         (shell ? (
-          <Button variant="outline" size="xs" className={active} title={`Shell open (${keyLabel("shell")})`} onClick={() => openDock(cluster.id, shell)}>
+          <Button
+            variant="outline"
+            size="xs"
+            className={active}
+            title={`Shell open (${keyLabel("shell")})`}
+            onClick={() => openDock(cluster.id, shell)}
+          >
             <TerminalIcon />
             Shell
           </Button>
@@ -80,7 +118,9 @@ export function TargetVerbs({ cluster, target, onForward }: { cluster: Cluster; 
 
 // RowFacts are what an object's verbs show: whether it is forwarded, and the session of its live logs or of an open Shell.
 export type RowFacts = { forwarded?: boolean; stream?: string; shell?: string };
-const logRowKind = Object.fromEntries(Object.entries(logKind).map(([kind, source]) => [source, kind as Kind]));
+const logRowKind = Object.fromEntries(
+  Object.entries(logKind).map(([kind, source]) => [source, kind as Kind]),
+);
 
 // useRowFacts works out the facts of every object of a Cluster at once, by row value, so a list of thousands reads them
 // once rather than once a row.
@@ -91,14 +131,20 @@ export function useRowFacts(cluster: Cluster) {
   return useMemo(() => {
     const facts = new Map<string, RowFacts>();
     const add = (value: string, f: RowFacts) => facts.set(value, { ...f, ...facts.get(value) });
-    for (const f of forwardsFor(data?.forwards, cluster)) add(targetValue(f.target.kind === "service" ? "svc" : "pod", f.target.namespace, f.target.name), { forwarded: true });
+    for (const f of forwardsFor(data?.forwards, cluster))
+      add(
+        targetValue(f.target.kind === "service" ? "svc" : "pod", f.target.namespace, f.target.name),
+        { forwarded: true },
+      );
     // The verb stands for the target's live logs; a previous run or another container opened elsewhere is its own tab.
     for (const st of Object.values(logStreams)) {
       const kind = logRowKind[st.source.kind];
-      if (kind && st.source.clusterId === cluster.id && !st.source.container && !st.source.previous) add(targetValue(kind, st.source.namespace, st.source.name), { stream: st.id });
+      if (kind && st.source.clusterId === cluster.id && !st.source.container && !st.source.previous)
+        add(targetValue(kind, st.source.namespace, st.source.name), { stream: st.id });
     }
     for (const x of Object.values(shellSessions)) {
-      if (x.target.clusterId === cluster.id && !sessionEnded(x)) add(targetValue("pod", x.target.namespace, x.target.pod), { shell: x.id });
+      if (x.target.clusterId === cluster.id && !sessionEnded(x))
+        add(targetValue("pod", x.target.namespace, x.target.pod), { shell: x.id });
     }
     return facts;
   }, [data?.forwards, cluster, logStreams, shellSessions]);
@@ -106,22 +152,48 @@ export function useRowFacts(cluster: Cluster) {
 
 // RowVerbs shows only what is running, as the sidebar's icons so a narrow list keeps its text, since the detail beside
 // the list holds the verbs. It reads nothing itself, so a list of thousands holds no subscription per row.
-export function RowVerbs({ facts, onForwards, onOpen }: { facts?: RowFacts; onForwards: () => void; onOpen: (sessionId: string) => void }) {
+export function RowVerbs({
+  facts,
+  onForwards,
+  onOpen,
+}: {
+  facts?: RowFacts;
+  onForwards: () => void;
+  onOpen: (sessionId: string) => void;
+}) {
   const active = "text-primary hover:text-primary";
   return (
     <>
       {facts?.forwarded && (
-        <Button variant="ghost" size="icon-xs" className={active} title="Forwarding" onClick={onForwards}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={active}
+          title="Forwarding"
+          onClick={onForwards}
+        >
           <ArrowsLeftRightIcon />
         </Button>
       )}
       {facts?.stream && (
-        <Button variant="ghost" size="icon-xs" className={active} title="Following logs" onClick={() => onOpen(facts.stream!)}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={active}
+          title="Following logs"
+          onClick={() => onOpen(facts.stream!)}
+        >
           <ScrollIcon />
         </Button>
       )}
       {facts?.shell && (
-        <Button variant="ghost" size="icon-xs" className={active} title="Shell open" onClick={() => onOpen(facts.shell!)}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={active}
+          title="Shell open"
+          onClick={() => onOpen(facts.shell!)}
+        >
           <CubeIcon />
         </Button>
       )}

@@ -2,12 +2,36 @@
 
 export type Platform = "mac" | "windows" | "linux";
 export type Area = "terminal" | "editor" | "text" | "dialog" | "panel" | "tabs" | "other";
-export type Group = "anywhere" | "cluster" | "list" | "detail" | "yaml" | "panel" | "logs" | "terminal" | "search" | "typing";
+export type Group =
+  | "anywhere"
+  | "cluster"
+  | "list"
+  | "detail"
+  | "yaml"
+  | "panel"
+  | "logs"
+  | "terminal"
+  | "search"
+  | "typing";
 // handled: an element already acted on the key (defaultPrevented), for example a menu that closed on Esc.
-export type Press = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; handled: boolean };
+export type Press = {
+  key: string;
+  meta: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  handled: boolean;
+};
 export type Owner = "focus" | "app";
 
-export const pressOf = (e: KeyboardEvent): Press => ({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, handled: e.defaultPrevented });
+export const pressOf = (e: KeyboardEvent): Press => ({
+  key: e.key,
+  meta: e.metaKey,
+  ctrl: e.ctrlKey,
+  alt: e.altKey,
+  shift: e.shiftKey,
+  handled: e.defaultPrevented,
+});
 
 // On macOS a Terminal keeps these Cmd keys: clear, copy, paste, select all, search, and line editing.
 const macTerminalKeys = new Set(["k", "c", "v", "a", "f", "ArrowLeft", "ArrowRight", "Backspace"]);
@@ -21,12 +45,14 @@ export function keyOwner(p: Press, platform: Platform, area: Area, group: Group)
   const key = p.key.length === 1 ? p.key.toLowerCase() : p.key;
   if (p.handled) return "focus";
   // A Terminal's and the YAML editor's own Commands run in them.
-  if ((area === "terminal" && group === "terminal") || (area === "editor" && group === "yaml")) return "app";
+  if ((area === "terminal" && group === "terminal") || (area === "editor" && group === "yaml"))
+    return "app";
   // An open dialog or menu takes every key first.
   if (area === "dialog") return "focus";
   if (area === "terminal") return terminalKeyOwner(p, key, platform);
   // ⌘[ and ⌘] (back and forward) do not run from a text field or the YAML editor, where CodeMirror indents with them.
-  if ((area === "text" || area === "editor") && p.meta && !p.shift && (key === "[" || key === "]")) return "focus";
+  if ((area === "text" || area === "editor") && p.meta && !p.shift && (key === "[" || key === "]"))
+    return "focus";
   if ((platform === "mac" ? p.meta : p.ctrl) || /^F\d+$/.test(key)) return "app";
   if (area === "text" || area === "editor") return "focus";
   // The panel's lines and tab list scroll and move with the arrows. Alt+arrows go back and forward.

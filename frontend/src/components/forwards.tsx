@@ -3,17 +3,49 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightIcon, ArrowSquareOutIcon, DotsThreeIcon, PlusIcon } from "@phosphor-icons/react";
 import { Browser } from "@wailsio/runtime";
 import { ForwardService } from "@bindings/internal/bindings";
-import { State, TargetKind, type Cluster, type ForwardStatus, type PortForward } from "@bindings/internal/service";
+import {
+  State,
+  TargetKind,
+  type Cluster,
+  type ForwardStatus,
+  type PortForward,
+} from "@bindings/internal/service";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CopyButton } from "@/components/copy-button";
 import { StateDot } from "@/components/routes";
-import { forwardKind, KindBadge, portsLabel, TargetPicker, targetValue, useTargets, type Target } from "@/components/targets";
+import {
+  forwardKind,
+  KindBadge,
+  portsLabel,
+  TargetPicker,
+  targetValue,
+  useTargets,
+  type Target,
+} from "@/components/targets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ComboboxInput } from "@/components/ui/combobox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -22,7 +54,11 @@ import { useUIStore } from "@/store";
 import { cn } from "@/lib/utils";
 
 const forwardKey = (f: PortForward) =>
-  targetValue(f.target.kind === TargetKind.TargetService ? "svc" : "pod", f.target.namespace, f.target.name);
+  targetValue(
+    f.target.kind === TargetKind.TargetService ? "svc" : "pod",
+    f.target.namespace,
+    f.target.name,
+  );
 
 export const forwardsFor = (forwards: PortForward[] | null | undefined, cluster: Cluster) =>
   (forwards ?? []).filter((f) => f.clusterId === cluster.id);
@@ -34,7 +70,9 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
   const saved = forwardsFor(data?.forwards, cluster);
   // An idle forward is healthy: its port is bound and it connects on first use, so only "on" and "failing" are counted.
   const on = saved.filter((f) => f.enabled).length;
-  const failing = saved.filter((f) => f.enabled && statuses[f.id]?.state === State.StateError).length;
+  const failing = saved.filter(
+    (f) => f.enabled && statuses[f.id]?.state === State.StateError,
+  ).length;
   const groups = new Map<string, PortForward[]>();
   for (const f of saved) groups.set(forwardKey(f), [...(groups.get(forwardKey(f)) ?? []), f]);
 
@@ -46,7 +84,9 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
         <Empty className="justify-start border-0 pt-12">
           <EmptyHeader>
             <EmptyTitle>No port forwards</EmptyTitle>
-            <EmptyDescription>Add a service or pod to get a stable local port for each of its ports.</EmptyDescription>
+            <EmptyDescription>
+              Add a service or pod to get a stable local port for each of its ports.
+            </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button size="sm" onClick={() => setAdding(true)}>
@@ -68,7 +108,9 @@ export function PortForwards({ cluster }: { cluster: Cluster }) {
           {[...groups].map(([key, forwards]) => (
             <section key={key}>
               <h3 className="flex items-center gap-2 px-4 pt-3 pb-1 text-sm font-medium">
-                <KindBadge kind={forwards[0]!.target.kind === TargetKind.TargetService ? "svc" : "pod"} />
+                <KindBadge
+                  kind={forwards[0]!.target.kind === TargetKind.TargetService ? "svc" : "pod"}
+                />
                 {forwards[0]!.target.namespace}/{forwards[0]!.target.name}
               </h3>
               {forwards.map((f) => (
@@ -116,7 +158,10 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
       invalidateConfig();
     },
   });
-  const remove = useMutation({ mutationFn: () => ForwardService.Delete(forward.id), onSuccess: invalidateConfig });
+  const remove = useMutation({
+    mutationFn: () => ForwardService.Delete(forward.id),
+    onSuccess: invalidateConfig,
+  });
   const address = `localhost:${forward.localPort}`;
   const url = `${forward.remotePort === 443 || forward.remotePort === 8443 ? "https" : "http"}://${address}`;
   const error = setEnabled.error ?? save.error;
@@ -126,7 +171,12 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
   return (
     <div className="group flex h-9 items-center gap-3 px-4 hover:bg-accent">
       <StateDot status={forward.enabled ? status : undefined} hollow={!forward.enabled} />
-      <span className={cn("flex w-64 shrink-0 items-center gap-1.5 font-mono text-xs", !forward.enabled && "text-muted-foreground")}>
+      <span
+        className={cn(
+          "flex w-64 shrink-0 items-center gap-1.5 font-mono text-xs",
+          !forward.enabled && "text-muted-foreground",
+        )}
+      >
         {editing ? (
           <form
             className="flex items-center gap-1"
@@ -157,15 +207,30 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
             {forward.remotePort}
             <CopyButton text={address} title="Copy address" />
             {forward.enabled && (
-              <Button variant="ghost" size="icon-xs" title={`Open ${url} in the browser`} className="text-muted-foreground" onClick={() => Browser.OpenURL(url)}>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title={`Open ${url} in the browser`}
+                className="text-muted-foreground"
+                onClick={() => Browser.OpenURL(url)}
+              >
                 <ArrowSquareOutIcon />
               </Button>
             )}
           </>
         )}
       </span>
-      <span className={cn("flex min-w-0 flex-1 items-center gap-2 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>
-        {error && !busy ? errorText(error) : busy ? `Port ${busy.port} is in use by another program` : stateSentence(forward, status)}
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2 truncate text-xs",
+          failed ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {error && !busy
+          ? errorText(error)
+          : busy
+            ? `Port ${busy.port} is in use by another program`
+            : stateSentence(forward, status)}
         {busy && (
           <Button
             variant="outline"
@@ -185,7 +250,9 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
       />
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon-xs" title="More" className="text-muted-foreground" />}
+          render={
+            <Button variant="ghost" size="icon-xs" title="More" className="text-muted-foreground" />
+          }
         >
           <DotsThreeIcon weight="bold" />
         </DropdownMenuTrigger>
@@ -245,7 +312,8 @@ export function AddForward({
   const [target, setTarget] = useState<Target | null>(initial);
   const [picks, setPicks] = useState<Record<number, PortPick>>({});
   const forwardable = groups.filter((g) => g.label !== "Workloads");
-  const existing = (port: number) => target && saved.find((f) => forwardKey(f) === target.value && f.remotePort === port);
+  const existing = (port: number) =>
+    target && saved.find((f) => forwardKey(f) === target.value && f.remotePort === port);
   const pick = (port: number): PortPick => picks[port] ?? { checked: true, localPort: "" };
   // A port served over both UDP and TCP is listed twice, but only one forward per port number can exist.
   const ports = [...new Map((target?.ports ?? []).map((p) => [p.port, p])).values()];
@@ -256,7 +324,11 @@ export function AddForward({
         await ForwardService.Save({
           id: "",
           clusterId: cluster.id,
-          target: { kind: forwardKind(target!.kind), namespace: target!.namespace, name: target!.name },
+          target: {
+            kind: forwardKind(target!.kind),
+            namespace: target!.namespace,
+            name: target!.name,
+          },
           remotePort: p.port,
           localPort: Number(pick(p.port).localPort) || 0,
           enabled: true,
@@ -276,7 +348,9 @@ export function AddForward({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add forward</DialogTitle>
-          <DialogDescription>Each ticked port gets its own local port, kept until you delete the forward.</DialogDescription>
+          <DialogDescription>
+            Each ticked port gets its own local port, kept until you delete the forward.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
@@ -296,7 +370,9 @@ export function AddForward({
           {target && (
             <div className="grid gap-1.5">
               <Label>Ports</Label>
-              {ports.length === 0 && <p className="text-sm text-muted-foreground">{target.label} declares no ports.</p>}
+              {ports.length === 0 && (
+                <p className="text-sm text-muted-foreground">{target.label} declares no ports.</p>
+              )}
               {ports.map((p) => {
                 const already = existing(p.port);
                 const current = pick(p.port);
@@ -305,11 +381,15 @@ export function AddForward({
                     <Checkbox
                       checked={already ? true : current.checked}
                       disabled={!!already}
-                      onCheckedChange={(checked) => setPicks({ ...picks, [p.port]: { ...current, checked } })}
+                      onCheckedChange={(checked) =>
+                        setPicks({ ...picks, [p.port]: { ...current, checked } })
+                      }
                     />
                     <span className="w-40 font-mono text-xs">{portsLabel([p])}</span>
                     {already ? (
-                      <span className="font-mono text-xs text-muted-foreground">already on localhost:{already.localPort}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        already on localhost:{already.localPort}
+                      </span>
                     ) : (
                       <Input
                         type="number"
@@ -319,7 +399,12 @@ export function AddForward({
                         className="h-7 w-24"
                         disabled={!current.checked}
                         value={current.localPort}
-                        onChange={(e) => setPicks({ ...picks, [p.port]: { ...current, localPort: e.target.value } })}
+                        onChange={(e) =>
+                          setPicks({
+                            ...picks,
+                            [p.port]: { ...current, localPort: e.target.value },
+                          })
+                        }
                       />
                     )}
                   </div>
@@ -336,7 +421,13 @@ export function AddForward({
                   size="xs"
                   onClick={() => {
                     add.reset();
-                    setPicks({ ...picks, [suggestion.port]: { ...pick(suggestion.port), localPort: String(suggestion.localPort) } });
+                    setPicks({
+                      ...picks,
+                      [suggestion.port]: {
+                        ...pick(suggestion.port),
+                        localPort: String(suggestion.localPort),
+                      },
+                    });
                   }}
                 >
                   Use {suggestion.localPort} instead

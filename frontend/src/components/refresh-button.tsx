@@ -4,7 +4,15 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // A fetch that answers in milliseconds would otherwise show no sign it ran, so the icon always makes one full turn.
-export function RefreshButton({ title = "Refresh", fetching, onRefresh }: { title?: string; fetching: boolean; onRefresh: () => void }) {
+export function RefreshButton({
+  title = "Refresh",
+  fetching,
+  onRefresh,
+}: {
+  title?: string;
+  fetching: boolean;
+  onRefresh: () => void;
+}) {
   const [turning, setTurning] = useState(false);
   useEffect(() => {
     if (!turning) return;

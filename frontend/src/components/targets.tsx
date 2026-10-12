@@ -1,7 +1,21 @@
 import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { LogSourceKind, ObjectKind, TargetKind, WorkloadKind, type Cluster, type KubeConfigObject, type KubeHPA, type KubeIngress, type KubePVC, type KubeWorkload, type NamedPort, type PodOwner, type ResourceUsage } from "@bindings/internal/service";
+import {
+  LogSourceKind,
+  ObjectKind,
+  TargetKind,
+  WorkloadKind,
+  type Cluster,
+  type KubeConfigObject,
+  type KubeHPA,
+  type KubeIngress,
+  type KubePVC,
+  type KubeWorkload,
+  type NamedPort,
+  type PodOwner,
+  type ResourceUsage,
+} from "@bindings/internal/service";
 import {
   Combobox,
   ComboboxCollection,
@@ -13,10 +27,32 @@ import {
   ComboboxLabel,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { configMapsQuery, hpasQuery, ingressesQuery, podsQuery, pvcsQuery, secretsQuery, servicesQuery, workloadsQuery } from "@/queries";
+import {
+  configMapsQuery,
+  hpasQuery,
+  ingressesQuery,
+  podsQuery,
+  pvcsQuery,
+  secretsQuery,
+  servicesQuery,
+  workloadsQuery,
+} from "@/queries";
 import { cn } from "@/lib/utils";
 
-export type Kind = "svc" | "ing" | "deploy" | "sts" | "ds" | "cron" | "job" | "hpa" | "pvc" | "pod" | "cm" | "secret" | "node";
+export type Kind =
+  | "svc"
+  | "ing"
+  | "deploy"
+  | "sts"
+  | "ds"
+  | "cron"
+  | "job"
+  | "hpa"
+  | "pvc"
+  | "pod"
+  | "cm"
+  | "secret"
+  | "node";
 
 // One row of anything a tab can act on; label is what the picker searches.
 export type Target = {
@@ -88,15 +124,23 @@ export const kindName: Record<Kind, string> = {
   node: "Node",
 };
 
-export const workloadKind: Partial<Record<WorkloadKind, Kind>> = { deployment: "deploy", statefulset: "sts", daemonset: "ds", cronjob: "cron", job: "job" };
+export const workloadKind: Partial<Record<WorkloadKind, Kind>> = {
+  deployment: "deploy",
+  statefulset: "sts",
+  daemonset: "ds",
+  cronjob: "cron",
+  job: "job",
+};
 export const logKind: Partial<Record<Kind, LogSourceKind>> = {
   deploy: LogSourceKind.LogSourceDeployment,
   sts: LogSourceKind.LogSourceStatefulSet,
   ds: LogSourceKind.LogSourceDaemonSet,
   pod: LogSourceKind.LogSourcePod,
 };
-export const forwardKind = (kind: Kind) => (kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod);
-export const targetValue = (kind: Kind, namespace: string, name: string) => `${kind}:${namespace}/${name}`;
+export const forwardKind = (kind: Kind) =>
+  kind === "svc" ? TargetKind.TargetService : TargetKind.TargetPod;
+export const targetValue = (kind: Kind, namespace: string, name: string) =>
+  `${kind}:${namespace}/${name}`;
 
 // rowKind is the row kind of a Kubernetes workload kind, such as Deployment, when the Overview lists that kind.
 export const rowKind = (kubeKind: string) => workloadKind[kubeKind.toLowerCase() as WorkloadKind];
@@ -114,7 +158,12 @@ const once = (source: object, build: () => Target) => {
   if (!t) built.set(source, (t = build()));
   return t;
 };
-const make = (kind: Kind, { namespace, name, created }: { namespace: string; name: string; created: string }, ports: NamedPort[] = [], containers: string[] = []): Target => ({
+const make = (
+  kind: Kind,
+  { namespace, name, created }: { namespace: string; name: string; created: string },
+  ports: NamedPort[] = [],
+  containers: string[] = [],
+): Target => ({
   value: targetValue(kind, namespace, name),
   label: `${namespace}/${name}`,
   kind,
@@ -141,41 +190,147 @@ export function useTargets(cluster: Cluster, overview = false, cached = false) {
   // Listed the way a request travels and an incident is traced: in at the Ingress, out at the pod.
   const groups = useMemo(() => {
     const groups: TargetGroup[] = [
-      { label: "Services", items: (services.data ?? []).map((s) => once(s, () => make("svc", s, s.ports ?? []))) },
-      { label: "Workloads", items: (workloads.data ?? []).filter((w) => !w.job).map((w) => once(w, () => ({ ...make(workloadKind[w.kind] ?? "deploy", w), workload: w }))) },
+      {
+        label: "Services",
+        items: (services.data ?? []).map((s) => once(s, () => make("svc", s, s.ports ?? []))),
+      },
+      {
+        label: "Workloads",
+        items: (workloads.data ?? [])
+          .filter((w) => !w.job)
+          .map((w) =>
+            once(w, () => ({ ...make(workloadKind[w.kind] ?? "deploy", w), workload: w })),
+          ),
+      },
       ...(overview
         ? [
-            { label: "Jobs", items: (workloads.data ?? []).filter((w) => w.job).map((w) => once(w, () => ({ ...make("job", w), workload: w, owner: w.job?.cronJob ? targetValue("cron", w.namespace, w.job.cronJob) : undefined }))) },
-            { label: "Autoscalers", items: (hpas.data ?? []).map((h) => once(h, () => ({ ...make("hpa", h), hpa: h, owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }) }))), error: hpas.error },
-            { label: "Volume claims", items: (pvcs.data ?? []).map((c) => once(c, () => ({ ...make("pvc", c), pvc: c }))), error: pvcs.error },
+            {
+              label: "Jobs",
+              items: (workloads.data ?? [])
+                .filter((w) => w.job)
+                .map((w) =>
+                  once(w, () => ({
+                    ...make("job", w),
+                    workload: w,
+                    owner: w.job?.cronJob
+                      ? targetValue("cron", w.namespace, w.job.cronJob)
+                      : undefined,
+                  })),
+                ),
+            },
+            {
+              label: "Autoscalers",
+              items: (hpas.data ?? []).map((h) =>
+                once(h, () => ({
+                  ...make("hpa", h),
+                  hpa: h,
+                  owner: ownerValue(h.namespace, { kind: h.targetKind, name: h.targetName }),
+                })),
+              ),
+              error: hpas.error,
+            },
+            {
+              label: "Volume claims",
+              items: (pvcs.data ?? []).map((c) => once(c, () => ({ ...make("pvc", c), pvc: c }))),
+              error: pvcs.error,
+            },
           ]
         : []),
-      { label: "Pods", items: (pods.data ?? []).map((p) => once(p, () => ({ ...make("pod", p, p.ports ?? [], p.containers ?? []), reason: p.reason, restarts: p.restarts, ready: p.ready, lastRestart: p.lastRestart, requests: p.requests, limits: p.limits, owner: ownerValue(p.namespace, p.owner) }))) },
+      {
+        label: "Pods",
+        items: (pods.data ?? []).map((p) =>
+          once(p, () => ({
+            ...make("pod", p, p.ports ?? [], p.containers ?? []),
+            reason: p.reason,
+            restarts: p.restarts,
+            ready: p.ready,
+            lastRestart: p.lastRestart,
+            requests: p.requests,
+            limits: p.limits,
+            owner: ownerValue(p.namespace, p.owner),
+          })),
+        ),
+      },
     ];
     if (overview) {
-      groups.unshift({ label: "Ingresses", items: (ingresses.data ?? []).map((i) => once(i, () => ({ ...make("ing", i), ingress: i }))), error: ingresses.error });
+      groups.unshift({
+        label: "Ingresses",
+        items: (ingresses.data ?? []).map((i) =>
+          once(i, () => ({ ...make("ing", i), ingress: i })),
+        ),
+        error: ingresses.error,
+      });
       groups.push(
-        { label: "ConfigMaps", items: (configMaps.data ?? []).map((c) => once(c, () => ({ ...make("cm", c), config: c }))), error: configMaps.error },
-        { label: "Secrets", items: (secrets.data ?? []).map((c) => once(c, () => ({ ...make("secret", c), config: c }))), error: secrets.error },
+        {
+          label: "ConfigMaps",
+          items: (configMaps.data ?? []).map((c) =>
+            once(c, () => ({ ...make("cm", c), config: c })),
+          ),
+          error: configMaps.error,
+        },
+        {
+          label: "Secrets",
+          items: (secrets.data ?? []).map((c) =>
+            once(c, () => ({ ...make("secret", c), config: c })),
+          ),
+          error: secrets.error,
+        },
       );
     }
     return groups;
-  }, [overview, services.data, workloads.data, pods.data, ingresses.data, ingresses.error, hpas.data, hpas.error, pvcs.data, pvcs.error, configMaps.data, configMaps.error, secrets.data, secrets.error]);
+  }, [
+    overview,
+    services.data,
+    workloads.data,
+    pods.data,
+    ingresses.data,
+    ingresses.error,
+    hpas.data,
+    hpas.error,
+    pvcs.data,
+    pvcs.error,
+    configMaps.data,
+    configMaps.error,
+    secrets.data,
+    secrets.error,
+  ]);
   return {
     groups,
     error: services.error ?? workloads.error ?? pods.error,
-    pending: services.isPending || workloads.isPending || pods.isPending || (overview && (ingresses.isPending || hpas.isPending || pvcs.isPending || configMaps.isPending || secrets.isPending)),
-    fetching: [services, workloads, pods, ingresses, hpas, pvcs, configMaps, secrets].some((q) => q.isFetching),
+    pending:
+      services.isPending ||
+      workloads.isPending ||
+      pods.isPending ||
+      (overview &&
+        (ingresses.isPending ||
+          hpas.isPending ||
+          pvcs.isPending ||
+          configMaps.isPending ||
+          secrets.isPending)),
+    fetching: [services, workloads, pods, ingresses, hpas, pvcs, configMaps, secrets].some(
+      (q) => q.isFetching,
+    ),
   };
 }
 
 // kind is a Kind, or any short name for one the app has no row for (an event's ReplicaSet, say).
 // The fill is translucent so the badge still shows on a hovered row, which is painted in the muted colour itself.
-export function KindBadge({ kind, className, title }: { kind: Kind | string; className?: string; title?: string }) {
+export function KindBadge({
+  kind,
+  className,
+  title,
+}: {
+  kind: Kind | string;
+  className?: string;
+  title?: string;
+}) {
   return (
     <span
       title={title}
-      className={cn("inline-flex h-[18px] w-12 shrink-0 items-center justify-center truncate rounded bg-foreground/8 px-1 font-mono text-[11px] font-medium text-muted-foreground", className)}
+      className={cn(
+        "inline-flex h-[18px] w-12 shrink-0 items-center justify-center truncate rounded bg-foreground/8 px-1 font-mono text-[11px] font-medium text-muted-foreground",
+        className,
+      )}
     >
       {kind}
     </span>
@@ -187,12 +342,17 @@ export function TargetRow({ target, meta }: { target: Target; meta?: ReactNode }
     <>
       <KindBadge kind={target.kind} />
       <span className="truncate">{target.label}</span>
-      {meta && <span className="ml-auto truncate pl-2 font-mono text-[11px] text-muted-foreground">{meta}</span>}
+      {meta && (
+        <span className="ml-auto truncate pl-2 font-mono text-[11px] text-muted-foreground">
+          {meta}
+        </span>
+      )}
     </>
   );
 }
 
-export const portsLabel = (ports: NamedPort[]) => ports.map((p) => (p.name ? `${p.port} ${p.name}` : String(p.port))).join(" · ");
+export const portsLabel = (ports: NamedPort[]) =>
+  ports.map((p) => (p.name ? `${p.port} ${p.name}` : String(p.port))).join(" · ");
 
 // TargetPicker is the one searchable list of a Cluster's objects; the trigger is whatever its caller shows when nothing is being picked.
 export function TargetPicker({
@@ -233,7 +393,16 @@ export function TargetPicker({
               <ComboboxCollection>
                 {(t: Target) => (
                   <ComboboxItem key={t.value} value={t}>
-                    <TargetRow target={t} meta={t.container ? undefined : t.kind === "pod" ? t.containers.join(", ") : portsLabel(t.ports)} />
+                    <TargetRow
+                      target={t}
+                      meta={
+                        t.container
+                          ? undefined
+                          : t.kind === "pod"
+                            ? t.containers.join(", ")
+                            : portsLabel(t.ports)
+                      }
+                    />
                   </ComboboxItem>
                 )}
               </ComboboxCollection>

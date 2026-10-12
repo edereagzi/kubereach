@@ -1,6 +1,13 @@
 import { queryOptions } from "@tanstack/react-query";
 import { AppService, ClusterService, ConfigService } from "@bindings/internal/bindings";
-import type { NodeMetrics, ObjectKind, PodMetrics, PodUsage, ResourceUsage, WorkloadKind } from "@bindings/internal/service";
+import type {
+  NodeMetrics,
+  ObjectKind,
+  PodMetrics,
+  PodUsage,
+  ResourceUsage,
+  WorkloadKind,
+} from "@bindings/internal/service";
 
 export const configQuery = queryOptions({
   queryKey: ["config"],
@@ -46,7 +53,8 @@ const metricsInterval = 15_000;
 
 // A Cluster without metrics-server yields an empty map, and the usage columns stay out.
 export const podUsageKey = (namespace: string, name: string) => `${namespace}/${name}`;
-const indexPodMetrics = (m: PodMetrics) => new Map((m.pods ?? []).map((p): [string, PodUsage] => [podUsageKey(p.namespace, p.name), p]));
+const indexPodMetrics = (m: PodMetrics) =>
+  new Map((m.pods ?? []).map((p): [string, PodUsage] => [podUsageKey(p.namespace, p.name), p]));
 export const podMetricsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "pod-metrics"],
@@ -63,7 +71,12 @@ export const podQuery = (clusterId: string, namespace: string, name: string) =>
     retry: false,
   });
 
-export const workloadQuery = (clusterId: string, kind: WorkloadKind, namespace: string, name: string) =>
+export const workloadQuery = (
+  clusterId: string,
+  kind: WorkloadKind,
+  namespace: string,
+  name: string,
+) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "workload", kind, namespace, name],
     queryFn: () => ClusterService.DescribeWorkload(clusterId, kind, namespace, name),
@@ -85,10 +98,20 @@ export const secretsQuery = (clusterId: string) =>
   });
 
 // Secret values are held only in this query's cache and dropped as soon as the detail closes.
-export const configObjectQuery = (clusterId: string, kind: "cm" | "secret", namespace: string, name: string) =>
+export const configObjectQuery = (
+  clusterId: string,
+  kind: "cm" | "secret",
+  namespace: string,
+  name: string,
+) =>
   queryOptions({
     queryKey: ["cluster", clusterId, kind, namespace, name],
-    queryFn: () => (kind === "secret" ? ClusterService.GetSecret : ClusterService.GetConfigMap)(clusterId, namespace, name),
+    queryFn: () =>
+      (kind === "secret" ? ClusterService.GetSecret : ClusterService.GetConfigMap)(
+        clusterId,
+        namespace,
+        name,
+      ),
     retry: false,
     gcTime: kind === "secret" ? 0 : undefined,
   });
@@ -143,7 +166,8 @@ export const nodesQuery = (clusterId: string) =>
   });
 
 // A Cluster without metrics-server yields an empty map, and the used part of every node bar stays out.
-const indexNodeMetrics = (m: NodeMetrics) => new Map((m.nodes ?? []).map((n): [string, ResourceUsage] => [n.name, n.usage]));
+const indexNodeMetrics = (m: NodeMetrics) =>
+  new Map((m.nodes ?? []).map((n): [string, ResourceUsage] => [n.name, n.usage]));
 export const nodeMetricsQuery = (clusterId: string) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "node-metrics"],
@@ -168,36 +192,57 @@ export const workloadsQuery = (clusterId: string) =>
   });
 
 // main.go marshals every error as {message, code, ...} on its cause; the message is the one worded for the user.
-type ErrorCause = { message?: string; code?: string; target?: string; port?: number; suggested?: number };
+type ErrorCause = {
+  message?: string;
+  code?: string;
+  target?: string;
+  port?: number;
+  suggested?: number;
+};
 const errorCause = (error: unknown) => (error as { cause?: ErrorCause } | null)?.cause;
-export const errorText = (error: unknown) => errorCause(error)?.message ?? (error instanceof Error ? error.message : String(error));
+export const errorText = (error: unknown) =>
+  errorCause(error)?.message ?? (error instanceof Error ? error.message : String(error));
 export const isForbidden = (error: unknown) => errorCause(error)?.code === "forbidden";
 export const isConflict = (error: unknown) => errorCause(error)?.code === "conflict";
 export const isSudoRequired = (error: unknown) => errorCause(error)?.code === "sudo";
 
 // credentialRequired returns which session secret a call is missing, if any: a Connect's passphrase or password, or the
 // sudo password a remote kubeconfig read needs.
-export function credentialRequired(error: unknown): { code: "passphrase" | "password" | "sudo"; target: string } | null {
+export function credentialRequired(
+  error: unknown,
+): { code: "passphrase" | "password" | "sudo"; target: string } | null {
   const cause = errorCause(error);
-  if (cause?.code === "passphrase" || cause?.code === "password" || cause?.code === "sudo") return { code: cause.code, target: cause.target ?? "" };
+  if (cause?.code === "passphrase" || cause?.code === "password" || cause?.code === "sudo")
+    return { code: cause.code, target: cause.target ?? "" };
   return null;
 }
 
 // portInUse returns the free port suggested when a forward's local port was busy, if that is why it failed.
 export function portInUse(error: unknown): { port: number; suggested: number } | null {
   const cause = errorCause(error);
-  if (cause?.code === "port-in-use" && cause.port && cause.suggested) return { port: cause.port, suggested: cause.suggested };
+  if (cause?.code === "port-in-use" && cause.port && cause.suggested)
+    return { port: cause.port, suggested: cause.suggested };
   return null;
 }
 
-export function reachabilityLabel(status: "pending" | "error" | "success", error: unknown, version?: string) {
+export function reachabilityLabel(
+  status: "pending" | "error" | "success",
+  error: unknown,
+  version?: string,
+) {
   if (status === "pending") return "Checking…";
   if (status === "error") return errorText(error);
   return version ? `API reachable, ${version}` : "API reachable";
 }
 
 // A revealed Secret's YAML is held only while shown; masked YAML caches like any other detail.
-export const yamlQuery = (clusterId: string, kind: ObjectKind, namespace: string, name: string, reveal: boolean) =>
+export const yamlQuery = (
+  clusterId: string,
+  kind: ObjectKind,
+  namespace: string,
+  name: string,
+  reveal: boolean,
+) =>
   queryOptions({
     queryKey: ["cluster", clusterId, "yaml", kind, namespace, name, reveal],
     queryFn: () => ClusterService.GetYAML(clusterId, kind, namespace, name, reveal),

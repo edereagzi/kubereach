@@ -26,7 +26,18 @@ type ConfirmProps = {
 };
 
 // ConfirmDialog stays open while its action runs and on failure, to say why.
-export function ConfirmDialog({ open, onOpenChange, title, description, confirm, destructive, disabled, action, children, className }: ConfirmProps) {
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirm,
+  destructive,
+  disabled,
+  action,
+  children,
+  className,
+}: ConfirmProps) {
   return (
     <AlertDialog open={open} onOpenChange={(o) => !action.isPending && onOpenChange(o)}>
       <AlertDialogContent className={className}>
@@ -38,7 +49,11 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirm,
         {action.error && <p className="text-xs text-destructive">{errorText(action.error)}</p>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={action.isPending}>Cancel</AlertDialogCancel>
-          <Button variant={destructive ? "destructive" : "default"} disabled={disabled || action.isPending} onClick={() => action.mutate()}>
+          <Button
+            variant={destructive ? "destructive" : "default"}
+            disabled={disabled || action.isPending}
+            onClick={() => action.mutate()}
+          >
             {confirm}
           </Button>
         </AlertDialogFooter>

@@ -10,7 +10,11 @@ let at = -1;
 let mode: "push" | "replace" | "none" = "push";
 
 const same = (a: Place, b: Place) =>
-  a.clusterId === b.clusterId && a.tab === b.tab && a.detail?.kind === b.detail?.kind && a.detail?.namespace === b.detail?.namespace && a.detail?.name === b.detail?.name;
+  a.clusterId === b.clusterId &&
+  a.tab === b.tab &&
+  a.detail?.kind === b.detail?.kind &&
+  a.detail?.namespace === b.detail?.namespace &&
+  a.detail?.name === b.detail?.name;
 
 // Each change of the place adds a new place and removes the forward places.
 useUIStore.subscribe((s) => {
@@ -45,5 +49,12 @@ export function go(step: -1 | 1, exists: (clusterId: string) => boolean) {
   const place = places[i];
   if (!place) return;
   at = i;
-  withMode("none", () => useUIStore.setState({ selectedClusterId: place.clusterId, activeTab: place.tab, detail: place.detail, routesOpen: false }));
+  withMode("none", () =>
+    useUIStore.setState({
+      selectedClusterId: place.clusterId,
+      activeTab: place.tab,
+      detail: place.detail,
+      routesOpen: false,
+    }),
+  );
 }

@@ -1,8 +1,22 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, ArrowsVerticalIcon, CheckCircleIcon, PauseIcon, PlayIcon, ProhibitIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  ArrowClockwiseIcon,
+  ArrowCounterClockwiseIcon,
+  ArrowsVerticalIcon,
+  CheckCircleIcon,
+  PauseIcon,
+  PlayIcon,
+  ProhibitIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { ClusterService } from "@bindings/internal/bindings";
-import { WorkloadKind, type Cluster, type KubeNode, type KubeWorkload } from "@bindings/internal/service";
+import {
+  WorkloadKind,
+  type Cluster,
+  type KubeNode,
+  type KubeWorkload,
+} from "@bindings/internal/service";
 import { objectKind, type Kind, type Target } from "@/components/targets";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -28,7 +42,21 @@ type ActionProps = {
 };
 
 // WriteAction changes the Cluster only after a confirmation that names it.
-function WriteAction({ cluster, label, icon, iconOnly, title, description, confirm, destructive, disabled, children, run, onDone, onOpen }: ActionProps) {
+function WriteAction({
+  cluster,
+  label,
+  icon,
+  iconOnly,
+  title,
+  description,
+  confirm,
+  destructive,
+  disabled,
+  children,
+  run,
+  onDone,
+  onOpen,
+}: ActionProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const action = useMutation({
@@ -45,7 +73,9 @@ function WriteAction({ cluster, label, icon, iconOnly, title, description, confi
         variant={iconOnly ? "ghost" : "outline"}
         size={iconOnly ? "icon-sm" : "xs"}
         title={iconOnly ? label : undefined}
-        className={cn(iconOnly && destructive && "hover:text-destructive dark:hover:text-destructive")}
+        className={cn(
+          iconOnly && destructive && "hover:text-destructive dark:hover:text-destructive",
+        )}
         onClick={() => {
           action.reset();
           onOpen?.();
@@ -80,7 +110,13 @@ const objectRef = (w: { namespace: string; name: string }) => (
   </span>
 );
 
-export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; workload: KubeWorkload }) {
+export function WorkloadActions({
+  cluster,
+  workload: w,
+}: {
+  cluster: Cluster;
+  workload: KubeWorkload;
+}) {
   const [replicas, setReplicas] = useState("");
   if (w.cronJob) return <CronJobActions cluster={cluster} workload={w} />;
   if (!w.rollout) return null;
@@ -98,7 +134,8 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
         confirm="Restart"
         run={() => ClusterService.RestartWorkload(cluster.id, w.kind, w.namespace, w.name)}
       />
-      {(w.kind === WorkloadKind.WorkloadDeployment || w.kind === WorkloadKind.WorkloadStatefulSet) && (
+      {(w.kind === WorkloadKind.WorkloadDeployment ||
+        w.kind === WorkloadKind.WorkloadStatefulSet) && (
         <WriteAction
           cluster={cluster}
           label="Scale"
@@ -135,7 +172,8 @@ export function WorkloadActions({ cluster, workload: w }: { cluster: Cluster; wo
           title={`Roll back deployment ${w.name}?`}
           description={
             <>
-              {objectRef(w)} goes back to the pod template of the revision before {w.rollout.revision || "the current one"}, and its pods roll.
+              {objectRef(w)} goes back to the pod template of the revision before{" "}
+              {w.rollout.revision || "the current one"}, and its pods roll.
             </>
           }
           confirm="Roll back"
@@ -154,7 +192,12 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
         label="Run now"
         icon={<PlayIcon />}
         title={`Run cronjob ${w.name} now?`}
-        description={<>A Job starts from the template of {objectRef(w)} now, even if a scheduled run is going. It is listed under the CronJob.</>}
+        description={
+          <>
+            A Job starts from the template of {objectRef(w)} now, even if a scheduled run is going.
+            It is listed under the CronJob.
+          </>
+        }
         confirm="Run now"
         run={() => ClusterService.RunCronJob(cluster.id, w.namespace, w.name)}
       />
@@ -164,7 +207,12 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
           label="Resume"
           icon={<PlayIcon />}
           title={`Resume cronjob ${w.name}?`}
-          description={<>{objectRef(w)} starts Jobs on its schedule again. A run it missed while suspended may start right away.</>}
+          description={
+            <>
+              {objectRef(w)} starts Jobs on its schedule again. A run it missed while suspended may
+              start right away.
+            </>
+          }
           confirm="Resume"
           run={() => ClusterService.SuspendCronJob(cluster.id, w.namespace, w.name, false)}
         />
@@ -174,7 +222,9 @@ function CronJobActions({ cluster, workload: w }: { cluster: Cluster; workload: 
           label="Suspend"
           icon={<PauseIcon />}
           title={`Suspend cronjob ${w.name}?`}
-          description={<>{objectRef(w)} stops starting Jobs on its schedule. Jobs already running go on.</>}
+          description={
+            <>{objectRef(w)} stops starting Jobs on its schedule. Jobs already running go on.</>
+          }
           confirm="Suspend"
           run={() => ClusterService.SuspendCronJob(cluster.id, w.namespace, w.name, true)}
         />
@@ -203,7 +253,9 @@ export function NodeActions({ cluster, node: n }: { cluster: Cluster; node: Kube
           label="Cordon"
           icon={<ProhibitIcon />}
           title={`Cordon node ${n.name}?`}
-          description={<>The scheduler places no new pods on {name}. The pods already on it keep running.</>}
+          description={
+            <>The scheduler places no new pods on {name}. The pods already on it keep running.</>
+          }
           confirm="Cordon"
           run={() => ClusterService.CordonNode(cluster.id, n.name, true)}
         />
@@ -227,7 +279,15 @@ const deletes: Partial<Record<Kind, string>> = {
   secret: "is deleted. Running pods keep what they read; new pods that need it cannot start.",
 };
 
-export function DeleteAction({ cluster, target, onDone }: { cluster: Cluster; target: Target; onDone: () => void }) {
+export function DeleteAction({
+  cluster,
+  target,
+  onDone,
+}: {
+  cluster: Cluster;
+  target: Target;
+  onDone: () => void;
+}) {
   const consequence = deletes[target.kind];
   if (!consequence) return null;
   const kind = objectKind[target.kind];

@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
 
 // hpaLabel is the row's figure: the replicas it runs within its range, and where it is heading while a rescale is under way.
 // An autoscaler that could not compute a count reports 0 desired, which is no rescale.
-export const hpaLabel = (h: KubeHPA) => `${h.current}${h.desired && h.desired !== h.current ? ` → ${h.desired}` : ""} of ${h.min}–${h.max}`;
+export const hpaLabel = (h: KubeHPA) =>
+  `${h.current}${h.desired && h.desired !== h.current ? ` → ${h.desired}` : ""} of ${h.min}–${h.max}`;
 
 // A metric it cannot read is what leaves it unable to scale, so it says so rather than showing nothing.
 const metricLabel = (m: HPAMetric) => `${m.current || "unknown"} / ${m.target}`;
@@ -23,9 +24,20 @@ export function metricsLabel(h: KubeHPA) {
   const [first, ...rest] = h.metrics ?? [];
   return first ? `${namedMetric(first)}${rest.length ? ` +${rest.length}` : ""}` : hpaLabel(h);
 }
-export const metricsTitle = (h: KubeHPA) => [hpaLabel(h), ...(h.metrics ?? []).map(namedMetric)].join("\n");
+export const metricsTitle = (h: KubeHPA) =>
+  [hpaLabel(h), ...(h.metrics ?? []).map(namedMetric)].join("\n");
 
-export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster; target: Target; hpa: KubeHPA; onClose: () => void }) {
+export function HPADetail({
+  cluster,
+  target,
+  hpa,
+  onClose,
+}: {
+  cluster: Cluster;
+  target: Target;
+  hpa: KubeHPA;
+  onClose: () => void;
+}) {
   const q = useQuery(hpaQuery(cluster.id, target.namespace, target.name));
   const openDetail = useUIStore((s) => s.openDetail);
   const d = q.data;
@@ -51,7 +63,14 @@ export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster;
                   type="button"
                   className="hover:underline"
                   title={`Open the ${h.targetKind}`}
-                  onClick={() => openDetail({ clusterId: cluster.id, kind, namespace: h.namespace, name: h.targetName })}
+                  onClick={() =>
+                    openDetail({
+                      clusterId: cluster.id,
+                      kind,
+                      namespace: h.namespace,
+                      name: h.targetName,
+                    })
+                  }
                 >
                   {h.targetKind}/{h.targetName}
                 </button>
@@ -72,7 +91,10 @@ export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster;
               {h.metrics.map((m, i) => (
                 <Fragment key={i}>
                   <dt className="text-muted-foreground">{m.name}</dt>
-                  <dd className={cn("font-mono", !m.current && "text-destructive")} title="Current / target">
+                  <dd
+                    className={cn("font-mono", !m.current && "text-destructive")}
+                    title="Current / target"
+                  >
                     {metricLabel(m)}
                   </dd>
                 </Fragment>
@@ -97,7 +119,11 @@ export function HPADetail({ cluster, target, hpa, onClose }: { cluster: Cluster;
         )}
         {d && (
           <Section title="Events">
-            {d.eventsError ? <p className="text-xs text-destructive">{d.eventsError}</p> : <Events events={d.events ?? []} />}
+            {d.eventsError ? (
+              <p className="text-xs text-destructive">{d.eventsError}</p>
+            ) : (
+              <Events events={d.events ?? []} />
+            )}
           </Section>
         )}
       </DetailTabs>

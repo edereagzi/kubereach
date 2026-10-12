@@ -1,9 +1,8 @@
 {
   "name": "kubereach-frontend",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "vp dev",
     "check": "vp check",
@@ -50,6 +49,7 @@
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
+  "packageManager": "pnpm@10.0.0",
   "pnpm": {
     "overrides": {
       "vite@*": "npm:@voidzero-dev/vite-plus-core@1.1.0"

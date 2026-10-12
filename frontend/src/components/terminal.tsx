@@ -4,10 +4,23 @@ import { CaretDownIcon, CaretUpIcon, TerminalIcon, XIcon } from "@phosphor-icons
 import { Clipboard } from "@wailsio/runtime";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon, type ISearchOptions, type ISearchResultChangeEvent } from "@xterm/addon-search";
+import {
+  SearchAddon,
+  type ISearchOptions,
+  type ISearchResultChangeEvent,
+} from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { ShellService, TerminalService } from "@bindings/internal/bindings";
-import { State, type Cluster, type ShellOutput, type ShellStatus, type SessionTail, type ShellTarget, type TerminalOutput, type TerminalStatus } from "@bindings/internal/service";
+import {
+  State,
+  type Cluster,
+  type ShellOutput,
+  type ShellStatus,
+  type SessionTail,
+  type ShellTarget,
+  type TerminalOutput,
+  type TerminalStatus,
+} from "@bindings/internal/service";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { errorText } from "@/queries";
@@ -22,16 +35,36 @@ import { cn } from "@/lib/utils";
 const xtermTheme = (dark: boolean) =>
   dark
     ? { background: "#13161c", selectionBackground: "#504fc6" }
-    : { background: "#ffffff", foreground: "#0a0a0a", cursor: "#0a0a0a", selectionBackground: "#b0b0e5" };
+    : {
+        background: "#ffffff",
+        foreground: "#0a0a0a",
+        cursor: "#0a0a0a",
+        selectionBackground: "#b0b0e5",
+      };
 
 // Matches in tints of the theme's primary color; xterm takes only #RRGGBB.
 const searchDecorations = (dark: boolean): ISearchOptions["decorations"] =>
   dark
-    ? { matchBackground: "#2b2d60", activeMatchBackground: "#504fc6", activeMatchBorder: "#a5afff", matchOverviewRuler: "#504fc6", activeMatchColorOverviewRuler: "#a5afff" }
-    : { matchBackground: "#dcdcf4", activeMatchBackground: "#b0b0e5", activeMatchBorder: "#504fc6", matchOverviewRuler: "#b0b0e5", activeMatchColorOverviewRuler: "#504fc6" };
+    ? {
+        matchBackground: "#2b2d60",
+        activeMatchBackground: "#504fc6",
+        activeMatchBorder: "#a5afff",
+        matchOverviewRuler: "#504fc6",
+        activeMatchColorOverviewRuler: "#a5afff",
+      }
+    : {
+        matchBackground: "#dcdcf4",
+        activeMatchBackground: "#b0b0e5",
+        activeMatchBorder: "#504fc6",
+        matchOverviewRuler: "#b0b0e5",
+        activeMatchColorOverviewRuler: "#504fc6",
+      };
 
 // ⌘F on macOS and Ctrl+Shift+F elsewhere, as in iTerm and Windows Terminal.
-const isSearchKey = (e: KeyboardEvent) => e.key.toLowerCase() === "f" && !e.altKey && (platform === "mac" ? e.metaKey : e.ctrlKey && e.shiftKey);
+const isSearchKey = (e: KeyboardEvent) =>
+  e.key.toLowerCase() === "f" &&
+  !e.altKey &&
+  (platform === "mac" ? e.metaKey : e.ctrlKey && e.shiftKey);
 const searchOpeners = new Map<string, () => void>();
 
 // xterm measures its cell once on open, so the app's mono face must already be loaded by then.
@@ -40,7 +73,11 @@ void document.fonts.load(`12px ${fontFamily}`);
 
 // As in iTerm's natural text editing, on macOS: Cmd kills the line (Ctrl+U) or goes to its start (Ctrl+A) or end (Ctrl+E),
 // and Option moves a word back (Esc b) or forward (Esc f), where xterm would send an arrow the shell does not bind.
-const cmdKeys: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
+const cmdKeys: Record<string, string> = {
+  Backspace: "\x15",
+  ArrowLeft: "\x01",
+  ArrowRight: "\x05",
+};
 const optionKeys: Record<string, string> = { ArrowLeft: "\x1bb", ArrowRight: "\x1bf" };
 
 // The keys the Terminal acts on itself, not the shell or the browser.
@@ -48,7 +85,11 @@ function terminalAction(t: Terminal, id: string, e: KeyboardEvent): (() => void)
   if (isSearchKey(e)) return () => searchOpeners.get(id)?.();
   if (platform === "mac") {
     if (e.metaKey && e.key === "k") return () => t.clear();
-    const send = e.metaKey ? cmdKeys[e.key] : e.altKey && !e.ctrlKey && !e.shiftKey ? optionKeys[e.key] : undefined;
+    const send = e.metaKey
+      ? cmdKeys[e.key]
+      : e.altKey && !e.ctrlKey && !e.shiftKey
+        ? optionKeys[e.key]
+        : undefined;
     return send ? () => t.input(send) : undefined;
   }
   if (!e.ctrlKey || !e.shiftKey || e.altKey) return;
@@ -75,7 +116,16 @@ const terminalFor = (id: string) => {
   let term = terminals.get(id);
   if (!term) {
     // The search addon draws its highlights with xterm's proposed decoration API.
-    term = new Terminal({ allowProposedApi: true, fontFamily, fontSize: 12, lineHeight: 1.25, cursorBlink: true, cursorStyle: "bar", scrollback: 5000, theme: xtermTheme(useTheme.getState().dark) });
+    term = new Terminal({
+      allowProposedApi: true,
+      fontFamily,
+      fontSize: 12,
+      lineHeight: 1.25,
+      cursorBlink: true,
+      cursorStyle: "bar",
+      scrollback: 5000,
+      theme: xtermTheme(useTheme.getState().dark),
+    });
     // Cmd+K (Ctrl+Shift+K elsewhere) clears the view, as in a macOS terminal; the shell is not told. On macOS the browser
     // copies and pastes. The keys the Terminal keeps do not reach the app, and the app's keys do not reach the shell.
     const t = term;
@@ -94,13 +144,20 @@ const terminalFor = (id: string) => {
 };
 
 // Shells and Terminals both draw into an xterm, told apart only by where their keys and size go.
-type OpenSessions = { shellSessions: Record<string, ShellStatus>; terminalSessions: Record<string, TerminalStatus> };
+type OpenSessions = {
+  shellSessions: Record<string, ShellStatus>;
+  terminalSessions: Record<string, TerminalStatus>;
+};
 const isOpen = (s: OpenSessions, id: string) => !!(s.shellSessions[id] || s.terminalSessions[id]);
-type SessionIO = { Write: (id: string, data: string) => Promise<void>; Resize: (id: string, cols: number, rows: number) => Promise<void> };
+type SessionIO = {
+  Write: (id: string, data: string) => Promise<void>;
+  Resize: (id: string, cols: number, rows: number) => Promise<void>;
+};
 
 // A terminal goes with its session, however the session left: closed here or with its Cluster.
 useUIStore.subscribe((s, prev) => {
-  if (s.shellSessions === prev.shellSessions && s.terminalSessions === prev.terminalSessions) return;
+  if (s.shellSessions === prev.shellSessions && s.terminalSessions === prev.terminalSessions)
+    return;
   terminals.forEach((term, id) => {
     if (isOpen(s, id)) return;
     term.dispose();
@@ -148,7 +205,8 @@ export function restoreSession(id: string, tail: Promise<SessionTail>) {
       const queued = restoring.get(id) ?? [];
       restoring.delete(id);
       // Drawn at the size it was written for, since a shell pads lines to the width; the view fits it after.
-      if (t?.cols && t.rows && isOpen(useUIStore.getState(), id)) terminalFor(id).resize(t.cols, t.rows);
+      if (t?.cols && t.rows && isOpen(useUIStore.getState(), id))
+        terminalFor(id).resize(t.cols, t.rows);
       for (const data of [t?.data ?? "", ...queued]) writeSessionOutput({ sessionId: id, data });
     });
 }
@@ -161,7 +219,12 @@ function useStartShell(clusterId: string) {
     mutationFn: async (target: Omit<ShellTarget, "clusterId">) => {
       const { shellSessions, openDock, setShellStatus } = useUIStore.getState();
       const open = Object.values(shellSessions).find(
-        (s) => s.target.clusterId === clusterId && s.target.namespace === target.namespace && s.target.pod === target.pod && s.target.container === target.container && !sessionEnded(s),
+        (s) =>
+          s.target.clusterId === clusterId &&
+          s.target.namespace === target.namespace &&
+          s.target.pod === target.pod &&
+          s.target.container === target.container &&
+          !sessionEnded(s),
       );
       if (open) return openDock(clusterId, open.id);
       // The session is its tab at once, before its first event.
@@ -197,23 +260,45 @@ export function OpenShell({
     (p.containers.length > 1 ? p.containers : [""]).map((container) => ({
       value: `${p.namespace}/${p.name}/${container}`,
       // One pod's list only needs its containers; the pod is already on the row or in the toolbar.
-      label: container && pods.length === 1 ? container : container ? `${p.namespace}/${p.name} · ${container}` : `${p.namespace}/${p.name}`,
+      label:
+        container && pods.length === 1
+          ? container
+          : container
+            ? `${p.namespace}/${p.name} · ${container}`
+            : `${p.namespace}/${p.name}`,
       target: { namespace: p.namespace, pod: p.name, container },
     })),
   );
   const hint = keyed ? ` (${keyLabel("shell")})` : "";
-  useCommand("shell", () => (items.length === 1 ? start.mutate(items[0]!.target, { onSuccess: onStarted }) : setChoosing(true)), {
-    enabled: !!keyed && items.length > 0 && !start.isPending,
-  });
+  useCommand(
+    "shell",
+    () =>
+      items.length === 1
+        ? start.mutate(items[0]!.target, { onSuccess: onStarted })
+        : setChoosing(true),
+    {
+      enabled: !!keyed && items.length > 0 && !start.isPending,
+    },
+  );
   const error = start.error && (
-    <span className="my-auto min-w-0 truncate text-xs text-destructive" title={errorText(start.error)}>
+    <span
+      className="my-auto min-w-0 truncate text-xs text-destructive"
+      title={errorText(start.error)}
+    >
       {errorText(start.error)}
     </span>
   );
   if (items.length === 1) {
     return (
       <>
-        <Button variant={variant} size={size} className={className} title={`Shell into ${items[0]!.label}${hint}`} disabled={start.isPending} onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}>
+        <Button
+          variant={variant}
+          size={size}
+          className={className}
+          title={`Shell into ${items[0]!.label}${hint}`}
+          disabled={start.isPending}
+          onClick={() => start.mutate(items[0]!.target, { onSuccess: onStarted })}
+        >
           {variant === "outline" && <TerminalIcon />}
           Shell
         </Button>
@@ -267,8 +352,18 @@ export function ShellView({ session }: { session: ShellStatus }) {
     <XtermView id={session.id} done={done} io={ShellService}>
       {done && (
         <Ended
-          error={start.error ? errorText(start.error) : session.state === State.StateError ? session.error : undefined}
-          reopen={() => start.mutate(session.target, { onSuccess: () => useUIStore.getState().closeShell(session.id) })}
+          error={
+            start.error
+              ? errorText(start.error)
+              : session.state === State.StateError
+                ? session.error
+                : undefined
+          }
+          reopen={() =>
+            start.mutate(session.target, {
+              onSuccess: () => useUIStore.getState().closeShell(session.id),
+            })
+          }
         />
       )}
     </XtermView>
@@ -285,7 +380,10 @@ export async function openTerminal(clusterId: string) {
 }
 
 export function TerminalView({ session }: { session: TerminalStatus }) {
-  const reopen = useMutation({ mutationFn: () => openTerminal(session.clusterId), onSuccess: () => useUIStore.getState().closeTerminal(session.id) });
+  const reopen = useMutation({
+    mutationFn: () => openTerminal(session.clusterId),
+    onSuccess: () => useUIStore.getState().closeTerminal(session.id),
+  });
   const done = sessionEnded(session);
   return (
     <XtermView id={session.id} done={done} io={TerminalService}>
@@ -296,7 +394,12 @@ export function TerminalView({ session }: { session: TerminalStatus }) {
 
 function Ended({ error, reopen }: { error?: string; reopen: () => void }) {
   return (
-    <div className={cn("absolute inset-x-0 bottom-0 px-3 py-1 text-xs", error ? "bg-destructive text-white" : "bg-muted text-muted-foreground")}>
+    <div
+      className={cn(
+        "absolute inset-x-0 bottom-0 px-3 py-1 text-xs",
+        error ? "bg-destructive text-white" : "bg-muted text-muted-foreground",
+      )}
+    >
       {error ? `Failed: ${error}` : "Session ended"}
       <button type="button" className="ml-3 underline underline-offset-2" onClick={reopen}>
         Open again
@@ -306,7 +409,17 @@ function Ended({ error, reopen }: { error?: string; reopen: () => void }) {
 }
 
 // XtermView shows a session's terminal, sending it keys and size until it is done.
-function XtermView({ id, done, io, children }: { id: string; done: boolean; io: SessionIO; children: ReactNode }) {
+function XtermView({
+  id,
+  done,
+  io,
+  children,
+}: {
+  id: string;
+  done: boolean;
+  io: SessionIO;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const doneRef = useRef(done);
   doneRef.current = done;
@@ -358,13 +471,23 @@ function XtermView({ id, done, io, children }: { id: string; done: boolean; io: 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden py-2 pl-4 pr-1">
       <div ref={ref} className="h-full" />
-      {searching && searchAddon && <SearchBar search={searchAddon} inputRef={inputRef} close={closeSearch} />}
+      {searching && searchAddon && (
+        <SearchBar search={searchAddon} inputRef={inputRef} close={closeSearch} />
+      )}
       {children}
     </div>
   );
 }
 
-function SearchBar({ search, inputRef, close }: { search: SearchAddon; inputRef: RefObject<HTMLInputElement | null>; close: () => void }) {
+function SearchBar({
+  search,
+  inputRef,
+  close,
+}: {
+  search: SearchAddon;
+  inputRef: RefObject<HTMLInputElement | null>;
+  close: () => void;
+}) {
   const dark = useTheme((s) => s.dark);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<ISearchResultChangeEvent>();
@@ -384,7 +507,14 @@ function SearchBar({ search, inputRef, close }: { search: SearchAddon; inputRef:
     else search.findNext(text, options);
   };
   // Past xterm's highlight limit there is no index to show.
-  const count = !query || !result ? "" : result.resultCount === 0 ? "No results" : result.resultIndex < 0 ? `${result.resultCount}+` : `${result.resultIndex + 1}/${result.resultCount}`;
+  const count =
+    !query || !result
+      ? ""
+      : result.resultCount === 0
+        ? "No results"
+        : result.resultIndex < 0
+          ? `${result.resultCount}+`
+          : `${result.resultIndex + 1}/${result.resultCount}`;
 
   // It floats over the output, as in VS Code and Windows Terminal, so the Terminal keeps its size.
   return (
@@ -408,16 +538,39 @@ function SearchBar({ search, inputRef, close }: { search: SearchAddon; inputRef:
         }}
         className="h-full min-w-0 flex-1 bg-transparent pl-2.5 font-mono text-xs outline-none placeholder:font-sans placeholder:text-muted-foreground"
       />
-      <span className={cn("shrink-0 px-1 text-[11px] tabular-nums", result?.resultCount === 0 ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+      <span
+        className={cn(
+          "shrink-0 px-1 text-[11px] tabular-nums",
+          result?.resultCount === 0 ? "text-destructive" : "text-muted-foreground",
+        )}
+        aria-live="polite"
+      >
         {count}
       </span>
-      <Button variant="ghost" size="icon-xs" title={`Previous match (${keyLabel("previous-match")})`} disabled={!result?.resultCount} onClick={() => find(query, true)}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title={`Previous match (${keyLabel("previous-match")})`}
+        disabled={!result?.resultCount}
+        onClick={() => find(query, true)}
+      >
         <CaretUpIcon />
       </Button>
-      <Button variant="ghost" size="icon-xs" title={`Next match (${keyLabel("next-match")})`} disabled={!result?.resultCount} onClick={() => find(query)}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title={`Next match (${keyLabel("next-match")})`}
+        disabled={!result?.resultCount}
+        onClick={() => find(query)}
+      >
         <CaretDownIcon />
       </Button>
-      <Button variant="ghost" size="icon-xs" title={`Close (${keyLabel("close-search")})`} onClick={close}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title={`Close (${keyLabel("close-search")})`}
+        onClick={close}
+      >
         <XIcon />
       </Button>
     </div>

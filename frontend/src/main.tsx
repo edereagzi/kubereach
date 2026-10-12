@@ -3,7 +3,14 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { Events } from "@wailsio/runtime";
-import { AppService, ForwardService, LogService, RouteService, ShellService, TerminalService } from "@bindings/internal/bindings";
+import {
+  AppService,
+  ForwardService,
+  LogService,
+  RouteService,
+  ShellService,
+  TerminalService,
+} from "@bindings/internal/bindings";
 import { restoreSession, writeSessionOutput } from "@/components/terminal";
 import { useUpdateStore } from "@/components/update";
 import { configQuery, reachabilityQuery } from "@/queries";
@@ -33,19 +40,31 @@ Events.On("route:state", ({ data }) => {
   setRouteStatus(data);
   removeHostKeyPrompt(data.routeId);
   for (const cluster of queryClient.getQueryData(configQuery.queryKey)?.clusters ?? []) {
-    if (cluster.route === data.routeId) queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+    if (cluster.route === data.routeId)
+      queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
   }
 });
 // An open detail is fetched under its kind's singular key, so it follows its list, through an outage and back included.
-const detailKey: Record<string, string> = { pods: "pod", workloads: "workload", nodes: "node", pvcs: "pvc", hpas: "hpa", ingresses: "ingress", configmaps: "cm", secrets: "secret" };
+const detailKey: Record<string, string> = {
+  pods: "pod",
+  workloads: "workload",
+  nodes: "node",
+  pvcs: "pvc",
+  hpas: "hpa",
+  ingresses: "ingress",
+  configmaps: "cm",
+  secrets: "secret",
+};
 Events.On("cluster:changed", ({ data }) => {
   for (const kind of data.kinds ?? []) {
     queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
-    if (detailKey[kind]) queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, detailKey[kind]] });
+    if (detailKey[kind])
+      queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, detailKey[kind]] });
   }
   // A Cluster first found unreachable, say before a VPN came up, is asked again once its watches hear from it.
   const reachability = reachabilityQuery(data.clusterId).queryKey;
-  if (queryClient.getQueryState(reachability)?.status === "error") queryClient.invalidateQueries({ queryKey: reachability });
+  if (queryClient.getQueryState(reachability)?.status === "error")
+    queryClient.invalidateQueries({ queryKey: reachability });
 });
 Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));
@@ -61,7 +80,9 @@ Events.On("update:available", ({ data }) => useUpdateStore.getState().found(data
 // A release found before this window loaded was announced to no one.
 AppService.AvailableUpdate().then((u) => u && useUpdateStore.getState().found(u));
 Events.On("update:check", () => void useUpdateStore.getState().check());
-Events.On("wails:updater:download-progress", ({ data }) => useUpdateStore.getState().setProgress(data.written, data.total));
+Events.On("wails:updater:download-progress", ({ data }) =>
+  useUpdateStore.getState().setProgress(data.written, data.total),
+);
 Events.On("tray:open-cluster", ({ data }) => {
   selectCluster(data);
   selectTab("overview");

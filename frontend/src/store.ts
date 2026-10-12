@@ -101,21 +101,29 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   selectedClusterId: null,
-  selectCluster: (id) => set((s) => ({ selectedClusterId: id, routesOpen: false, detail: id === s.selectedClusterId ? s.detail : null })),
+  selectCluster: (id) =>
+    set((s) => ({
+      selectedClusterId: id,
+      routesOpen: false,
+      detail: id === s.selectedClusterId ? s.detail : null,
+    })),
   routesOpen: false,
   openRoutes: () => set({ routesOpen: true }),
   activeTab: "overview",
   selectTab: (tab) => set((s) => (tab === s.activeTab ? {} : { activeTab: tab, detail: null })),
   dockOrder: [],
   dockPicks: {},
-  openDock: (clusterId, sessionId) => set((s) => ({ dockPicks: { ...s.dockPicks, [clusterId]: sessionId }, dockOpen: true })),
+  openDock: (clusterId, sessionId) =>
+    set((s) => ({ dockPicks: { ...s.dockPicks, [clusterId]: sessionId }, dockOpen: true })),
   openLogTab: (status, replaces) =>
     set((s) => {
       const dockOrder = s.dockOrder.filter((id) => id !== status.id);
       const at = replaces ? dockOrder.indexOf(replaces) : -1;
       dockOrder.splice(at < 0 ? dockOrder.length : at, 0, status.id);
       return {
-        logStreams: s.logStreams[status.id] ? s.logStreams : { ...s.logStreams, [status.id]: status },
+        logStreams: s.logStreams[status.id]
+          ? s.logStreams
+          : { ...s.logStreams, [status.id]: status },
         dockOrder,
         dockPicks: { ...s.dockPicks, [status.source.clusterId]: status.id },
         dockOpen: true,
@@ -175,11 +183,22 @@ export const useUIStore = create<UIState>((set) => ({
     set((s) => {
       const buffer = s.logBuffers[streamId] ?? { lines: [], version: 0 };
       buffer.lines.push(...(lines ?? []));
-      if (buffer.lines.length > maxLogLines) buffer.lines.splice(0, buffer.lines.length - maxLogLines);
-      return { logBuffers: { ...s.logBuffers, [streamId]: { lines: buffer.lines, version: buffer.version + 1 } } };
+      if (buffer.lines.length > maxLogLines)
+        buffer.lines.splice(0, buffer.lines.length - maxLogLines);
+      return {
+        logBuffers: {
+          ...s.logBuffers,
+          [streamId]: { lines: buffer.lines, version: buffer.version + 1 },
+        },
+      };
     }),
   clearLogs: (streamId) =>
-    set((s) => ({ logBuffers: { ...s.logBuffers, [streamId]: { lines: [], version: (s.logBuffers[streamId]?.version ?? 0) + 1 } } })),
+    set((s) => ({
+      logBuffers: {
+        ...s.logBuffers,
+        [streamId]: { lines: [], version: (s.logBuffers[streamId]?.version ?? 0) + 1 },
+      },
+    })),
   eventStreams: {},
   setEventStatus: (status) =>
     set((s) => {
@@ -198,12 +217,28 @@ export const useUIStore = create<UIState>((set) => ({
       const buffer = s.eventBuffers[streamId] ?? { events: [], version: 0 };
       const byId = new Map(buffer.events.map((e) => [e.id, e]));
       for (const e of events ?? []) byId.set(e.id, e);
-      const merged = [...byId.values()].sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, maxEvents);
-      return { eventBuffers: { ...s.eventBuffers, [streamId]: { events: merged, version: buffer.version + 1 } } };
+      const merged = [...byId.values()]
+        .sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
+        .slice(0, maxEvents);
+      return {
+        eventBuffers: {
+          ...s.eventBuffers,
+          [streamId]: { events: merged, version: buffer.version + 1 },
+        },
+      };
     }),
   detail: null,
   openDetail: (detail) =>
-    set(detail ? { detail, selectedClusterId: detail.clusterId, routesOpen: false, activeTab: detail.kind === "node" ? "nodes" : "overview" } : { detail: null }),
+    set(
+      detail
+        ? {
+            detail,
+            selectedClusterId: detail.clusterId,
+            routesOpen: false,
+            activeTab: detail.kind === "node" ? "nodes" : "overview",
+          }
+        : { detail: null },
+    ),
   shellSessions: {},
   setShellStatus: (status) =>
     set((s) => {
@@ -243,12 +278,19 @@ export const useUIStore = create<UIState>((set) => ({
   importPreviews: [],
   pushImportPreviews: (previews) =>
     set((s) => ({
-      importPreviews: [...s.importPreviews, ...previews.filter((p) => !s.importPreviews.some((q) => q.path === p.path))],
+      importPreviews: [
+        ...s.importPreviews,
+        ...previews.filter((p) => !s.importPreviews.some((q) => q.path === p.path)),
+      ],
     })),
   shiftImportPreview: () => set((s) => ({ importPreviews: s.importPreviews.slice(1) })),
 }));
 
 // A session that just started becomes its Cluster's tab.
-const addDockTab = (s: UIState, clusterId: string, id: string) => ({ dockOrder: [...s.dockOrder, id], dockPicks: { ...s.dockPicks, [clusterId]: id } });
+const addDockTab = (s: UIState, clusterId: string, id: string) => ({
+  dockOrder: [...s.dockOrder, id],
+  dockPicks: { ...s.dockPicks, [clusterId]: id },
+});
 
-export const sessionEnded = (s: ShellStatus | TerminalStatus) => s.state === State.StateStopped || s.state === State.StateError;
+export const sessionEnded = (s: ShellStatus | TerminalStatus) =>
+  s.state === State.StateStopped || s.state === State.StateError;

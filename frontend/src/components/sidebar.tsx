@@ -9,18 +9,60 @@ import {
 } from "@phosphor-icons/react";
 import { Events } from "@wailsio/runtime";
 import { ClusterService, ConfigService } from "@bindings/internal/bindings";
-import { State, type Cluster, type RemoteKubeconfig, type RouteStatus } from "@bindings/internal/service";
-import { isUp, RouteDialog, serverChain, StateDot, SudoPasswordDialog, useRouteProblem } from "@/components/routes";
+import {
+  State,
+  type Cluster,
+  type RemoteKubeconfig,
+  type RouteStatus,
+} from "@bindings/internal/service";
+import {
+  isUp,
+  RouteDialog,
+  serverChain,
+  StateDot,
+  SudoPasswordDialog,
+  useRouteProblem,
+} from "@/components/routes";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { RefreshButton } from "@/components/refresh-button";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { configQuery, errorText, isSudoRequired, reachabilityLabel, reachabilityQuery } from "@/queries";
+import {
+  configQuery,
+  errorText,
+  isSudoRequired,
+  reachabilityLabel,
+  reachabilityQuery,
+} from "@/queries";
 import { useUIStore } from "@/store";
 import { keyLabel, useCommand } from "@/lib/commands";
 import { cn } from "@/lib/utils";
@@ -29,7 +71,10 @@ export function Sidebar() {
   const queryClient = useQueryClient();
   const [needle, setNeedle] = useState("");
   const invalidateConfig = () => queryClient.invalidateQueries({ queryKey: ["config"] });
-  const importKubeconfig = useMutation({ mutationFn: () => ClusterService.Import(), onSettled: invalidateConfig });
+  const importKubeconfig = useMutation({
+    mutationFn: () => ClusterService.Import(),
+    onSettled: invalidateConfig,
+  });
   // Dropped export files queue up for the import dialog; everything else is imported as a kubeconfig in one go.
   const pushImportPreviews = useUIStore((s) => s.pushImportPreviews);
   const importDropped = useMutation({
@@ -41,7 +86,10 @@ export function Sidebar() {
     },
     onSettled: invalidateConfig,
   });
-  useEffect(() => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)), [importDropped.mutate]);
+  useEffect(
+    () => Events.On("files:dropped", ({ data }) => importDropped.mutate(data)),
+    [importDropped.mutate],
+  );
   const importError = importKubeconfig.error ?? importDropped.error;
   const [importingRemote, setImportingRemote] = useState(false);
 
@@ -59,7 +107,10 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-      <div data-drag className="flex h-13 shrink-0 items-center justify-end gap-0.5 px-2 select-none">
+      <div
+        data-drag
+        className="flex h-13 shrink-0 items-center justify-end gap-0.5 px-2 select-none"
+      >
         {/* One slow Cluster must not hold the button; each row's dot pulses while its own check runs. */}
         <RefreshButton
           title={`Refresh clusters (${keyLabel("refresh")})`}
@@ -67,7 +118,16 @@ export function Sidebar() {
           onRefresh={refresh}
         />
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title="Add clusters" disabled={importKubeconfig.isPending} />}>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                title="Add clusters"
+                disabled={importKubeconfig.isPending}
+              />
+            }
+          >
             <PlusIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -83,13 +143,20 @@ export function Sidebar() {
       {importingRemote && <RemoteImportDialog onClose={() => setImportingRemote(false)} />}
       <div className="px-3 pb-2">
         <InputGroup className="h-7 bg-background/60">
-          <InputGroupInput placeholder="Filter clusters" value={needle} onChange={(e) => setNeedle(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setNeedle("")} />
+          <InputGroupInput
+            placeholder="Filter clusters"
+            value={needle}
+            onChange={(e) => setNeedle(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setNeedle("")}
+          />
           <InputGroupAddon>
             <MagnifyingGlassIcon />
           </InputGroupAddon>
         </InputGroup>
       </div>
-      {importError && <p className="px-4 pb-2 text-xs text-destructive">{errorText(importError)}</p>}
+      {importError && (
+        <p className="px-4 pb-2 text-xs text-destructive">{errorText(importError)}</p>
+      )}
       <h2 className="px-4 pt-1 pb-1 text-[11px] font-semibold text-muted-foreground">Clusters</h2>
       <div className="min-h-0 flex-1 overflow-auto pb-2">
         <ClusterList needle={needle} />
@@ -155,7 +222,13 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
               <DialogDescription>
                 {route ? (
                   <>
-                    Kubereach reads {source ? <span className="font-mono text-foreground">{source}</span> : "the kubeconfig it finds"} on <span className="font-medium text-foreground">{host}</span> each time{" "}
+                    Kubereach reads{" "}
+                    {source ? (
+                      <span className="font-mono text-foreground">{source}</span>
+                    ) : (
+                      "the kubeconfig it finds"
+                    )}{" "}
+                    on <span className="font-medium text-foreground">{host}</span> each time{" "}
                     {route.name} connects. Nothing is copied to this computer.
                   </>
                 ) : (
@@ -221,8 +294,22 @@ function RemoteImportDialog({ onClose }: { onClose: () => void }) {
           </form>
         </DialogContent>
       </Dialog>
-      {askingSudo && <SudoPasswordDialog key={routeId} routeId={routeId} error={found.error} retry={found.refetch} onClose={() => setAskingSudo(false)} />}
-      {creatingRoute && <RouteDialog route={null} onClose={() => setCreatingRoute(false)} onSaved={(r) => setRouteId(r.id)} />}
+      {askingSudo && (
+        <SudoPasswordDialog
+          key={routeId}
+          routeId={routeId}
+          error={found.error}
+          retry={found.refetch}
+          onClose={() => setAskingSudo(false)}
+        />
+      )}
+      {creatingRoute && (
+        <RouteDialog
+          route={null}
+          onClose={() => setCreatingRoute(false)}
+          onSaved={(r) => setRouteId(r.id)}
+        />
+      )}
     </>
   );
 }
@@ -276,9 +363,11 @@ function RemoteSource({
       </div>
     );
   }
-  if (!found.data) return <p className="animate-pulse text-sm text-muted-foreground">Looking for a kubeconfig…</p>;
+  if (!found.data)
+    return <p className="animate-pulse text-sm text-muted-foreground">Looking for a kubeconfig…</p>;
   const contexts = found.data.contexts ?? [];
-  if (contexts.length === 0) return <p className="text-sm text-muted-foreground">{found.data.source} has no contexts.</p>;
+  if (contexts.length === 0)
+    return <p className="text-sm text-muted-foreground">{found.data.source} has no contexts.</p>;
   if (contexts.length === 1) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -325,19 +414,24 @@ function ClusterList({ needle }: { needle: string }) {
   }
 
   const words = needle.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = clusters.filter((c) => words.every((w) => `${c.name} ${c.context}`.toLowerCase().includes(w)));
+  const shown = clusters.filter((c) =>
+    words.every((w) => `${c.name} ${c.context}`.toLowerCase().includes(w)),
+  );
 
   if (clusters.length === 0) {
     return (
       <Empty className="border-0 px-4 py-6">
         <EmptyHeader>
           <EmptyTitle>No clusters</EmptyTitle>
-          <EmptyDescription>Add clusters from a kubeconfig or an SSH server with +, or drop a kubeconfig here.</EmptyDescription>
+          <EmptyDescription>
+            Add clusters from a kubeconfig or an SSH server with +, or drop a kubeconfig here.
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
   }
-  if (shown.length === 0) return <p className="px-4 py-2 text-xs text-muted-foreground">No cluster matches.</p>;
+  if (shown.length === 0)
+    return <p className="px-4 py-2 text-xs text-muted-foreground">No cluster matches.</p>;
   return (
     <ul className="grid gap-px px-2">
       {shown.map((c) => (

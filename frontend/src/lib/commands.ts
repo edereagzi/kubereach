@@ -1,5 +1,11 @@
 import type { RefObject } from "react";
-import { detectPlatform, formatForDisplay, useHotkeyRegistrations, useHotkeys, type Hotkey } from "@tanstack/react-hotkeys";
+import {
+  detectPlatform,
+  formatForDisplay,
+  useHotkeyRegistrations,
+  useHotkeys,
+  type Hotkey,
+} from "@tanstack/react-hotkeys";
 import { keyOwner, pressOf, type Area, type Group } from "@/lib/key-owner";
 
 declare module "@tanstack/react-hotkeys" {
@@ -36,23 +42,66 @@ type Command = {
 export const commands = {
   palette: { name: "Command palette", group: "anywhere", keys: ["Mod+K", "Mod+Shift+P"] },
   "show-shortcuts": { name: "Show shortcuts", group: "anywhere", keys: ["?"] },
-  "close-dialog": { name: "Close a dialog or menu", group: "anywhere", keys: ["Escape"], native: true },
+  "close-dialog": {
+    name: "Close a dialog or menu",
+    group: "anywhere",
+    keys: ["Escape"],
+    native: true,
+  },
   quit: { name: "Quit Kubereach", group: "anywhere", keys: ["Mod+Q"], native: true },
-  "select-cluster": { name: "Select a cluster (9 is the last)", group: "anywhere", keys: ["Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8", "Mod+9"] },
+  "select-cluster": {
+    name: "Select a cluster (9 is the last)",
+    group: "anywhere",
+    keys: ["Mod+1", "Mod+2", "Mod+3", "Mod+4", "Mod+5", "Mod+6", "Mod+7", "Mod+8", "Mod+9"],
+  },
   refresh: { name: "Refresh data", group: "anywhere", keys: ["Mod+R"] },
   "open-settings": { name: "Open Settings", group: "anywhere", keys: ["Mod+,"] },
   // The mouse's back and forward buttons also run these.
-  "go-back": { name: "Back", group: "anywhere", keys: { mac: ["Mod+["], other: ["Alt+ArrowLeft"] } },
-  "go-forward": { name: "Forward", group: "anywhere", keys: { mac: ["Mod+]"], other: ["Alt+ArrowRight"] } },
+  "go-back": {
+    name: "Back",
+    group: "anywhere",
+    keys: { mac: ["Mod+["], other: ["Alt+ArrowLeft"] },
+  },
+  "go-forward": {
+    name: "Forward",
+    group: "anywhere",
+    keys: { mac: ["Mod+]"], other: ["Alt+ArrowRight"] },
+  },
   // The macOS View menu handles these; elsewhere the frontend calls the Wails runtime.
-  "zoom-in": { name: "Zoom in", group: "anywhere", keys: { mac: ["Mod++"], other: ["Mod+="] }, native: true },
+  "zoom-in": {
+    name: "Zoom in",
+    group: "anywhere",
+    keys: { mac: ["Mod++"], other: ["Mod+="] },
+    native: true,
+  },
   "zoom-out": { name: "Zoom out", group: "anywhere", keys: ["Mod+-"], native: true },
   "zoom-reset": { name: "Actual size", group: "anywhere", keys: ["Mod+0"], native: true },
-  "full-screen": { name: "Full screen", group: "anywhere", keys: { mac: ["Control+Meta+F"], other: ["F11"] }, native: true },
-  "previous-view": { name: "Previous view", group: "cluster", keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] } },
-  "next-view": { name: "Next view", group: "cluster", keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] } },
-  "filter-view": { name: "Focus the filter (the log filter in a Logs tab)", group: "cluster", keys: ["Mod+F", "/"] },
-  "next-row": { name: "Next row (the first, with no detail open)", group: "list", keys: ["ArrowDown", "J"] },
+  "full-screen": {
+    name: "Full screen",
+    group: "anywhere",
+    keys: { mac: ["Control+Meta+F"], other: ["F11"] },
+    native: true,
+  },
+  "previous-view": {
+    name: "Previous view",
+    group: "cluster",
+    keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] },
+  },
+  "next-view": {
+    name: "Next view",
+    group: "cluster",
+    keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] },
+  },
+  "filter-view": {
+    name: "Focus the filter (the log filter in a Logs tab)",
+    group: "cluster",
+    keys: ["Mod+F", "/"],
+  },
+  "next-row": {
+    name: "Next row (the first, with no detail open)",
+    group: "list",
+    keys: ["ArrowDown", "J"],
+  },
   "previous-row": { name: "Previous row", group: "list", keys: ["ArrowUp", "K"] },
   "close-detail": { name: "Close the detail", group: "detail", keys: ["Escape"] },
   logs: { name: "Logs", group: "detail", keys: ["L"] },
@@ -66,22 +115,69 @@ export const commands = {
   "toggle-panel": { name: "Show or hide the panel", group: "panel", keys: ["Mod+J"] },
   "new-terminal": { name: "New Terminal", group: "panel", keys: ["Mod+T"] },
   "close-tab": { name: "Close the panel tab, or hide the window", group: "panel", keys: ["Mod+W"] },
-  "previous-tab": { name: "Previous panel tab", group: "panel", keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] } },
-  "next-tab": { name: "Next panel tab", group: "panel", keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] } },
+  "previous-tab": {
+    name: "Previous panel tab",
+    group: "panel",
+    keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] },
+  },
+  "next-tab": {
+    name: "Next panel tab",
+    group: "panel",
+    keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] },
+  },
   "select-log-lines": { name: "Select every line", group: "logs", keys: ["Mod+A"] },
   "save-logs": { name: "Save the lines shown", group: "logs", keys: ["Mod+S"] },
-  "follow-logs": { name: "Go to the last line and follow", group: "logs", keys: { mac: ["Mod+ArrowDown"], other: ["Mod+End"] } },
+  "follow-logs": {
+    name: "Go to the last line and follow",
+    group: "logs",
+    keys: { mac: ["Mod+ArrowDown"], other: ["Mod+End"] },
+  },
   // The xterm key handler runs these. On Linux and Windows the Ctrl keys belong to the shell, so these keys have Shift.
-  "clear-terminal": { name: "Clear the screen", group: "terminal", keys: { mac: ["Mod+K"], other: ["Mod+Shift+K"] }, native: true },
-  "copy-terminal": { name: "Copy", group: "terminal", keys: { mac: ["Mod+C"], other: ["Mod+Shift+C"] }, native: true },
-  "paste-terminal": { name: "Paste", group: "terminal", keys: { mac: ["Mod+V"], other: ["Mod+Shift+V"] }, native: true },
-  "search-terminal": { name: "Find", group: "terminal", keys: { mac: ["Mod+F"], other: ["Mod+Shift+F"] }, native: true },
+  "clear-terminal": {
+    name: "Clear the screen",
+    group: "terminal",
+    keys: { mac: ["Mod+K"], other: ["Mod+Shift+K"] },
+    native: true,
+  },
+  "copy-terminal": {
+    name: "Copy",
+    group: "terminal",
+    keys: { mac: ["Mod+C"], other: ["Mod+Shift+C"] },
+    native: true,
+  },
+  "paste-terminal": {
+    name: "Paste",
+    group: "terminal",
+    keys: { mac: ["Mod+V"], other: ["Mod+Shift+V"] },
+    native: true,
+  },
+  "search-terminal": {
+    name: "Find",
+    group: "terminal",
+    keys: { mac: ["Mod+F"], other: ["Mod+Shift+F"] },
+    native: true,
+  },
   // The search bar's input handles these.
   "next-match": { name: "Next match", group: "search", keys: ["Enter"], native: true },
-  "previous-match": { name: "Previous match", group: "search", keys: ["Shift+Enter"], native: true },
+  "previous-match": {
+    name: "Previous match",
+    group: "search",
+    keys: ["Shift+Enter"],
+    native: true,
+  },
   "close-search": { name: "Close the search bar", group: "search", keys: ["Escape"], native: true },
-  "clear-cluster-filter": { name: "Clear the cluster filter", group: "typing", keys: ["Escape"], native: true },
-  "cancel-port-edit": { name: "Cancel a local port change", group: "typing", keys: ["Escape"], native: true },
+  "clear-cluster-filter": {
+    name: "Clear the cluster filter",
+    group: "typing",
+    keys: ["Escape"],
+    native: true,
+  },
+  "cancel-port-edit": {
+    name: "Cancel a local port change",
+    group: "typing",
+    keys: ["Escape"],
+    native: true,
+  },
 } satisfies Record<string, Command>;
 
 export type CommandId = keyof typeof commands;
@@ -93,7 +189,8 @@ export const keysOf = (id: CommandId): Hotkey[] => {
   return Array.isArray(keys) ? keys : platform === "mac" ? keys.mac : keys.other;
 };
 
-export const formatKey = (key: Hotkey) => formatForDisplay(key, { platform, separatorToken: platform === "mac" ? "" : null });
+export const formatKey = (key: Hotkey) =>
+  formatForDisplay(key, { platform, separatorToken: platform === "mac" ? "" : null });
 
 // A Command's first key for a tooltip or a menu row.
 export const keyLabel = (id: CommandId) => {
@@ -102,7 +199,10 @@ export const keyLabel = (id: CommandId) => {
 };
 
 // Tells whether a dialog, menu or list is open. A Base UI Select keeps its closed list in the page, marked data-closed.
-export const dialogOpen = () => [...document.querySelectorAll("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")].some((el) => !el.closest("[data-closed]"));
+export const dialogOpen = () =>
+  [
+    ...document.querySelectorAll("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]"),
+  ].some((el) => !el.closest("[data-closed]"));
 
 function focusArea(e: KeyboardEvent): Area {
   if (dialogOpen()) return "dialog";
@@ -120,7 +220,9 @@ function focusArea(e: KeyboardEvent): Area {
 const catalogKeys = new Set((Object.keys(commands) as CommandId[]).flatMap(keysOf));
 const withShift = (keys: Hotkey[]) => {
   if (platform === "mac") return keys;
-  const shifted = keys.filter((k) => k.startsWith("Mod+") && !k.includes("Shift")).map((k) => k.replace("Mod+", "Mod+Shift+") as Hotkey);
+  const shifted = keys
+    .filter((k) => k.startsWith("Mod+") && !k.includes("Shift"))
+    .map((k) => k.replace("Mod+", "Mod+Shift+") as Hotkey);
   return [...keys, ...shifted.filter((k) => !catalogKeys.has(k))];
 };
 
@@ -131,26 +233,43 @@ const focusedEvent = () => {
   return e;
 };
 
-export const inPanel = (e: KeyboardEvent) => e.target instanceof Element && !!e.target.closest("[data-panel]");
+export const inPanel = (e: KeyboardEvent) =>
+  e.target instanceof Element && !!e.target.closest("[data-panel]");
 
 // Makes a Command available while the component is mounted. target limits it to keys pressed in that element. panel
 // limits it to keys pressed in the panel (true) or outside it (false). A Command that does not apply leaves the key to the next one.
 export function useCommand(
   id: CommandId,
   run: (e: KeyboardEvent) => void,
-  { enabled = true, target, panel }: { enabled?: boolean; target?: RefObject<HTMLElement | null>; panel?: boolean } = {},
+  {
+    enabled = true,
+    target,
+    panel,
+  }: { enabled?: boolean; target?: RefObject<HTMLElement | null>; panel?: boolean } = {},
 ) {
   const { name, group } = commands[id];
   useHotkeys(
     withShift(keysOf(id)).map((hotkey) => ({
       hotkey,
       callback: (e: KeyboardEvent) => {
-        if ((panel !== undefined && inPanel(e) !== panel) || keyOwner(pressOf(e), platform, focusArea(e), group) !== "app") return;
+        if (
+          (panel !== undefined && inPanel(e) !== panel) ||
+          keyOwner(pressOf(e), platform, focusArea(e), group) !== "app"
+        )
+          return;
         e.preventDefault();
         run(e);
       },
     })),
-    { enabled, target, meta: { name, command: id, run: () => run(focusedEvent()) }, preventDefault: false, stopPropagation: false, ignoreInputs: false, conflictBehavior: "allow" },
+    {
+      enabled,
+      target,
+      meta: { name, command: id, run: () => run(focusedEvent()) },
+      preventDefault: false,
+      stopPropagation: false,
+      ignoreInputs: false,
+      conflictBehavior: "allow",
+    },
   );
 }
 

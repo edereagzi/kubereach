@@ -1,44 +1,106 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDownIcon, CaretDownIcon, CaretRightIcon, ClockIcon, MagnifyingGlassIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
+import {
+  ArrowDownIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  ClockIcon,
+  MagnifyingGlassIcon,
+  TextAlignLeftIcon,
+} from "@phosphor-icons/react";
 import { LogService } from "@bindings/internal/bindings";
-import { LogSourceKind, State, type Cluster, type LogLine, type LogSource, type LogStatus } from "@bindings/internal/service";
+import {
+  LogSourceKind,
+  State,
+  type Cluster,
+  type LogLine,
+  type LogSource,
+  type LogStatus,
+} from "@bindings/internal/service";
 import { CopyButton } from "@/components/copy-button";
 import { statusLabel } from "@/components/routes";
 import { logKind, type Target } from "@/components/targets";
 import { OpenShell } from "@/components/terminal";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { podsQuery, errorText } from "@/queries";
 import { useUIStore } from "@/store";
 import { keyLabel, useCommand } from "@/lib/commands";
 import { cn, isZeroTime } from "@/lib/utils";
 
 // One stable colour per pod name, so a pod keeps its colour while others join and leave.
-const podColors = ["text-sky-600", "text-emerald-600", "text-amber-600", "text-rose-600", "text-violet-600", "text-teal-600", "text-orange-600", "text-fuchsia-600"];
-const podColor = (pod: string) => podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3, hour12: false });
+const podColors = [
+  "text-sky-600",
+  "text-emerald-600",
+  "text-amber-600",
+  "text-rose-600",
+  "text-violet-600",
+  "text-teal-600",
+  "text-orange-600",
+  "text-fuchsia-600",
+];
+const podColor = (pod: string) =>
+  podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
+const timeFormat = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+  hour12: false,
+});
 const formatTime = (iso: string) => (isZeroTime(iso) ? "" : timeFormat.format(new Date(iso)));
 // A pod of a workload is told apart by its random suffix; the full name is in the title.
 const podSuffix = (pod: string) => pod.slice(pod.lastIndexOf("-") + 1);
 // Structured lines colour by their level field; the key names cover the common loggers, the numbers are pino's.
-const pinoLevels: Record<string, string> = { "10": "trace", "20": "debug", "30": "info", "40": "warn", "50": "error", "60": "fatal" };
+const pinoLevels: Record<string, string> = {
+  "10": "trace",
+  "20": "debug",
+  "30": "info",
+  "40": "warn",
+  "50": "error",
+  "60": "fatal",
+};
 const level = (l: LogLine) => {
   const v = (l.fields?.level ?? l.fields?.lvl ?? l.fields?.severity ?? "").toLowerCase();
   return pinoLevels[v] ?? v;
 };
 const levelClass = (v: string) => {
-  if (v.startsWith("err") || v === "fatal" || v === "panic" || v === "critical") return "text-red-600 dark:text-red-400";
+  if (v.startsWith("err") || v === "fatal" || v === "panic" || v === "critical")
+    return "text-red-600 dark:text-red-400";
   if (v.startsWith("warn")) return "text-amber-600 dark:text-amber-400";
   if (v === "debug" || v === "trace") return "text-muted-foreground/70";
   return "text-muted-foreground";
 };
 // Fields the row already shows elsewhere, or that every container repeats, stay in the expanded view only.
-const shownElsewhere = new Set(["level", "lvl", "severity", "msg", "message", "time", "ts", "timestamp", "pid"]);
+const shownElsewhere = new Set([
+  "level",
+  "lvl",
+  "severity",
+  "msg",
+  "message",
+  "time",
+  "ts",
+  "timestamp",
+  "pid",
+]);
 const inlineFields = (l: LogLine) =>
-  Object.entries(l.fields ?? {}).filter(([k, v]) => !shownElsewhere.has(k) && !(k === "hostname" && v === l.pod));
+  Object.entries(l.fields ?? {}).filter(
+    ([k, v]) => !shownElsewhere.has(k) && !(k === "hostname" && v === l.pod),
+  );
 
 type Columns = { showTime: boolean; showPod: boolean; showContainer: boolean };
 const columns = (stream: LogStatus, showTime: boolean): Columns => ({
@@ -57,11 +119,19 @@ const segments = (l: LogLine, { showTime, showPod, showContainer }: Columns): Se
   const lvl = level(l);
   if (lvl) out.push({ text: lvl.slice(0, 5).padEnd(5), className: levelClass(lvl) });
   const msg = l.fields.msg ?? l.fields.message;
-  if (msg !== undefined) out.push({ text: msg, className: /^(err|warn|fatal|panic|critical)/.test(lvl) ? levelClass(lvl) : undefined });
-  for (const [k, v] of inlineFields(l)) out.push({ text: `${k}=${v}`, className: "text-muted-foreground" });
+  if (msg !== undefined)
+    out.push({
+      text: msg,
+      className: /^(err|warn|fatal|panic|critical)/.test(lvl) ? levelClass(lvl) : undefined,
+    });
+  for (const [k, v] of inlineFields(l))
+    out.push({ text: `${k}=${v}`, className: "text-muted-foreground" });
   return out;
 };
-const lineText = (l: LogLine, cols: Columns) => segments(l, cols).map((s) => s.text).join("  ");
+const lineText = (l: LogLine, cols: Columns) =>
+  segments(l, cols)
+    .map((s) => s.text)
+    .join("  ");
 // A row draws its first shownChars characters, so one huge line cannot stretch the view; Show all and Copy reach the rest.
 const shownChars = 2000;
 const clip = (segs: Segment[]): { segs: Segment[]; hidden: number } => {
@@ -98,7 +168,10 @@ export const streamOf = (streams: Record<string, LogStatus>, source: LogSource) 
       !!st.source.previous === !!source.previous,
   );
 
-export const targetSource = (cluster: Cluster, target: Target & { previous?: boolean }): LogSource => ({
+export const targetSource = (
+  cluster: Cluster,
+  target: Target & { previous?: boolean },
+): LogSource => ({
   clusterId: cluster.id,
   kind: logKind[target.kind] ?? LogSourceKind.LogSourcePod,
   namespace: target.namespace,
@@ -111,19 +184,24 @@ export const targetSource = (cluster: Cluster, target: Target & { previous?: boo
 async function startLogs(source: LogSource, replaces?: string) {
   const { logStreams, openDock } = useUIStore.getState();
   const existing = streamOf(logStreams, source);
-  if (existing && existing.state !== State.StateError) return openDock(source.clusterId, existing.id);
+  if (existing && existing.state !== State.StateError)
+    return openDock(source.clusterId, existing.id);
   useUIStore.getState().openLogTab(await LogService.Start(source), replaces ?? existing?.id);
   if (existing) await LogService.Stop(existing.id);
 }
 
 export function useStartLogs(cluster: Cluster) {
-  return useMutation({ mutationFn: (target: Target & { previous?: boolean }) => startLogs(targetSource(cluster, target)) });
+  return useMutation({
+    mutationFn: (target: Target & { previous?: boolean }) =>
+      startLogs(targetSource(cluster, target)),
+  });
 }
 
 // What a log tab says after its source's name.
 export const logDetail = (stream: LogStatus) =>
   [
-    stream.source.kind !== LogSourceKind.LogSourcePod && `${stream.pods?.length ?? 0} ${stream.pods?.length === 1 ? "pod" : "pods"}`,
+    stream.source.kind !== LogSourceKind.LogSourcePod &&
+      `${stream.pods?.length ?? 0} ${stream.pods?.length === 1 ? "pod" : "pods"}`,
     stream.source.previous && "previous run",
   ]
     .filter(Boolean)
@@ -135,9 +213,19 @@ export function LogTab({ cluster, stream }: { cluster: Cluster; stream: LogStatu
   const shellPods = (stream.pods ?? []).map((name) => ({
     namespace: stream.source.namespace,
     name,
-    containers: pods.data?.find((p) => p.namespace === stream.source.namespace && p.name === name)?.containers ?? stream.containers ?? [],
+    containers:
+      pods.data?.find((p) => p.namespace === stream.source.namespace && p.name === name)
+        ?.containers ??
+      stream.containers ??
+      [],
   }));
-  return <StreamPanel key={stream.id} stream={stream} shell={<OpenShell cluster={cluster} pods={shellPods} />} />;
+  return (
+    <StreamPanel
+      key={stream.id}
+      stream={stream}
+      shell={<OpenShell cluster={cluster} pods={shellPods} />}
+    />
+  );
 }
 
 type ViewState = { query: string; regex: boolean };
@@ -154,11 +242,19 @@ function StreamPanel({ stream, shell }: { stream: LogStatus; shell: ReactNode })
       </div>
       {/* Reconnecting is a crash loop between runs, not a failure of the follow, so it is said quietly. */}
       {stream.error && (
-        <p className={cn("px-4 pb-2 text-xs", stream.state === State.StateReconnecting ? "text-muted-foreground" : "text-destructive")}>{statusLabel(stream)}</p>
+        <p
+          className={cn(
+            "px-4 pb-2 text-xs",
+            stream.state === State.StateReconnecting ? "text-muted-foreground" : "text-destructive",
+          )}
+        >
+          {statusLabel(stream)}
+        </p>
       )}
       {stream.deleted && (
         <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
-          {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if it is recreated.
+          {stream.source.kind} {stream.source.name} was deleted. Its pods will be followed again if
+          it is recreated.
         </p>
       )}
       <LogView stream={stream} view={view} />
@@ -166,7 +262,15 @@ function StreamPanel({ stream, shell }: { stream: LogStatus; shell: ReactNode })
   );
 }
 
-function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewState; patch: (p: Partial<ViewState>) => void }) {
+function LogToolbar({
+  stream,
+  view,
+  patch,
+}: {
+  stream: LogStatus;
+  view: ViewState;
+  patch: (p: Partial<ViewState>) => void;
+}) {
   const clearLogs = useUIStore((s) => s.clearLogs);
   const wrap = useUIStore((s) => s.logWrap);
   const toggleWrap = useUIStore((s) => s.toggleLogWrap);
@@ -186,7 +290,10 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
       const lines = useUIStore.getState().logBuffers[stream.id]?.lines ?? [];
       const { matcher } = compile(view);
       const cols = columns(stream, timestamps);
-      return LogService.Save(stream.source.name, (matcher ? lines.filter(matcher) : lines).map((l) => `${lineText(l, cols)}\n`).join(""));
+      return LogService.Save(
+        stream.source.name,
+        (matcher ? lines.filter(matcher) : lines).map((l) => `${lineText(l, cols)}\n`).join(""),
+      );
     },
   });
   useCommand("save-logs", () => save.mutate(), { enabled: !save.isPending, panel: true });
@@ -195,12 +302,26 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
     <>
       {containers.length > 1 && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="shrink-0" disabled={follow.isPending} />}>
-            <span className={cn(stream.source.container && "font-mono text-xs")}>{stream.source.container || "All containers"}</span>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={follow.isPending}
+              />
+            }
+          >
+            <span className={cn(stream.source.container && "font-mono text-xs")}>
+              {stream.source.container || "All containers"}
+            </span>
             <CaretDownIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup value={stream.source.container ?? ""} onValueChange={(c) => follow.mutate(c)}>
+            <DropdownMenuRadioGroup
+              value={stream.source.container ?? ""}
+              onValueChange={(c) => follow.mutate(c)}
+            >
               <DropdownMenuRadioItem value="">All containers</DropdownMenuRadioItem>
               <DropdownMenuSeparator />
               {containers.map((c) => (
@@ -236,25 +357,54 @@ function LogToolbar({ stream, view, patch }: { stream: LogStatus; view: ViewStat
           </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
-      <Button variant={timestamps ? "secondary" : "ghost"} size="icon-sm" title="Show timestamps" aria-pressed={timestamps} onClick={toggleTimestamps}>
+      <Button
+        variant={timestamps ? "secondary" : "ghost"}
+        size="icon-sm"
+        title="Show timestamps"
+        aria-pressed={timestamps}
+        onClick={toggleTimestamps}
+      >
         <ClockIcon />
       </Button>
-      <Button variant={wrap ? "secondary" : "ghost"} size="icon-sm" title="Wrap long lines" aria-pressed={wrap} onClick={toggleWrap}>
+      <Button
+        variant={wrap ? "secondary" : "ghost"}
+        size="icon-sm"
+        title="Wrap long lines"
+        aria-pressed={wrap}
+        onClick={toggleWrap}
+      >
         <TextAlignLeftIcon />
       </Button>
-      <Button variant="ghost" size="sm" className="text-muted-foreground" title={`Save the lines shown to a file (${keyLabel("save-logs")})`} disabled={save.isPending} onClick={() => save.mutate()}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground"
+        title={`Save the lines shown to a file (${keyLabel("save-logs")})`}
+        disabled={save.isPending}
+        onClick={() => save.mutate()}
+      >
         Save
       </Button>
-      <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => clearLogs(stream.id)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground"
+        onClick={() => clearLogs(stream.id)}
+      >
         Clear
       </Button>
-      {(follow.error || save.error) && <span className="text-xs text-destructive">{errorText(follow.error ?? save.error)}</span>}
+      {(follow.error || save.error) && (
+        <span className="text-xs text-destructive">{errorText(follow.error ?? save.error)}</span>
+      )}
     </>
   );
 }
 
 // "field=value" matches a structured field; "field=" alone matches its presence; anything else matches the text.
-function compile({ query, regex }: ViewState): { matcher: ((l: LogLine) => boolean) | null; error: string | null } {
+function compile({ query, regex }: ViewState): {
+  matcher: ((l: LogLine) => boolean) | null;
+  error: string | null;
+} {
   const q = query.trim();
   if (!q) return { matcher: null, error: null };
   const eq = /^([\w.-]+)=(.*)$/.exec(q);
@@ -281,13 +431,19 @@ function compile({ query, regex }: ViewState): { matcher: ((l: LogLine) => boole
 
 function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
   const buffer = useUIStore((s) => s.logBuffers[stream.id]);
-  const cols = columns(stream, useUIStore((s) => s.logTimestamps));
+  const cols = columns(
+    stream,
+    useUIStore((s) => s.logTimestamps),
+  );
   const lines = buffer?.lines ?? [];
   const { matcher, error } = useMemo(() => compile(view), [view.query, view.regex]);
   // The buffer is appended in place, so version is its change signal.
   const version = buffer?.version ?? 0;
   // ponytail: full rescan per batch; incremental filtering if 50k lines with a regex ever lags.
-  const filtered = useMemo(() => (matcher ? lines.filter(matcher) : lines), [lines, version, matcher]);
+  const filtered = useMemo(
+    () => (matcher ? lines.filter(matcher) : lines),
+    [lines, version, matcher],
+  );
 
   return (
     <>
@@ -298,7 +454,17 @@ function LogView({ stream, view }: { stream: LogStatus; view: ViewState }) {
 }
 
 // Rows never wrap, but a message can carry its own newlines, so every row is measured rather than assumed one line.
-function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: number; version: number; cols: Columns }) {
+function LogList({
+  lines,
+  total,
+  version,
+  cols,
+}: {
+  lines: LogLine[];
+  total: number;
+  version: number;
+  cols: Columns;
+}) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
   const wrap = useUIStore((s) => s.logWrap);
@@ -381,11 +547,18 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
                 key={item.key}
                 ref={virtualizer.measureElement}
                 data-index={item.index}
-                className={cn("absolute left-0", wrap ? "w-full" : "w-max min-w-full", open && "bg-accent")}
+                className={cn(
+                  "absolute left-0",
+                  wrap ? "w-full" : "w-max min-w-full",
+                  open && "bg-accent",
+                )}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <div
-                  className={cn("group relative min-h-5 px-4 leading-5 hover:bg-muted/50", wrap ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-pre")}
+                  className={cn(
+                    "group relative min-h-5 px-4 leading-5 hover:bg-muted/50",
+                    wrap ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-pre",
+                  )}
                 >
                   {/* Only the caret opens the fields, so clicking and dragging over lines is left to text selection. */}
                   {fields.length > 0 && (
@@ -399,7 +572,9 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
                       )}
                       onClick={() => toggle(setExpanded, line)}
                     >
-                      <CaretRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
+                      <CaretRightIcon
+                        className={cn("size-3 transition-transform", open && "rotate-90")}
+                      />
                     </button>
                   )}
                   {segs.map((seg, i) => (
@@ -415,17 +590,28 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
                       {hidden > 0 && "…"}
                       {"  "}
                       {line.truncated ? (
-                        <span className="text-amber-700 dark:text-amber-400" title="The rest of this line was not received.">
+                        <span
+                          className="text-amber-700 dark:text-amber-400"
+                          title="The rest of this line was not received."
+                        >
                           truncated
                         </span>
                       ) : (
                         hidden > 0 && `+${compact.format(hidden)} characters`
                       )}
                       {"  "}
-                      <button type="button" className="hover:text-foreground hover:underline" onClick={() => toggle(setShownInFull, line)}>
+                      <button
+                        type="button"
+                        className="hover:text-foreground hover:underline"
+                        onClick={() => toggle(setShownInFull, line)}
+                      >
                         {full ? "Show less" : "Show all"}
                       </button>
-                      <CopyButton text={line.text} title="Copy the whole line" className="ml-1 size-5 align-top opacity-100" />
+                      <CopyButton
+                        text={line.text}
+                        title="Copy the whole line"
+                        className="ml-1 size-5 align-top opacity-100"
+                      />
                     </span>
                   )}
                 </div>
@@ -452,7 +638,12 @@ function LogList({ lines, total, version, cols }: { lines: LogLine[]; total: num
           </span>
         )}
         {!following && (
-          <Button size="sm" className="pointer-events-auto rounded-full shadow-md" title={`Follow (${keyLabel("follow-logs")})`} onClick={() => setFollowing(true)}>
+          <Button
+            size="sm"
+            className="pointer-events-auto rounded-full shadow-md"
+            title={`Follow (${keyLabel("follow-logs")})`}
+            onClick={() => setFollowing(true)}
+          >
             <ArrowDownIcon />
             {behind > 0 ? `${behind} new lines` : "Follow"}
           </Button>
