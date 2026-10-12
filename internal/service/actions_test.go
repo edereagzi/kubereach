@@ -220,13 +220,12 @@ func TestSuspendCronJob(t *testing.T) {
 func TestCordonNode(t *testing.T) {
 	svc, cs, id := newFakeService(t, node("node-a", nodeCondition(corev1.NodeReady, corev1.ConditionTrue)))
 	ctx := context.Background()
-	// The list is what shows a cordoned node, so the toggle is read back through it.
 	cordoned := func() bool {
-		nodes, err := svc.ListNodes(ctx, id)
+		n, err := cs.CoreV1().Nodes().Get(ctx, "node-a", metav1.GetOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		return nodes[0].Unschedulable
+		return n.Spec.Unschedulable
 	}
 
 	if err := svc.CordonNode(ctx, id, "node-a", true); err != nil {
