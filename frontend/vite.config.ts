@@ -1,10 +1,24 @@
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, lazyPlugins } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import wails from "@wailsio/runtime/plugins/vite";
 
+const ignored = ["bindings/**", "dist/**"];
+
 export default defineConfig({
+  fmt: {
+    ignorePatterns: ignored,
+  },
+  lint: {
+    ignorePatterns: ignored,
+    jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
+    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    options: { typeAware: true, typeCheck: true },
+  },
+  test: {
+    passWithNoTests: true,
+  },
   server: {
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
@@ -16,5 +30,5 @@ export default defineConfig({
       "@bindings": path.resolve(import.meta.dirname, "bindings/github.com/edereagzi/kubereach"),
     },
   },
-  plugins: [react(), tailwindcss(), wails("./bindings")],
+  plugins: lazyPlugins(() => [react(), tailwindcss(), wails("./bindings")]),
 });

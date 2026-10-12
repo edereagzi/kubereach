@@ -7,7 +7,7 @@ Before sending a pull request, run:
 ```sh
 go test ./...
 golangci-lint run
-(cd frontend && pnpm typecheck)
+(cd frontend && pnpm check && pnpm test)
 ```
 
 Contributions are accepted under the [Apache-2.0](LICENSE) license; there is no CLA.

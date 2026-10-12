@@ -5,11 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
-    "dev": "vite",
-    "typecheck": "tsc --noEmit",
-    "build:dev": "tsc --noEmit && vite build --minify false --mode development",
-    "build": "tsc --noEmit && vite build --mode production",
-    "preview": "vite preview"
+    "dev": "vp dev",
+    "check": "vp check",
+    "test": "vp test",
+    "build:dev": "vp build --minify false --mode development",
+    "build": "vp build --mode production",
+    "preview": "vp preview"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -46,6 +47,20 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite@*": "npm:@voidzero-dev/vite-plus-core@1.1.0"
+    },
+    "peerDependencyRules": {
+      "allowAny": [
+        "vite"
+      ],
+      "allowedVersions": {
+        "vite": "*"
+      }
+    }
   }
 }
