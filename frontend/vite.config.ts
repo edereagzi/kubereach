@@ -16,6 +16,10 @@ export default defineConfig({
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
     options: { typeAware: true, typeCheck: true, denyWarnings: true },
   },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["src/test/setup.ts"],
+  },
   server: {
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
