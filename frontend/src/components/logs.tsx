@@ -54,7 +54,9 @@ const podColors = [
   "text-fuchsia-600",
 ];
 const podColor = (pod: string) =>
-  podColors[[...pod].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length];
+  podColors[
+    Array.from(pod).reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % podColors.length
+  ];
 const timeFormat = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",

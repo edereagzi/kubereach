@@ -233,7 +233,10 @@ function lay(
     };
     for (const t of live) {
       if (kind) {
-        if (passing.has(t.value)) (shownLive.add(t.value), rows.push(row(t)));
+        if (passing.has(t.value)) {
+          shownLive.add(t.value);
+          rows.push(row(t));
+        }
       } else if (!(t.owner && index.workloads.has(t.owner))) tree(t, 0);
     }
     const running = new Map<string, number>();

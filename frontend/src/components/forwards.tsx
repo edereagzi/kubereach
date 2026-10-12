@@ -155,7 +155,7 @@ function ForwardRow({ forward, status }: { forward: PortForward; status?: Forwar
     onSuccess: () => {
       setEditing(false);
       setEnabled.reset();
-      invalidateConfig();
+      void invalidateConfig();
     },
   });
   const remove = useMutation({

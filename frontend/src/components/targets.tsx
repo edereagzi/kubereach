@@ -320,7 +320,7 @@ export function KindBadge({
   className,
   title,
 }: {
-  kind: Kind | string;
+  kind: string;
   className?: string;
   title?: string;
 }) {

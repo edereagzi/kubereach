@@ -63,7 +63,7 @@ function WriteAction({
     mutationFn: run,
     onSuccess: () => {
       setOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+      void queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
       onDone?.();
     },
   });

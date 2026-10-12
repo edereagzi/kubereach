@@ -41,7 +41,7 @@ Events.On("route:state", ({ data }) => {
   removeHostKeyPrompt(data.routeId);
   for (const cluster of queryClient.getQueryData(configQuery.queryKey)?.clusters ?? []) {
     if (cluster.route === data.routeId)
-      queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+      void queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
   }
 });
 // An open detail is fetched under its kind's singular key, so it follows its list, through an outage and back included.
@@ -57,14 +57,16 @@ const detailKey: Record<string, string> = {
 };
 Events.On("cluster:changed", ({ data }) => {
   for (const kind of data.kinds ?? []) {
-    queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
+    void queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, kind] });
     if (detailKey[kind])
-      queryClient.invalidateQueries({ queryKey: ["cluster", data.clusterId, detailKey[kind]] });
+      void queryClient.invalidateQueries({
+        queryKey: ["cluster", data.clusterId, detailKey[kind]],
+      });
   }
   // A Cluster first found unreachable, say before a VPN came up, is asked again once its watches hear from it.
   const reachability = reachabilityQuery(data.clusterId).queryKey;
   if (queryClient.getQueryState(reachability)?.status === "error")
-    queryClient.invalidateQueries({ queryKey: reachability });
+    void queryClient.invalidateQueries({ queryKey: reachability });
 });
 Events.On("route:hostkey", ({ data }) => addHostKeyPrompt(data));
 Events.On("forward:state", ({ data }) => setForwardStatus(data));
@@ -78,7 +80,7 @@ Events.On("terminal:state", ({ data }) => setTerminalStatus(data));
 Events.On("terminal:output", ({ data }) => writeSessionOutput(data));
 Events.On("update:available", ({ data }) => useUpdateStore.getState().found(data));
 // A release found before this window loaded was announced to no one.
-AppService.AvailableUpdate().then((u) => u && useUpdateStore.getState().found(u));
+void AppService.AvailableUpdate().then((u) => u && useUpdateStore.getState().found(u));
 Events.On("update:check", () => void useUpdateStore.getState().check());
 Events.On("wails:updater:download-progress", ({ data }) =>
   useUpdateStore.getState().setProgress(data.written, data.total),
@@ -87,16 +89,16 @@ Events.On("tray:open-cluster", ({ data }) => {
   selectCluster(data);
   selectTab("overview");
 });
-RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));
-ForwardService.Statuses().then((statuses) => statuses?.forEach(setForwardStatus));
-LogService.Statuses().then((statuses) => statuses?.forEach(setLogStatus));
-ShellService.Statuses().then((statuses) =>
+void RouteService.Statuses().then((statuses) => statuses?.forEach(setRouteStatus));
+void ForwardService.Statuses().then((statuses) => statuses?.forEach(setForwardStatus));
+void LogService.Statuses().then((statuses) => statuses?.forEach(setLogStatus));
+void ShellService.Statuses().then((statuses) =>
   statuses?.forEach((s) => {
     setShellStatus(s);
     restoreSession(s.id, ShellService.Tail(s.id));
   }),
 );
-TerminalService.Statuses().then((statuses) =>
+void TerminalService.Statuses().then((statuses) =>
   statuses?.forEach((s) => {
     setTerminalStatus(s);
     restoreSession(s.id, TerminalService.Tail(s.id));

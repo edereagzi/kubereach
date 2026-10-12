@@ -215,7 +215,7 @@ function ImportDialog({ preview, onClose }: { preview: ImportPreview; onClose: (
         Object.fromEntries(missing.map((p) => [p, skipped[p] ? "" : remap[p]])),
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["config"] });
+      void queryClient.invalidateQueries({ queryKey: ["config"] });
       onClose();
     },
   });

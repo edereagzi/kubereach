@@ -727,7 +727,7 @@ function ClusterHeader({ cluster }: { cluster: Cluster }) {
       for (const t of Object.values(terminalSessions))
         if (t.clusterId === cluster.id) closeTerminal(t.id);
       selectCluster(null);
-      queryClient.invalidateQueries();
+      void queryClient.invalidateQueries();
     },
   });
   return (

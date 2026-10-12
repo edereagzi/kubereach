@@ -156,7 +156,7 @@ function YamlEditor({
     mutationFn: () =>
       ClusterService.ApplyYAML(cluster.id, k, namespace, name, original, draft ?? ""),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
+      void queryClient.invalidateQueries({ queryKey: ["cluster", cluster.id] });
       onDone();
     },
     // A conflict leaves the dialog for the editor, where Reload is.
