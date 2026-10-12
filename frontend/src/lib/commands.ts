@@ -36,6 +36,8 @@ type Command = {
   keys: Hotkey[] | { mac: Hotkey[]; other: Hotkey[] };
   // Wails, Base UI, xterm or one element handles the key, at least on macOS. The shortcuts list shows it, and it is always available.
   native?: true;
+  // The Command runs only from keys pressed in the panel (true) or outside it (false).
+  panel?: boolean;
 };
 
 // Every key that the frontend handles through a Command is written here only.
@@ -86,11 +88,13 @@ export const commands = {
     name: "Previous view",
     group: "cluster",
     keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] },
+    panel: false,
   },
   "next-view": {
     name: "Next view",
     group: "cluster",
     keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] },
+    panel: false,
   },
   "filter-view": {
     name: "Focus the filter (the log filter in a Logs tab)",
@@ -110,7 +114,13 @@ export const commands = {
   "details-tab": { name: "Details tab", group: "detail", keys: ["D"] },
   "yaml-tab": { name: "YAML tab", group: "detail", keys: ["Y"] },
   "edit-yaml": { name: "Edit the YAML", group: "detail", keys: ["E"] },
-  "review-yaml": { name: "Review and apply the change", group: "yaml", keys: ["Mod+S"] },
+  // ⌘S in the panel saves the logs.
+  "review-yaml": {
+    name: "Review and apply the change",
+    group: "yaml",
+    keys: ["Mod+S"],
+    panel: false,
+  },
   "cancel-yaml": { name: "Cancel the edit", group: "yaml", keys: ["Escape"] },
   "toggle-panel": { name: "Show or hide the panel", group: "panel", keys: ["Mod+J"] },
   "new-terminal": { name: "New Terminal", group: "panel", keys: ["Mod+T"] },
@@ -119,18 +129,21 @@ export const commands = {
     name: "Previous panel tab",
     group: "panel",
     keys: { mac: ["Mod+Shift+["], other: ["Mod+PageUp"] },
+    panel: true,
   },
   "next-tab": {
     name: "Next panel tab",
     group: "panel",
     keys: { mac: ["Mod+Shift+]"], other: ["Mod+PageDown"] },
+    panel: true,
   },
   "select-log-lines": { name: "Select every line", group: "logs", keys: ["Mod+A"] },
-  "save-logs": { name: "Save the lines shown", group: "logs", keys: ["Mod+S"] },
+  "save-logs": { name: "Save the lines shown", group: "logs", keys: ["Mod+S"], panel: true },
   "follow-logs": {
     name: "Go to the last line and follow",
     group: "logs",
     keys: { mac: ["Mod+ArrowDown"], other: ["Mod+End"] },
+    panel: true,
   },
   // The xterm key handler runs these. On Linux and Windows the Ctrl keys belong to the shell, so these keys have Shift.
   "clear-terminal": {
@@ -236,27 +249,28 @@ const focusedEvent = () => {
 export const inPanel = (e: KeyboardEvent) =>
   e.target instanceof Element && !!e.target.closest("[data-panel]");
 
-// Makes a Command available while the component is mounted. target limits it to keys pressed in that element. panel
-// limits it to keys pressed in the panel (true) or outside it (false). A Command that does not apply leaves the key to the next one.
+// Tells whether a Command gets a key that is pressed in an area, in the panel or outside it.
+function getsKey(id: CommandId, e: KeyboardEvent) {
+  const command: Command = commands[id];
+  return (
+    (command.panel === undefined || command.panel === inPanel(e)) &&
+    keyOwner(pressOf(e), platform, focusArea(e), command.group) === "app"
+  );
+}
+
+// Makes a Command available while the component is mounted. target limits it to keys pressed in that element. A Command
+// that does not apply leaves the key to the next one.
 export function useCommand(
   id: CommandId,
   run: (e: KeyboardEvent) => void,
-  {
-    enabled = true,
-    target,
-    panel,
-  }: { enabled?: boolean; target?: RefObject<HTMLElement | null>; panel?: boolean } = {},
+  { enabled = true, target }: { enabled?: boolean; target?: RefObject<HTMLElement | null> } = {},
 ) {
-  const { name, group } = commands[id];
+  const { name } = commands[id];
   useHotkeys(
     withShift(keysOf(id)).map((hotkey) => ({
       hotkey,
       callback: (e: KeyboardEvent) => {
-        if (
-          (panel !== undefined && inPanel(e) !== panel) ||
-          keyOwner(pressOf(e), platform, focusArea(e), group) !== "app"
-        )
-          return;
+        if (!getsKey(id, e)) return;
         e.preventDefault();
         run(e);
       },

@@ -298,7 +298,7 @@ function LogToolbar({
       );
     },
   });
-  useCommand("save-logs", () => save.mutate(), { enabled: !save.isPending, panel: true });
+  useCommand("save-logs", () => save.mutate(), { enabled: !save.isPending });
   const containers = stream.allContainers ?? [];
   return (
     <>
@@ -494,7 +494,7 @@ function LogList({
     },
     { target: parentRef },
   );
-  useCommand("follow-logs", () => setFollowing(true), { enabled: !following, panel: true });
+  useCommand("follow-logs", () => setFollowing(true), { enabled: !following });
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => parentRef.current,

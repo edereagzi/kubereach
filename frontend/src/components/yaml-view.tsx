@@ -165,10 +165,8 @@ function YamlEditor({
   useEffect(() => load.mutate(), []);
   const root = useRef<HTMLDivElement>(null);
   useCommand("cancel-yaml", onDone, { target: root });
-  // ⌘S in the panel saves the logs.
   useCommand("review-yaml", () => review.mutate(), {
     enabled: draft !== null && !review.isPending,
-    panel: false,
   });
   const failure = load.error ?? review.error ?? (isConflict(apply.error) ? apply.error : null);
   return (

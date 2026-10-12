@@ -148,8 +148,8 @@ function ClusterTabs() {
   // The view keys wrap at the ends. In the panel the same keys change the panel tab.
   const stepView = (by: number) => () =>
     selectTab(mainTabs[(mainTabs.indexOf(activeTab) + by + mainTabs.length) % mainTabs.length]!);
-  useCommand("previous-view", stepView(-1), { enabled: !!cluster, panel: false });
-  useCommand("next-view", stepView(1), { enabled: !!cluster, panel: false });
+  useCommand("previous-view", stepView(-1), { enabled: !!cluster });
+  useCommand("next-view", stepView(1), { enabled: !!cluster });
   // The filter of the focused area: the panel's, or the active view's (an old view is inert while it goes). The key
   // also runs where there is no filter, so that WebView2 does not open its own find bar.
   useCommand(
@@ -391,8 +391,8 @@ function Dock({ cluster }: { cluster: Cluster }) {
         listRef.current?.querySelector<HTMLElement>("[aria-selected=true]")?.focus();
     });
   };
-  useCommand("previous-tab", step(-1), { target: sectionRef });
-  useCommand("next-tab", step(1), { target: sectionRef });
+  useCommand("previous-tab", step(-1));
+  useCommand("next-tab", step(1));
 
   const resize = (e: React.PointerEvent) => {
     e.preventDefault();
